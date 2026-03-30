@@ -180,8 +180,15 @@ class L2TriggerOPCUAServer:
         arg.Description = ua.LocalizedText(description or name)
         return arg
 
+    async def _set_node_description(self, node, text: str):
+        """Helper to set the Description attribute of a node"""
+        await node.write_attribute(
+            ua.AttributeIds.Description,
+            ua.DataValue(ua.Variant(ua.LocalizedText(text), ua.VariantType.LocalizedText))
+        )
+
     async def _create_address_space(self):
-        """Create the OPC UA address space structure"""
+        """Create the OPC UA address space structure with full descriptions"""
         idx = self.namespace_idx
         
         # Build root object with dotted NodeIds
@@ -195,6 +202,7 @@ class L2TriggerOPCUAServer:
                 ua.QualifiedName(component, idx)
             )
         root_obj = parent
+        await self._set_node_description(root_obj, "Root object for the L2 Trigger System control and monitoring.")
 
         # Create Monitoring folder
         mon_node_id = f"{self.opcua_root}.{self.monitoring_path}"
@@ -202,6 +210,7 @@ class L2TriggerOPCUAServer:
             ua.NodeId(mon_node_id, idx),
             ua.QualifiedName(self.monitoring_path, idx)
         )
+        await self._set_node_description(mon_obj, "Folder containing real-time monitoring variables and system status.")
         
         # Create monitoring variables with dotted NodeIds
         for name, initial, vtype, description in self._MONITORING_VARS:
@@ -213,11 +222,7 @@ class L2TriggerOPCUAServer:
                 varianttype=vtype
             )
             await var.set_read_only()
-            # Set description
-            await var.write_attribute(
-                ua.AttributeIds.Description,
-                ua.DataValue(ua.Variant(ua.LocalizedText(description), ua.VariantType.LocalizedText))
-            )
+            await self._set_node_description(var, description)
             self._vars[name] = (var, vtype)
 
         # Create methods on root
@@ -226,57 +231,53 @@ class L2TriggerOPCUAServer:
         logger.info(f"Address space created with root {self.opcua_root}")
 
     async def _create_methods(self, parent, idx):
-        """Create OPC UA methods for system control with full descriptions"""
+        """Create OPC UA methods and automatically apply their Python docstrings as descriptions"""
         
         def method_node_id(name):
             return ua.NodeId(f"{self.opcua_root}.{name}", idx)
 
-        a = self._arg  # shorthand
-        
-        async def set_desc(node, text):
-            await node.write_attribute(
-                ua.AttributeIds.Description,
-                ua.DataValue(ua.Variant(ua.LocalizedText(text), ua.VariantType.LocalizedText))
-            )
+        a = self._arg  # shorthand helper
 
-        # 1. Emergency shutdown
+        async def add_described_method(name, func, inputs=None, outputs=None):
+            """Helper to add a method and apply its docstring as the OPC UA Description"""
+            node = await parent.add_method(
+                method_node_id(name),
+                ua.QualifiedName(name, idx),
+                func,
+                inputs or [],
+                outputs or [a("result", ua.VariantType.String, "Result message")]
+            )
+            if func.__doc__:
+                await self._set_node_description(node, func.__doc__.strip())
+            return node
+
+        # Emergency Shutdown
         @uamethod
         async def emergency_shutdown(parent_node):
-            """Emergency shutdown - disable all power channels"""
+            """Immediately disable all power channels on all CTDB boards for safety."""
             logger.warning("Emergency shutdown called via OPC UA")
             await self.system.emergency_shutdown()
             self._force_full_read.set()
             return "Emergency shutdown complete"
         
-        m_shutdown = await parent.add_method(
-            method_node_id("EmergencyShutdown"),
-            ua.QualifiedName("EmergencyShutdown", idx),
-            emergency_shutdown,
-            [], [a("result", ua.VariantType.String, "Status of the shutdown operation")]
-        )
-        await set_desc(m_shutdown, "Immediately disable all power channels on all CTDB boards.")
+        await add_described_method("EmergencyShutdown", emergency_shutdown, 
+                                   outputs=[a("result", ua.VariantType.String, "Status of the shutdown operation")])
         
-        # 2. Set all power
+        # Set All Power
         @uamethod
         async def set_all_power(parent_node, enabled: bool):
-            """Enable or disable all power channels"""
+            """Global control to enable or disable power for all modules in the system."""
             await self.system.set_all_power(enabled)
             self._force_full_read.set()
             return f"All power {'enabled' if enabled else 'disabled'}"
         
-        m_all_power = await parent.add_method(
-            method_node_id("SetAllPower"),
-            ua.QualifiedName("SetAllPower", idx),
-            set_all_power,
-            [a("enabled", ua.VariantType.Boolean, "True to enable all modules, False to disable all")], 
-            [a("result", ua.VariantType.String, "Success message")]
-        )
-        await set_desc(m_all_power, "Global control to enable or disable power for all modules in the system.")
+        await add_described_method("SetAllPower", set_all_power,
+                                   inputs=[a("enabled", ua.VariantType.Boolean, "True to enable all modules, False to disable all")])
         
-        # 3. Set module power
+        # Set Module Power
         @uamethod
         async def set_module_power(parent_node, module: int, enabled: bool):
-            """Enable or disable power for a specific module"""
+            """Enable or disable power for a specific module identified by its 1-based index."""
             slot, channel = self._module_to_slot_channel(module)
             if slot not in self.system.ctdbs:
                 raise ValueError(f"Slot {slot} (module {module}) not enabled in this server")
@@ -284,41 +285,29 @@ class L2TriggerOPCUAServer:
             self._force_full_read.set()
             return f"Module {module} (Slot {slot} Ch {channel+1}) {'enabled' if enabled else 'disabled'}"
         
-        m_mod_power = await parent.add_method(
-            method_node_id("SetModulePower"),
-            ua.QualifiedName("SetModulePower", idx),
-            set_module_power,
-            [a("module", ua.VariantType.Int32, "Module number (1-270)"),
-             a("enabled", ua.VariantType.Boolean, "True to enable, False to disable")], 
-            [a("result", ua.VariantType.String, "Confirmation of power state change")]
-        )
-        await set_desc(m_mod_power, "Enable or disable power for a specific module identified by its 1-based index.")
+        await add_described_method("SetModulePower", set_module_power,
+                                   inputs=[a("module", ua.VariantType.Int32, "Module number (1-270)"),
+                                           a("enabled", ua.VariantType.Boolean, "True to enable, False to disable")])
 
-        # 4. Set current limits
+        # Set Current Limits
         @uamethod
         async def set_current_limits(parent_node, slot: int, min_ma: float, max_ma: float):
-            """Set current limits for a specific slot"""
+            """Configure safety current limits for an entire CTDB board."""
             if slot not in self.system.ctdbs:
                 raise ValueError(f"Slot {slot} not enabled")
             await self.system.ctdbs[slot].set_current_limits(min_ma, max_ma)
             self._force_full_read.set()
             return f"Slot {slot} limits set to {min_ma}-{max_ma} mA"
 
-        m_limits = await parent.add_method(
-            method_node_id("SetCurrentLimits"),
-            ua.QualifiedName("SetCurrentLimits", idx),
-            set_current_limits,
-            [a("slot", ua.VariantType.Int32, "Physical slot number of the CTDB board"),
-             a("min_ma", ua.VariantType.Double, "Minimum current threshold in mA"),
-             a("max_ma", ua.VariantType.Double, "Maximum current threshold in mA")],
-            [a("result", ua.VariantType.String, "Status of the limit update")]
-        )
-        await set_desc(m_limits, "Configure safety current limits for an entire CTDB board.")
+        await add_described_method("SetCurrentLimits", set_current_limits,
+                                   inputs=[a("slot", ua.VariantType.Int32, "Physical slot number of the CTDB board"),
+                                           a("min_ma", ua.VariantType.Double, "Minimum current threshold in mA"),
+                                           a("max_ma", ua.VariantType.Double, "Maximum current threshold in mA")])
 
-        # 5. Set module trigger mask
+        # Set Module Trigger Mask
         @uamethod
         async def set_module_trigger_mask(parent_node, module: int, masked: bool):
-            """Set trigger mask for a specific module"""
+            """Enable or disable the L1 trigger contribution for a specific module."""
             slot, channel = self._module_to_slot_channel(module)
             if slot not in self.system.ctdbs:
                 raise ValueError(f"Slot {slot} (module {module}) not enabled in this server")
@@ -326,20 +315,14 @@ class L2TriggerOPCUAServer:
             self._force_full_read.set()
             return f"Module {module} (Slot {slot} Trigger Ch {channel}) {'masked' if masked else 'active'}"
 
-        m_mask = await parent.add_method(
-            method_node_id("SetModuleTriggerMask"),
-            ua.QualifiedName("SetModuleTriggerMask", idx),
-            set_module_trigger_mask,
-            [a("module", ua.VariantType.Int32, "Module number (1-270)"),
-             a("masked", ua.VariantType.Boolean, "True to mask (disable) trigger, False to unmask (enable)")],
-            [a("result", ua.VariantType.String, "Confirmation of trigger mask change")]
-        )
-        await set_desc(m_mask, "Enable or disable the L1 trigger contribution for a specific module.")
+        await add_described_method("SetModuleTriggerMask", set_module_trigger_mask,
+                                   inputs=[a("module", ua.VariantType.Int32, "Module number (1-270)"),
+                                           a("masked", ua.VariantType.Boolean, "True to mask (disable) trigger, False to unmask (enable)")])
 
-        # 6. Set module trigger delay
+        # Set Module Trigger Delay
         @uamethod
         async def set_module_trigger_delay(parent_node, module: int, delay_ns: float):
-            """Set trigger delay for a specific module"""
+            """Adjust the fine-grained trigger delay for a module to synchronize signal timing."""
             slot, channel = self._module_to_slot_channel(module)
             if slot not in self.system.ctdbs:
                 raise ValueError(f"Slot {slot} (module {module}) not enabled in this server")
@@ -347,64 +330,41 @@ class L2TriggerOPCUAServer:
             self._force_full_read.set()
             return f"Module {module} (Slot {slot} Trigger Ch {channel}) delay set to {delay_ns} ns"
 
-        m_delay = await parent.add_method(
-            method_node_id("SetModuleTriggerDelay"),
-            ua.QualifiedName("SetModuleTriggerDelay", idx),
-            set_module_trigger_delay,
-            [a("module", ua.VariantType.Int32, "Module number (1-270)"),
-             a("delay_ns", ua.VariantType.Double, "Delay in nanoseconds (0.0 to 5.0 ns)")],
-            [a("result", ua.VariantType.String, "Status of the delay update")]
-        )
-        await set_desc(m_delay, "Adjust the fine-grained trigger delay for a module to synchronize signal timing.")
+        await add_described_method("SetModuleTriggerDelay", set_module_trigger_delay,
+                                   inputs=[a("module", ua.VariantType.Int32, "Module number (1-270)"),
+                                           a("delay_ns", ua.VariantType.Double, "Delay in nanoseconds (0.0 to 5.0 ns)")])
 
-        # 7. Set all trigger mask
+        # Set All Trigger Mask
         @uamethod
         async def set_all_trigger_mask(parent_node, masked: bool):
-            """Set trigger mask for all channels"""
+            """Global control to mask or unmask triggers for all modules."""
             await self.system.set_all_trigger_mask(masked)
             self._force_full_read.set()
             return f"All triggers {'masked' if masked else 'unmasked'}"
 
-        m_all_mask = await parent.add_method(
-            method_node_id("SetAllTriggerMask"),
-            ua.QualifiedName("SetAllTriggerMask", idx),
-            set_all_trigger_mask,
-            [a("masked", ua.VariantType.Boolean, "True to mask all triggers, False to unmask all")],
-            [a("result", ua.VariantType.String, "Success message")]
-        )
-        await set_desc(m_all_mask, "Global control to mask or unmask triggers for all modules.")
+        await add_described_method("SetAllTriggerMask", set_all_trigger_mask,
+                                   inputs=[a("masked", ua.VariantType.Boolean, "True to mask all triggers, False to unmask all")])
 
-        # 8. Set all trigger delay
+        # Set All Trigger Delay
         @uamethod
         async def set_all_trigger_delay(parent_node, delay_ns: float):
-            """Set trigger delay for all channels"""
+            """Apply a uniform trigger delay to all modules in the system."""
             await self.system.set_all_trigger_delay(delay_ns)
             self._force_full_read.set()
             return f"All trigger delays set to {delay_ns} ns"
 
-        m_all_delay = await parent.add_method(
-            method_node_id("SetAllTriggerDelay"),
-            ua.QualifiedName("SetAllTriggerDelay", idx),
-            set_all_trigger_delay,
-            [a("delay_ns", ua.VariantType.Double, "Delay in nanoseconds (0.0 to 5.0 ns) for all modules")],
-            [a("result", ua.VariantType.String, "Status of the global delay update")]
-        )
-        await set_desc(m_all_delay, "Apply a uniform trigger delay to all modules in the system.")
+        await add_described_method("SetAllTriggerDelay", set_all_trigger_delay,
+                                   inputs=[a("delay_ns", ua.VariantType.Double, "Delay in nanoseconds (0.0 to 5.0 ns) for all modules")])
         
-        # 9. Health check
+        # Health Check
         @uamethod
         async def health_check(parent_node):
-            """Perform system health check"""
+            """Run a comprehensive diagnostic of the L2 Trigger System hardware."""
             health = await self.system.health_check()
             return f"Health: {health['overall']}. Errors: {health['errors']}"
         
-        m_health = await parent.add_method(
-            method_node_id("HealthCheck"),
-            ua.QualifiedName("HealthCheck", idx),
-            health_check,
-            [], [a("result", ua.VariantType.String, "Summary of system health and detected errors")]
-        )
-        await set_desc(m_health, "Run a comprehensive diagnostic of the L2 Trigger System hardware.")
+        await add_described_method("HealthCheck", health_check,
+                                   outputs=[a("result", ua.VariantType.String, "Summary of system health and detected errors")])
 
     async def _update_loop(self):
         """Background task to update OPC UA values from hardware"""
