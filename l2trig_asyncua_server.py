@@ -72,6 +72,8 @@ class L2TriggerOPCUAServer:
         ("channel_enabled", [], ua.VariantType.Boolean, "Channel power enable status (flattened: slot_idx*15 + ch-1)"),
         ("channel_current_ma", [], ua.VariantType.Double, "Channel current readings in mA (flattened: slot_idx*15 + ch-1)"),
         ("channel_state", [], ua.VariantType.String, "Channel state strings (flattened: slot_idx*15 + ch-1)"),
+        ("trigger_masked", [], ua.VariantType.Boolean, "Trigger mask status (flattened: slot_idx*15 + ch)"),
+        ("trigger_delay_ns", [], ua.VariantType.Double, "Trigger delay in ns (flattened: slot_idx*15 + ch)"),
     ]
 
     def __init__(self, 
@@ -204,6 +206,36 @@ class L2TriggerOPCUAServer:
             [ua.VariantType.Int32, ua.VariantType.Double, ua.VariantType.Double],
             [ua.VariantType.String]
         )
+
+        # Set trigger mask method
+        @uamethod
+        async def set_trigger_mask(parent_node, slot: int, channel: int, masked: bool):
+            """Set trigger mask for a specific channel"""
+            if slot not in self.system.ctdbs:
+                raise ValueError(f"Slot {slot} not enabled")
+            await self.system.ctdbs[slot].set_trigger_mask(channel, masked)
+            return f"Slot {slot} Trigger Ch {channel} {'masked' if masked else 'active'}"
+
+        await parent.add_method(
+            idx, "SetTriggerMask", set_trigger_mask,
+            [ua.VariantType.Int32, ua.VariantType.Int32, ua.VariantType.Boolean],
+            [ua.VariantType.String]
+        )
+
+        # Set trigger delay method
+        @uamethod
+        async def set_trigger_delay(parent_node, slot: int, channel: int, delay_ns: float):
+            """Set trigger delay for a specific channel"""
+            if slot not in self.system.ctdbs:
+                raise ValueError(f"Slot {slot} not enabled")
+            await self.system.ctdbs[slot].set_trigger_delay(channel, delay_ns)
+            return f"Slot {slot} Trigger Ch {channel} delay set to {delay_ns} ns"
+
+        await parent.add_method(
+            idx, "SetTriggerDelay", set_trigger_delay,
+            [ua.VariantType.Int32, ua.VariantType.Int32, ua.VariantType.Double],
+            [ua.VariantType.String]
+        )
         
         # Health check method
         @uamethod
@@ -232,7 +264,12 @@ class L2TriggerOPCUAServer:
                 await self._set_var("active_slots", self.active_slots, now)
                 
                 # Update all CTDB statuses
-                all_status = await self.system.get_all_status()
+                status_tasks = [self.system.ctdbs[slot].get_status() for slot in self.active_slots]
+                trigger_tasks = [self.system.ctdbs[slot].get_trigger_status() for slot in self.active_slots]
+                
+                # Run all updates in parallel
+                statuses = await asyncio.gather(*status_tasks, return_exceptions=True)
+                triggers = await asyncio.gather(*trigger_tasks, return_exceptions=True)
                 
                 # Prepare vectors
                 ctdb_fw = []
@@ -246,9 +283,14 @@ class L2TriggerOPCUAServer:
                 ch_curr = []
                 ch_state = []
                 
-                for slot in self.active_slots:
-                    status = all_status.get(slot)
-                    if status:
+                trig_masked = []
+                trig_delay = []
+                
+                for i, slot in enumerate(self.active_slots):
+                    status = statuses[i]
+                    trigger = triggers[i]
+                    
+                    if not isinstance(status, Exception):
                         ctdb_fw.append(status.firmware_version)
                         ctdb_curr.append(float(status.ctdb_current_ma))
                         ctdb_total.append(float(status.total_current_ma))
@@ -261,7 +303,7 @@ class L2TriggerOPCUAServer:
                             ch_curr.append(float(ch.current_ma))
                             ch_state.append(ch.state.value)
                     else:
-                        # Placeholder for offline slot
+                        logger.error(f"Error fetching status for slot {slot}: {status}")
                         ctdb_fw.append(0)
                         ctdb_curr.append(0.0)
                         ctdb_total.append(0.0)
@@ -272,6 +314,16 @@ class L2TriggerOPCUAServer:
                             ch_enabled.append(False)
                             ch_curr.append(0.0)
                             ch_state.append("offline")
+                            
+                    if not isinstance(trigger, Exception):
+                        for trig in trigger:
+                            trig_masked.append(trig.masked)
+                            trig_delay.append(float(trig.delay_ns))
+                    else:
+                        logger.error(f"Error fetching trigger for slot {slot}: {trigger}")
+                        for _ in range(CHANNELS_PER_SLOT):
+                            trig_masked.append(True)
+                            trig_delay.append(0.0)
 
                 await self._set_var("ctdb_firmware", ctdb_fw, now)
                 await self._set_var("ctdb_current_ma", ctdb_curr, now)
@@ -283,6 +335,9 @@ class L2TriggerOPCUAServer:
                 await self._set_var("channel_enabled", ch_enabled, now)
                 await self._set_var("channel_current_ma", ch_curr, now)
                 await self._set_var("channel_state", ch_state, now)
+                
+                await self._set_var("trigger_masked", trig_masked, now)
+                await self._set_var("trigger_delay_ns", trig_delay, now)
                 
             except Exception as e:
                 logger.error(f"Error in update loop: {e}", exc_info=True)
