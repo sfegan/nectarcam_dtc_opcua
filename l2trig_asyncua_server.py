@@ -1,5 +1,5 @@
 """
-l2trig_opcua_server.py
+l2trig_asyncua_server.py
 
 OPC UA Server for L2 Trigger System
 Exposes L2 trigger hardware control via OPC UA protocol
@@ -109,7 +109,9 @@ class L2TriggerOPCUAServer:
 
     async def init(self):
         """Initialize the OPC UA server"""
-        await self.server.init()
+        # shelf_file=None disables asyncua's address-space persistence cache.
+        # This prevents "parent node does not exist" errors from previous runs.
+        await self.server.init(shelf_file=None)
         self.server.set_endpoint(self.endpoint)
         self.server.set_server_name("L2 Trigger System OPC UA Server")
         
@@ -125,19 +127,34 @@ class L2TriggerOPCUAServer:
         """Create the OPC UA address space structure"""
         idx = self.namespace_idx
         
-        # Build root object
+        # Build root object with dotted NodeIds
         components = self.opcua_root.split(".")
+        node_id_prefix = ""
         parent = self.server.nodes.objects
         for component in components:
-            parent = await parent.add_object(idx, component)
+            node_id_prefix = f"{node_id_prefix}.{component}" if node_id_prefix else component
+            parent = await parent.add_object(
+                ua.NodeId(node_id_prefix, idx),
+                ua.QualifiedName(component, idx)
+            )
         root_obj = parent
 
         # Create Monitoring folder
-        mon_obj = await root_obj.add_object(idx, self.monitoring_path)
+        mon_node_id = f"{self.opcua_root}.{self.monitoring_path}"
+        mon_obj = await root_obj.add_object(
+            ua.NodeId(mon_node_id, idx),
+            ua.QualifiedName(self.monitoring_path, idx)
+        )
         
-        # Create monitoring variables
+        # Create monitoring variables with dotted NodeIds
         for name, initial, vtype, description in self._MONITORING_VARS:
-            var = await mon_obj.add_variable(idx, name, initial, varianttype=vtype)
+            var_node_id = f"{mon_node_id}.{name}"
+            var = await mon_obj.add_variable(
+                ua.NodeId(var_node_id, idx),
+                ua.QualifiedName(name, idx),
+                initial,
+                varianttype=vtype
+            )
             await var.set_read_only()
             # Set description
             await var.write_attribute(
@@ -154,6 +171,9 @@ class L2TriggerOPCUAServer:
     async def _create_methods(self, parent, idx):
         """Create OPC UA methods for system control"""
         
+        def method_node_id(name):
+            return ua.NodeId(f"{self.opcua_root}.{name}", idx)
+
         # Emergency shutdown method
         @uamethod
         async def emergency_shutdown(parent_node):
@@ -163,7 +183,9 @@ class L2TriggerOPCUAServer:
             return "Emergency shutdown complete"
         
         await parent.add_method(
-            idx, "EmergencyShutdown", emergency_shutdown,
+            method_node_id("EmergencyShutdown"),
+            ua.QualifiedName("EmergencyShutdown", idx),
+            emergency_shutdown,
             [], [ua.VariantType.String]
         )
         
@@ -175,7 +197,9 @@ class L2TriggerOPCUAServer:
             return f"All power {'enabled' if enabled else 'disabled'}"
         
         await parent.add_method(
-            idx, "SetAllPower", set_all_power,
+            method_node_id("SetAllPower"),
+            ua.QualifiedName("SetAllPower", idx),
+            set_all_power,
             [ua.VariantType.Boolean], [ua.VariantType.String]
         )
         
@@ -187,7 +211,9 @@ class L2TriggerOPCUAServer:
             return f"Slot {slot} Ch {channel} {'enabled' if enabled else 'disabled'}"
         
         await parent.add_method(
-            idx, "SetChannelPower", set_channel_power,
+            method_node_id("SetChannelPower"),
+            ua.QualifiedName("SetChannelPower", idx),
+            set_channel_power,
             [ua.VariantType.Int32, ua.VariantType.Int32, ua.VariantType.Boolean], 
             [ua.VariantType.String]
         )
@@ -202,7 +228,9 @@ class L2TriggerOPCUAServer:
             return f"Slot {slot} limits set to {min_ma}-{max_ma} mA"
 
         await parent.add_method(
-            idx, "SetCurrentLimits", set_current_limits,
+            method_node_id("SetCurrentLimits"),
+            ua.QualifiedName("SetCurrentLimits", idx),
+            set_current_limits,
             [ua.VariantType.Int32, ua.VariantType.Double, ua.VariantType.Double],
             [ua.VariantType.String]
         )
@@ -217,7 +245,9 @@ class L2TriggerOPCUAServer:
             return f"Slot {slot} Trigger Ch {channel} {'masked' if masked else 'active'}"
 
         await parent.add_method(
-            idx, "SetTriggerMask", set_trigger_mask,
+            method_node_id("SetTriggerMask"),
+            ua.QualifiedName("SetTriggerMask", idx),
+            set_trigger_mask,
             [ua.VariantType.Int32, ua.VariantType.Int32, ua.VariantType.Boolean],
             [ua.VariantType.String]
         )
@@ -232,7 +262,9 @@ class L2TriggerOPCUAServer:
             return f"Slot {slot} Trigger Ch {channel} delay set to {delay_ns} ns"
 
         await parent.add_method(
-            idx, "SetTriggerDelay", set_trigger_delay,
+            method_node_id("SetTriggerDelay"),
+            ua.QualifiedName("SetTriggerDelay", idx),
+            set_trigger_delay,
             [ua.VariantType.Int32, ua.VariantType.Int32, ua.VariantType.Double],
             [ua.VariantType.String]
         )
@@ -245,7 +277,9 @@ class L2TriggerOPCUAServer:
             return f"Health: {health['overall']}. Errors: {health['errors']}"
         
         await parent.add_method(
-            idx, "HealthCheck", health_check,
+            method_node_id("HealthCheck"),
+            ua.QualifiedName("HealthCheck", idx),
+            health_check,
             [], [ua.VariantType.String]
         )
 
