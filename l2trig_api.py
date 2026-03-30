@@ -462,6 +462,24 @@ class L2TriggerSystem:
         await asyncio.gather(*tasks, return_exceptions=True)
         
         logger.info(f"All power channels {'enabled' if enabled else 'disabled'}")
+
+    async def set_all_trigger_mask(self, masked: bool) -> None:
+        """Set trigger mask for all channels on all boards"""
+        tasks = []
+        for ctdb in self.ctdbs.values():
+            for ch in range(CHANNELS_PER_SLOT):
+                tasks.append(ctdb.set_trigger_mask(ch, masked))
+        await asyncio.gather(*tasks, return_exceptions=True)
+        logger.info(f"All trigger channels {'masked' if masked else 'unmasked'}")
+
+    async def set_all_trigger_delay(self, delay_ns: float) -> None:
+        """Set trigger delay for all channels on all boards"""
+        tasks = []
+        for ctdb in self.ctdbs.values():
+            for ch in range(CHANNELS_PER_SLOT):
+                tasks.append(ctdb.set_trigger_delay(ch, delay_ns))
+        await asyncio.gather(*tasks, return_exceptions=True)
+        logger.info(f"All trigger delays set to {delay_ns:.3f} ns")
     
     async def emergency_shutdown(self) -> None:
         """Emergency shutdown - turn off all power channels immediately"""

@@ -12,10 +12,11 @@ import logging
 import signal
 import sys
 import time
-from typing import Dict, Optional, List, Any
+from typing import Dict, Optional, List, Any, Tuple
 
 from asyncua import Server, ua
 from asyncua.common.methods import uamethod
+from asyncua.server.user_managers import UserManager, User, UserRole
 
 from l2trig_api import (
     L2TriggerSystem,
@@ -30,6 +31,14 @@ from l2trig_api import (
 
 _LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 
+class _SuppressUaStatusCodeTracebacks(logging.Filter):
+    """Downgrade OPC UA method-failure log records; strip their tracebacks."""
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.exc_info and isinstance(record.exc_info[1], ua.UaStatusCodeError):
+            logger.warning("OPC UA method returned Bad status: %s", record.exc_info[1])
+            return False
+        return True
+
 def _configure_logging(level: str, log_file: str | None) -> None:
     """Configure the root logger."""
     formatter = logging.Formatter(_LOG_FORMAT)
@@ -40,7 +49,18 @@ def _configure_logging(level: str, log_file: str | None) -> None:
         file_handler = logging.FileHandler(log_file)
         file_handler.setFormatter(formatter)
         handlers.append(file_handler)
+    
+    # Configure root logger
     logging.basicConfig(level=level, handlers=handlers, force=True)
+    
+    # Suppress noisy asyncua initialization logs
+    logging.getLogger("asyncua.server.address_space").setLevel(logging.WARNING)
+    logging.getLogger("asyncua.server.internal_server").setLevel(logging.WARNING)
+    
+    # Add filter for method failures
+    logging.getLogger("asyncua.server.address_space").addFilter(
+        _SuppressUaStatusCodeTracebacks()
+    )
 
 logger = logging.getLogger("cta.l2trigger.server")
 
@@ -80,6 +100,7 @@ class L2TriggerOPCUAServer:
                  opcua_endpoint: str = "opc.tcp://0.0.0.0:4840/l2trigger/",
                  opcua_root: str = None,
                  monitoring_path: str = None,
+                 opcua_users: dict = None,
                  poll_interval: float = 1.0,
                  timeout_us: int = 10000,
                  enabled_slots: Optional[List[int]] = None):
@@ -89,6 +110,7 @@ class L2TriggerOPCUAServer:
         self.endpoint = opcua_endpoint
         self.opcua_root = opcua_root or self._DEFAULT_ROOT
         self.monitoring_path = monitoring_path or self._DEFAULT_MONITORING_PATH
+        self.opcua_users = opcua_users or {}
         self.poll_interval = poll_interval
         
         # Hardware interface
@@ -107,14 +129,34 @@ class L2TriggerOPCUAServer:
         self._update_task: Optional[asyncio.Task] = None
         self._running = False
 
+    def _module_to_slot_channel(self, module: int) -> Tuple[int, int]:
+        """Convert 1-based module number to (slot, channel)."""
+        if not 1 <= module <= len(VALID_SLOTS) * CHANNELS_PER_SLOT:
+            raise ValueError(f"Module number {module} out of range (1-270)")
+        
+        slot_idx = (module - 1) // CHANNELS_PER_SLOT
+        slot = VALID_SLOTS[slot_idx]
+        channel = (module - 1) % CHANNELS_PER_SLOT
+        return slot, channel
+
     async def init(self):
         """Initialize the OPC UA server"""
+        # Set up user manager if users are provided
+        if self.opcua_users:
+            creds = self.opcua_users
+            class _Manager(UserManager):
+                async def get_user(self, iserver, username=None, password=None, certificate=None):
+                    return (User(role=UserRole.User) if creds.get(username) == password else None)
+            self.server.set_user_manager(_Manager())
+
         # shelf_file=None disables asyncua's address-space persistence cache.
-        # This prevents "parent node does not exist" errors from previous runs.
         await self.server.init(shelf_file=None)
         self.server.set_endpoint(self.endpoint)
         self.server.set_server_name("L2 Trigger System OPC UA Server")
         
+        if self.opcua_users:
+            self.server.set_security_IDs(["Anonymous", "Username"])
+
         uri = "http://cta.l2trigger.hal"
         self.namespace_idx = await self.server.register_namespace(uri)
         
@@ -122,6 +164,17 @@ class L2TriggerOPCUAServer:
         await self._create_address_space()
         
         logger.info(f"OPC UA Server initialized at {self.endpoint}")
+
+    @staticmethod
+    def _arg(name: str, variant_type: ua.VariantType, description: str = "") -> ua.Argument:
+        """Build a named, typed OPC UA method argument descriptor."""
+        arg = ua.Argument()
+        arg.Name = name
+        arg.DataType = ua.NodeId(int(variant_type))
+        arg.ValueRank = -1
+        arg.ArrayDimensions = []
+        arg.Description = ua.LocalizedText(description or name)
+        return arg
 
     async def _create_address_space(self):
         """Create the OPC UA address space structure"""
@@ -174,6 +227,9 @@ class L2TriggerOPCUAServer:
         def method_node_id(name):
             return ua.NodeId(f"{self.opcua_root}.{name}", idx)
 
+        a = self._arg  # shorthand
+        res_arg = [a("result", ua.VariantType.String, "Status message")]
+
         # Emergency shutdown method
         @uamethod
         async def emergency_shutdown(parent_node):
@@ -186,7 +242,7 @@ class L2TriggerOPCUAServer:
             method_node_id("EmergencyShutdown"),
             ua.QualifiedName("EmergencyShutdown", idx),
             emergency_shutdown,
-            [], [ua.VariantType.String]
+            [], res_arg
         )
         
         # Set all power method
@@ -200,22 +256,27 @@ class L2TriggerOPCUAServer:
             method_node_id("SetAllPower"),
             ua.QualifiedName("SetAllPower", idx),
             set_all_power,
-            [ua.VariantType.Boolean], [ua.VariantType.String]
+            [a("enabled", ua.VariantType.Boolean, "True to enable, False to disable")], 
+            res_arg
         )
         
-        # Set channel power method
+        # Set module power method
         @uamethod
-        async def set_channel_power(parent_node, slot: int, channel: int, enabled: bool):
-            """Enable or disable a specific power channel"""
-            await self.system.set_slot_power(slot, channel, enabled)
-            return f"Slot {slot} Ch {channel} {'enabled' if enabled else 'disabled'}"
+        async def set_module_power(parent_node, module: int, enabled: bool):
+            """Enable or disable power for a specific module"""
+            slot, channel = self._module_to_slot_channel(module)
+            if slot not in self.system.ctdbs:
+                raise ValueError(f"Slot {slot} (module {module}) not enabled in this server")
+            await self.system.set_slot_power(slot, channel + 1, enabled)
+            return f"Module {module} (Slot {slot} Ch {channel+1}) {'enabled' if enabled else 'disabled'}"
         
         await parent.add_method(
-            method_node_id("SetChannelPower"),
-            ua.QualifiedName("SetChannelPower", idx),
-            set_channel_power,
-            [ua.VariantType.Int32, ua.VariantType.Int32, ua.VariantType.Boolean], 
-            [ua.VariantType.String]
+            method_node_id("SetModulePower"),
+            ua.QualifiedName("SetModulePower", idx),
+            set_module_power,
+            [a("module", ua.VariantType.Int32, "Module number (1-270)"),
+             a("enabled", ua.VariantType.Boolean, "True to enable, False to disable")], 
+            res_arg
         )
 
         # Set current limits method
@@ -231,42 +292,78 @@ class L2TriggerOPCUAServer:
             method_node_id("SetCurrentLimits"),
             ua.QualifiedName("SetCurrentLimits", idx),
             set_current_limits,
-            [ua.VariantType.Int32, ua.VariantType.Double, ua.VariantType.Double],
-            [ua.VariantType.String]
+            [a("slot", ua.VariantType.Int32, "Slot number"),
+             a("min_ma", ua.VariantType.Double, "Minimum current in mA"),
+             a("max_ma", ua.VariantType.Double, "Maximum current in mA")],
+            res_arg
         )
 
-        # Set trigger mask method
+        # Set module trigger mask method
         @uamethod
-        async def set_trigger_mask(parent_node, slot: int, channel: int, masked: bool):
-            """Set trigger mask for a specific channel"""
+        async def set_module_trigger_mask(parent_node, module: int, masked: bool):
+            """Set trigger mask for a specific module"""
+            slot, channel = self._module_to_slot_channel(module)
             if slot not in self.system.ctdbs:
-                raise ValueError(f"Slot {slot} not enabled")
+                raise ValueError(f"Slot {slot} (module {module}) not enabled in this server")
             await self.system.ctdbs[slot].set_trigger_mask(channel, masked)
-            return f"Slot {slot} Trigger Ch {channel} {'masked' if masked else 'active'}"
+            return f"Module {module} (Slot {slot} Trigger Ch {channel}) {'masked' if masked else 'active'}"
 
         await parent.add_method(
-            method_node_id("SetTriggerMask"),
-            ua.QualifiedName("SetTriggerMask", idx),
-            set_trigger_mask,
-            [ua.VariantType.Int32, ua.VariantType.Int32, ua.VariantType.Boolean],
-            [ua.VariantType.String]
+            method_node_id("SetModuleTriggerMask"),
+            ua.QualifiedName("SetModuleTriggerMask", idx),
+            set_module_trigger_mask,
+            [a("module", ua.VariantType.Int32, "Module number (1-270)"),
+             a("masked", ua.VariantType.Boolean, "True to mask, False to unmask")],
+            res_arg
         )
 
-        # Set trigger delay method
+        # Set module trigger delay method
         @uamethod
-        async def set_trigger_delay(parent_node, slot: int, channel: int, delay_ns: float):
-            """Set trigger delay for a specific channel"""
+        async def set_module_trigger_delay(parent_node, module: int, delay_ns: float):
+            """Set trigger delay for a specific module"""
+            slot, channel = self._module_to_slot_channel(module)
             if slot not in self.system.ctdbs:
-                raise ValueError(f"Slot {slot} not enabled")
+                raise ValueError(f"Slot {slot} (module {module}) not enabled in this server")
             await self.system.ctdbs[slot].set_trigger_delay(channel, delay_ns)
-            return f"Slot {slot} Trigger Ch {channel} delay set to {delay_ns} ns"
+            return f"Module {module} (Slot {slot} Trigger Ch {channel}) delay set to {delay_ns} ns"
 
         await parent.add_method(
-            method_node_id("SetTriggerDelay"),
-            ua.QualifiedName("SetTriggerDelay", idx),
-            set_trigger_delay,
-            [ua.VariantType.Int32, ua.VariantType.Int32, ua.VariantType.Double],
-            [ua.VariantType.String]
+            method_node_id("SetModuleTriggerDelay"),
+            ua.QualifiedName("SetModuleTriggerDelay", idx),
+            set_module_trigger_delay,
+            [a("module", ua.VariantType.Int32, "Module number (1-270)"),
+             a("delay_ns", ua.VariantType.Double, "Delay in ns (0-5 ns)")],
+            res_arg
+        )
+
+        # Set all trigger mask method
+        @uamethod
+        async def set_all_trigger_mask(parent_node, masked: bool):
+            """Set trigger mask for all channels"""
+            await self.system.set_all_trigger_mask(masked)
+            return f"All triggers {'masked' if masked else 'unmasked'}"
+
+        await parent.add_method(
+            method_node_id("SetAllTriggerMask"),
+            ua.QualifiedName("SetAllTriggerMask", idx),
+            set_all_trigger_mask,
+            [a("masked", ua.VariantType.Boolean, "True to mask, False to unmask")],
+            res_arg
+        )
+
+        # Set all trigger delay method
+        @uamethod
+        async def set_all_trigger_delay(parent_node, delay_ns: float):
+            """Set trigger delay for all channels"""
+            await self.system.set_all_trigger_delay(delay_ns)
+            return f"All trigger delays set to {delay_ns} ns"
+
+        await parent.add_method(
+            method_node_id("SetAllTriggerDelay"),
+            ua.QualifiedName("SetAllTriggerDelay", idx),
+            set_all_trigger_delay,
+            [a("delay_ns", ua.VariantType.Double, "Delay in ns (0-5 ns)")],
+            res_arg
         )
         
         # Health check method
@@ -280,7 +377,7 @@ class L2TriggerOPCUAServer:
             method_node_id("HealthCheck"),
             ua.QualifiedName("HealthCheck", idx),
             health_check,
-            [], [ua.VariantType.String]
+            [], res_arg
         )
 
     async def _update_loop(self):
@@ -441,6 +538,7 @@ def _parse_args():
                    help="Root object path (e.g. L2Trigger or Camera.L2Trigger)")
     p.add_argument("--monitoring-path", default="Monitoring",
                    help="Name of the monitoring object under the root")
+    p.add_argument("--opcua-user", action="append", metavar="USER:PASS")
     p.add_argument("--poll-interval", type=float, default=1.0, help="Polling interval in seconds")
     p.add_argument("--timeout-us", type=int, default=10000, help="Hardware timeout in microseconds")
     p.add_argument("--slots", help="Comma-separated list of slots to enable (default: all)")
@@ -453,6 +551,14 @@ async def main():
     args = _parse_args()
     _configure_logging(args.log_level, args.log_file)
     
+    opcua_users = {}
+    for pair in args.opcua_user or []:
+        if ":" not in pair:
+            logger.error("Invalid --opcua-user (expected USER:PASS): %r", pair)
+            return 1
+        user, _, pw = pair.partition(":")
+        opcua_users[user] = pw
+
     enabled_slots = None
     if args.slots:
         try:
@@ -465,6 +571,7 @@ async def main():
         opcua_endpoint=args.opcua_endpoint,
         opcua_root=args.opcua_root,
         monitoring_path=args.monitoring_path,
+        opcua_users=opcua_users,
         poll_interval=args.poll_interval,
         timeout_us=args.timeout_us,
         enabled_slots=enabled_slots
