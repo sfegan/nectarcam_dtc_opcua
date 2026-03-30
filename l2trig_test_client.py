@@ -3,6 +3,9 @@ l2trig_test_client.py
 
 Interactive OPC UA client for L2 Trigger System
 Allows reading monitoring variables and calling control methods from the terminal
+
+Copyright 2026, Stephen Fegan <sfegan@llr.in2p3.fr>
+Laboratoire Leprince-Ringuet, CNRS/IN2P3, Ecole Polytechnique, Institut Polytechnique de Paris
 """
 
 import argparse

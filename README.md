@@ -2,6 +2,9 @@
 
 This repository contains the OPC UA server and associated tools for the L2 Trigger System. The server provides a high-level interface for monitoring and controlling the L2 trigger hardware, including the L2CB controller board and multiple CTDB boards.
 
+Copyright 2026, Stephen Fegan <sfegan@llr.in2p3.fr>
+Laboratoire Leprince-Ringuet, CNRS/IN2P3, Ecole Polytechnique, Institut Polytechnique de Paris
+
 ## System Architecture
 
 The project is structured into three main layers:

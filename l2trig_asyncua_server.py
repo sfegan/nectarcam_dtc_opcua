@@ -3,6 +3,9 @@ l2trig_asyncua_server.py
 
 OPC UA Server for L2 Trigger System
 Exposes L2 trigger hardware control via OPC UA protocol
+
+Copyright 2026, Stephen Fegan <sfegan@llr.in2p3.fr>
+Laboratoire Leprince-Ringuet, CNRS/IN2P3, Ecole Polytechnique, Institut Polytechnique de Paris
 """
 
 import argparse

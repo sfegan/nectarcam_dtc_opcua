@@ -6,7 +6,10 @@
  *
  * Define DUMMY to compile with dummy implementations for testing on systems
  * without the correct hardware registers. Getters return dummy values, setters are NOOPs.
- */
+* 
+* Copyright 2026, Stephen Fegan <sfegan@llr.in2p3.fr>
+* Laboratoire Leprince-Ringuet, CNRS/IN2P3, Ecole Polytechnique, Institut Polytechnique de Paris
+*/
 
 #include "l2trig_hal.h"
 #include <stdio.h>

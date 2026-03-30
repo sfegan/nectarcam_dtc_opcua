@@ -3,6 +3,9 @@ l2trig_api.py
 
 High-level async API for L2 Trigger System
 Provides business logic layer with proper error handling and type safety
+
+Copyright 2026, Stephen Fegan <sfegan@llr.in2p3.fr>
+Laboratoire Leprince-Ringuet, CNRS/IN2P3, Ecole Polytechnique, Institut Polytechnique de Paris
 """
 
 import asyncio
