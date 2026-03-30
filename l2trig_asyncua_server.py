@@ -81,7 +81,8 @@ class L2TriggerOPCUAServer:
     # (name, initial value, OPC UA variant type, description)
     _MONITORING_VARS = [
         ("l2cb_firmware", 0, ua.VariantType.UInt16, "L2CB board firmware version"),
-        ("l2cb_timestamp", 0, ua.VariantType.UInt64, "L2CB hardware timestamp"),
+        ("l2cb_timestamp", datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc), ua.VariantType.DateTime, "L2CB hardware timestamp"),
+        ("l2cb_timestamp_raw", 0, ua.VariantType.UInt64, "L2CB raw hardware timestamp counter"),
         ("active_slots", [], ua.VariantType.Int32, "List of slots enabled in this server"),
         ("ctdb_firmware", [], ua.VariantType.UInt16, "CTDB firmware versions (one per active slot)"),
         ("ctdb_current_ma", [], ua.VariantType.Double, "CTDB board currents in mA (one per active slot)"),
@@ -102,6 +103,7 @@ class L2TriggerOPCUAServer:
                  monitoring_path: str = None,
                  opcua_users: dict = None,
                  poll_interval: float = 1.0,
+                 poll_ratio: int = 10,
                  timeout_us: int = 10000,
                  enabled_slots: Optional[List[int]] = None):
         """
@@ -112,6 +114,7 @@ class L2TriggerOPCUAServer:
         self.monitoring_path = monitoring_path or self._DEFAULT_MONITORING_PATH
         self.opcua_users = opcua_users or {}
         self.poll_interval = poll_interval
+        self.poll_ratio = poll_ratio
         
         # Hardware interface
         self.system = L2TriggerSystem(
@@ -128,6 +131,7 @@ class L2TriggerOPCUAServer:
         # Update task
         self._update_task: Optional[asyncio.Task] = None
         self._running = False
+        self._force_full_read = asyncio.Event()
 
     def _module_to_slot_channel(self, module: int) -> Tuple[int, int]:
         """Convert 1-based module number to (slot, channel)."""
@@ -236,6 +240,7 @@ class L2TriggerOPCUAServer:
             """Emergency shutdown - disable all power channels"""
             logger.warning("Emergency shutdown called via OPC UA")
             await self.system.emergency_shutdown()
+            self._force_full_read.set()
             return "Emergency shutdown complete"
         
         await parent.add_method(
@@ -250,6 +255,7 @@ class L2TriggerOPCUAServer:
         async def set_all_power(parent_node, enabled: bool):
             """Enable or disable all power channels"""
             await self.system.set_all_power(enabled)
+            self._force_full_read.set()
             return f"All power {'enabled' if enabled else 'disabled'}"
         
         await parent.add_method(
@@ -268,6 +274,7 @@ class L2TriggerOPCUAServer:
             if slot not in self.system.ctdbs:
                 raise ValueError(f"Slot {slot} (module {module}) not enabled in this server")
             await self.system.set_slot_power(slot, channel + 1, enabled)
+            self._force_full_read.set()
             return f"Module {module} (Slot {slot} Ch {channel+1}) {'enabled' if enabled else 'disabled'}"
         
         await parent.add_method(
@@ -286,6 +293,7 @@ class L2TriggerOPCUAServer:
             if slot not in self.system.ctdbs:
                 raise ValueError(f"Slot {slot} not enabled")
             await self.system.ctdbs[slot].set_current_limits(min_ma, max_ma)
+            self._force_full_read.set()
             return f"Slot {slot} limits set to {min_ma}-{max_ma} mA"
 
         await parent.add_method(
@@ -306,6 +314,7 @@ class L2TriggerOPCUAServer:
             if slot not in self.system.ctdbs:
                 raise ValueError(f"Slot {slot} (module {module}) not enabled in this server")
             await self.system.ctdbs[slot].set_trigger_mask(channel, masked)
+            self._force_full_read.set()
             return f"Module {module} (Slot {slot} Trigger Ch {channel}) {'masked' if masked else 'active'}"
 
         await parent.add_method(
@@ -325,6 +334,7 @@ class L2TriggerOPCUAServer:
             if slot not in self.system.ctdbs:
                 raise ValueError(f"Slot {slot} (module {module}) not enabled in this server")
             await self.system.ctdbs[slot].set_trigger_delay(channel, delay_ns)
+            self._force_full_read.set()
             return f"Module {module} (Slot {slot} Trigger Ch {channel}) delay set to {delay_ns} ns"
 
         await parent.add_method(
@@ -341,6 +351,7 @@ class L2TriggerOPCUAServer:
         async def set_all_trigger_mask(parent_node, masked: bool):
             """Set trigger mask for all channels"""
             await self.system.set_all_trigger_mask(masked)
+            self._force_full_read.set()
             return f"All triggers {'masked' if masked else 'unmasked'}"
 
         await parent.add_method(
@@ -356,6 +367,7 @@ class L2TriggerOPCUAServer:
         async def set_all_trigger_delay(parent_node, delay_ns: float):
             """Set trigger delay for all channels"""
             await self.system.set_all_trigger_delay(delay_ns)
+            self._force_full_read.set()
             return f"All trigger delays set to {delay_ns} ns"
 
         await parent.add_method(
@@ -384,96 +396,161 @@ class L2TriggerOPCUAServer:
         """Background task to update OPC UA values from hardware"""
         logger.info("Update loop started")
         
+        cycle_count = 0
+        next_poll = time.monotonic()
+        
         while self._running:
             try:
-                # Update L2CB status
-                l2cb_status = await self.system.get_l2cb_status()
+                # Check for forced full read or low frequency cycle
+                force_full = self._force_full_read.is_set()
+                if force_full:
+                    self._force_full_read.clear()
+                    logger.debug("Forced full read triggered")
+                
+                is_low_freq_cycle = (cycle_count % self.poll_ratio == 0) or force_full
                 now = datetime.datetime.now(datetime.timezone.utc)
                 
+                # 1. Update L2CB status (high frequency)
+                l2cb_status = await self.system.get_l2cb_status()
                 await self._set_var("l2cb_firmware", l2cb_status.firmware_version, now)
-                await self._set_var("l2cb_timestamp", l2cb_status.timestamp, now)
+                await self._set_var("l2cb_timestamp", l2cb_status.timestamp_datetime, now)
+                await self._set_var("l2cb_timestamp_raw", l2cb_status.timestamp, now)
                 await self._set_var("active_slots", self.active_slots, now)
                 
-                # Update all CTDB statuses
-                status_tasks = [self.system.ctdbs[slot].get_status() for slot in self.active_slots]
-                trigger_tasks = [self.system.ctdbs[slot].get_trigger_status() for slot in self.active_slots]
+                # 2. Collect hardware data
+                monitoring_task = self.system.get_all_monitoring_data()
                 
-                # Run all updates in parallel
-                statuses = await asyncio.gather(*status_tasks, return_exceptions=True)
-                triggers = await asyncio.gather(*trigger_tasks, return_exceptions=True)
+                config_task = None
+                trigger_task = None
+                if is_low_freq_cycle:
+                    config_task = self.system.get_all_configuration_data()
+                    trigger_task = self.system.get_all_trigger_status()
                 
-                # Prepare vectors
-                ctdb_fw = []
+                # Run tasks in parallel
+                monitoring_results = await monitoring_task
+                config_results = await config_task if config_task else {}
+                trigger_results = await trigger_task if trigger_task else {}
+                
+                # 3. Prepare and update OPC UA variables
                 ctdb_curr = []
                 ctdb_total = []
-                ctdb_min = []
-                ctdb_max = []
                 ctdb_err = []
-                
-                ch_enabled = []
                 ch_curr = []
                 ch_state = []
                 
-                trig_masked = []
-                trig_delay = []
-                
-                for i, slot in enumerate(self.active_slots):
-                    status = statuses[i]
-                    trigger = triggers[i]
+                # Only update these if it's a low frequency cycle
+                if is_low_freq_cycle:
+                    ctdb_fw = []
+                    ctdb_min = []
+                    ctdb_max = []
+                    ch_enabled = []
+                    trig_masked = []
+                    trig_delay = []
+
+                for slot in self.active_slots:
+                    m_data = monitoring_results.get(slot)
+                    ctdb = self.system.ctdbs[slot]
+                    c_data = ctdb._cached_config # Use cached if not updated this cycle
                     
-                    if not isinstance(status, Exception):
-                        ctdb_fw.append(status.firmware_version)
-                        ctdb_curr.append(float(status.ctdb_current_ma))
-                        ctdb_total.append(float(status.total_current_ma))
-                        ctdb_min.append(float(status.current_limit_min_ma))
-                        ctdb_max.append(float(status.current_limit_max_ma))
-                        ctdb_err.append(status.has_errors)
+                    if m_data and c_data:
+                        ctdb_curr.append(float(m_data.ctdb_current_ma))
+                        ctdb_err.append(bool(m_data.over_current_errors or m_data.under_current_errors))
                         
-                        for ch in status.power_channels:
-                            ch_enabled.append(ch.enabled)
-                            ch_curr.append(float(ch.current_ma))
-                            ch_state.append(ch.state.value)
+                        total_ch_curr = 0.0
+                        for i in range(CHANNELS_PER_SLOT):
+                            ch = i + 1
+                            curr = float(m_data.channel_currents_ma[i])
+                            ch_curr.append(curr)
+                            
+                            enabled = bool(c_data.power_enable_mask & (1 << ch))
+                            if enabled:
+                                total_ch_curr += curr
+                            
+                            # Determine state
+                            has_over = bool(m_data.over_current_errors & (1 << ch))
+                            has_under = bool(m_data.under_current_errors & (1 << ch))
+                            
+                            if has_over and has_under:
+                                state = "error_both"
+                            elif has_over:
+                                state = "error_over_current"
+                            elif has_under:
+                                state = "error_under_current"
+                            elif enabled:
+                                state = "on"
+                            else:
+                                state = "off"
+                            ch_state.append(state)
+                        
+                        ctdb_total.append(total_ch_curr)
                     else:
-                        logger.error(f"Error fetching status for slot {slot}: {status}")
-                        ctdb_fw.append(0)
+                        # Error case
                         ctdb_curr.append(0.0)
                         ctdb_total.append(0.0)
-                        ctdb_min.append(0.0)
-                        ctdb_max.append(0.0)
                         ctdb_err.append(True)
                         for _ in range(CHANNELS_PER_SLOT):
-                            ch_enabled.append(False)
                             ch_curr.append(0.0)
                             ch_state.append("offline")
-                            
-                    if not isinstance(trigger, Exception):
-                        for trig in trigger:
-                            trig_masked.append(trig.masked)
-                            trig_delay.append(float(trig.delay_ns))
-                    else:
-                        logger.error(f"Error fetching trigger for slot {slot}: {trigger}")
-                        for _ in range(CHANNELS_PER_SLOT):
-                            trig_masked.append(True)
-                            trig_delay.append(0.0)
 
-                await self._set_var("ctdb_firmware", ctdb_fw, now)
+                    if is_low_freq_cycle:
+                        if c_data:
+                            ctdb_fw.append(c_data.firmware_version)
+                            ctdb_min.append(float(c_data.current_limit_min_ma))
+                            ctdb_max.append(float(c_data.current_limit_max_ma))
+                            for i in range(CHANNELS_PER_SLOT):
+                                ch_enabled.append(bool(c_data.power_enable_mask & (1 << (i+1))))
+                        else:
+                            ctdb_fw.append(0)
+                            ctdb_min.append(0.0)
+                            ctdb_max.append(0.0)
+                            for _ in range(CHANNELS_PER_SLOT):
+                                ch_enabled.append(False)
+                        
+                        t_data = trigger_results.get(slot)
+                        if t_data:
+                            for trig in t_data:
+                                trig_masked.append(trig.masked)
+                                trig_delay.append(float(trig.delay_ns))
+                        else:
+                            for _ in range(CHANNELS_PER_SLOT):
+                                trig_masked.append(True)
+                                trig_delay.append(0.0)
+
+                # Push updates to OPC UA
                 await self._set_var("ctdb_current_ma", ctdb_curr, now)
                 await self._set_var("ctdb_total_channel_current_ma", ctdb_total, now)
-                await self._set_var("ctdb_limit_min_ma", ctdb_min, now)
-                await self._set_var("ctdb_limit_max_ma", ctdb_max, now)
                 await self._set_var("ctdb_has_errors", ctdb_err, now)
-                
-                await self._set_var("channel_enabled", ch_enabled, now)
                 await self._set_var("channel_current_ma", ch_curr, now)
                 await self._set_var("channel_state", ch_state, now)
                 
-                await self._set_var("trigger_masked", trig_masked, now)
-                await self._set_var("trigger_delay_ns", trig_delay, now)
+                if is_low_freq_cycle:
+                    await self._set_var("ctdb_firmware", ctdb_fw, now)
+                    await self._set_var("ctdb_limit_min_ma", ctdb_min, now)
+                    await self._set_var("ctdb_limit_max_ma", ctdb_max, now)
+                    await self._set_var("channel_enabled", ch_enabled, now)
+                    await self._set_var("trigger_masked", trig_masked, now)
+                    await self._set_var("trigger_delay_ns", trig_delay, now)
+
+                cycle_count += 1
                 
             except Exception as e:
                 logger.error(f"Error in update loop: {e}", exc_info=True)
             
-            await asyncio.sleep(self.poll_interval)
+            # PLL: Calculate delay to maintain constant rate
+            next_poll += self.poll_interval
+            delay = next_poll - time.monotonic()
+            
+            if delay > 0:
+                # Wait for next poll or force event
+                try:
+                    await asyncio.wait_for(self._force_full_read.wait(), timeout=delay)
+                except asyncio.TimeoutError:
+                    pass
+            else:
+                # We are lagging, don't sleep, but maybe reset next_poll if too far behind
+                if delay < -self.poll_interval * 5:
+                    logger.warning(f"Update loop lagging by {-delay:.2f}s, resetting schedule")
+                    next_poll = time.monotonic()
         
         logger.info("Update loop stopped")
 
@@ -540,6 +617,8 @@ def _parse_args():
                    help="Name of the monitoring object under the root")
     p.add_argument("--opcua-user", action="append", metavar="USER:PASS")
     p.add_argument("--poll-interval", type=float, default=1.0, help="Polling interval in seconds")
+    p.add_argument("--poll-ratio", type=int, default=10, 
+                   help="Number of polling cycles between full status reads")
     p.add_argument("--timeout-us", type=int, default=10000, help="Hardware timeout in microseconds")
     p.add_argument("--slots", help="Comma-separated list of slots to enable (default: all)")
     p.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
@@ -573,6 +652,7 @@ async def main():
         monitoring_path=args.monitoring_path,
         opcua_users=opcua_users,
         poll_interval=args.poll_interval,
+        poll_ratio=args.poll_ratio,
         timeout_us=args.timeout_us,
         enabled_slots=enabled_slots
     )

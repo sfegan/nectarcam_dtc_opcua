@@ -78,6 +78,28 @@ class TriggerChannel:
 
 
 @dataclass
+class CTDBMonitoringData:
+    """High-frequency monitoring data for one CTDB board"""
+    slot: int
+    ctdb_current_ma: float
+    channel_currents_ma: List[float]
+    over_current_errors: int
+    under_current_errors: int
+    timestamp: datetime = field(default_factory=datetime.now)
+
+
+@dataclass
+class CTDBConfigData:
+    """Low-frequency configuration data for one CTDB board"""
+    slot: int
+    firmware_version: int
+    power_enable_mask: int
+    current_limit_min_ma: float
+    current_limit_max_ma: float
+    timestamp: datetime = field(default_factory=datetime.now)
+
+
+@dataclass
 class CTDBStatus:
     """Complete status for one CTDB board"""
     slot: int
@@ -135,13 +157,51 @@ class CTDBController:
         self.slot = slot
         self.timeout = timeout_us
         self._last_status: Optional[CTDBStatus] = None
-    
-    async def get_status(self) -> CTDBStatus:
-        """
-        Get complete status of this CTDB
         
-        Returns:
-            CTDBStatus object with all current information
+        # Cached configuration data
+        self._cached_config: Optional[CTDBConfigData] = None
+        self._cached_trigger_status: Optional[List[TriggerChannel]] = None
+    
+    async def get_monitoring_data(self) -> CTDBMonitoringData:
+        """
+        Get high-frequency monitoring data (currents and errors)
+        """
+        async with _hardware_lock:
+            loop = asyncio.get_event_loop()
+            
+            # Get CTDB board current (channel 0)
+            ctdb_current = await loop.run_in_executor(
+                None, hal.get_power_current, self.slot, 0, self.timeout
+            )
+            
+            # Get all channel currents
+            channel_currents = []
+            for ch in range(1, CHANNELS_PER_SLOT + 1):
+                current = await loop.run_in_executor(
+                    None, hal.get_power_current, self.slot, ch, self.timeout
+                )
+                channel_currents.append(current)
+            
+            # Get error vectors
+            over_current_errors = await loop.run_in_executor(
+                None, hal.get_over_current_errors, self.slot, self.timeout
+            )
+            
+            under_current_errors = await loop.run_in_executor(
+                None, hal.get_under_current_errors, self.slot, self.timeout
+            )
+            
+            return CTDBMonitoringData(
+                slot=self.slot,
+                ctdb_current_ma=ctdb_current,
+                channel_currents_ma=channel_currents,
+                over_current_errors=over_current_errors,
+                under_current_errors=under_current_errors
+            )
+
+    async def get_configuration_data(self) -> CTDBConfigData:
+        """
+        Get low-frequency configuration data (firmware, limits, enable status)
         """
         async with _hardware_lock:
             loop = asyncio.get_event_loop()
@@ -156,15 +216,6 @@ class CTDBController:
                 None, hal.get_power_enable, self.slot, self.timeout
             )
             
-            # Get error vectors
-            over_current_errors = await loop.run_in_executor(
-                None, hal.get_over_current_errors, self.slot, self.timeout
-            )
-            
-            under_current_errors = await loop.run_in_executor(
-                None, hal.get_under_current_errors, self.slot, self.timeout
-            )
-            
             # Get current limits
             limit_min_raw = await loop.run_in_executor(
                 None, hal.get_power_current_min, self.slot, self.timeout
@@ -173,56 +224,69 @@ class CTDBController:
                 None, hal.get_power_current_max, self.slot, self.timeout
             )
             
-            # Get CTDB board current (channel 0)
-            ctdb_current = await loop.run_in_executor(
-                None, hal.get_power_current, self.slot, 0, self.timeout
-            )
-            
-            # Get all channel currents and build status
-            channels = []
-            for ch in range(1, CHANNELS_PER_SLOT + 1):
-                enabled = bool(power_reg & (1 << ch))
-                
-                current = await loop.run_in_executor(
-                    None, hal.get_power_current, self.slot, ch, self.timeout
-                )
-                
-                # Determine state
-                has_over = bool(over_current_errors & (1 << ch))
-                has_under = bool(under_current_errors & (1 << ch))
-                
-                if has_over and has_under:
-                    state = ChannelState.ERROR_BOTH
-                elif has_over:
-                    state = ChannelState.ERROR_OVER_CURRENT
-                elif has_under:
-                    state = ChannelState.ERROR_UNDER_CURRENT
-                elif enabled:
-                    state = ChannelState.ON
-                else:
-                    state = ChannelState.OFF
-                
-                channels.append(PowerChannel(
-                    slot=self.slot,
-                    channel=ch,
-                    enabled=enabled,
-                    current_ma=current,
-                    state=state
-                ))
-            
-            status = CTDBStatus(
+            config = CTDBConfigData(
                 slot=self.slot,
                 firmware_version=fw_version,
-                power_channels=channels,
-                ctdb_current_ma=ctdb_current,
+                power_enable_mask=power_reg,
                 current_limit_min_ma=hal.current_raw_to_ma(limit_min_raw),
-                current_limit_max_ma=hal.current_raw_to_ma(limit_max_raw),
-                over_current_errors=over_current_errors,
-                under_current_errors=under_current_errors
+                current_limit_max_ma=hal.current_raw_to_ma(limit_max_raw)
             )
+            self._cached_config = config
+            return config
+
+    async def get_status(self) -> CTDBStatus:
+        """
+        Get complete status of this CTDB
+        
+        Returns:
+            CTDBStatus object with all current information
+        """
+        # For simplicity in this refactor, we just call the new methods
+        config = await self.get_configuration_data()
+        monitoring = await self.get_monitoring_data()
+        
+        channels = []
+        for i in range(CHANNELS_PER_SLOT):
+            ch = i + 1
+            enabled = bool(config.power_enable_mask & (1 << ch))
+            current = monitoring.channel_currents_ma[i]
             
-            self._last_status = status
-            return status
+            # Determine state
+            has_over = bool(monitoring.over_current_errors & (1 << ch))
+            has_under = bool(monitoring.under_current_errors & (1 << ch))
+            
+            if has_over and has_under:
+                state = ChannelState.ERROR_BOTH
+            elif has_over:
+                state = ChannelState.ERROR_OVER_CURRENT
+            elif has_under:
+                state = ChannelState.ERROR_UNDER_CURRENT
+            elif enabled:
+                state = ChannelState.ON
+            else:
+                state = ChannelState.OFF
+            
+            channels.append(PowerChannel(
+                slot=self.slot,
+                channel=ch,
+                enabled=enabled,
+                current_ma=current,
+                state=state
+            ))
+        
+        status = CTDBStatus(
+            slot=self.slot,
+            firmware_version=config.firmware_version,
+            power_channels=channels,
+            ctdb_current_ma=monitoring.ctdb_current_ma,
+            current_limit_min_ma=config.current_limit_min_ma,
+            current_limit_max_ma=config.current_limit_max_ma,
+            over_current_errors=monitoring.over_current_errors,
+            under_current_errors=monitoring.under_current_errors
+        )
+        
+        self._last_status = status
+        return status
     
     async def set_channel_power(self, channel: int, enabled: bool) -> None:
         """
@@ -430,6 +494,45 @@ class L2TriggerSystem:
             timestamp_datetime=datetime.now()
         )
     
+    async def get_all_monitoring_data(self) -> Dict[int, CTDBMonitoringData]:
+        """Get monitoring data for all CTDB boards"""
+        tasks = [ctdb.get_monitoring_data() for ctdb in self.ctdbs.values()]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        data = {}
+        for slot, res in zip(self.ctdbs.keys(), results):
+            if isinstance(res, Exception):
+                logger.error(f"Error reading monitoring data from slot {slot}: {res}")
+            else:
+                data[slot] = res
+        return data
+
+    async def get_all_configuration_data(self) -> Dict[int, CTDBConfigData]:
+        """Get configuration data for all CTDB boards"""
+        tasks = [ctdb.get_configuration_data() for ctdb in self.ctdbs.values()]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        data = {}
+        for slot, res in zip(self.ctdbs.keys(), results):
+            if isinstance(res, Exception):
+                logger.error(f"Error reading configuration data from slot {slot}: {res}")
+            else:
+                data[slot] = res
+        return data
+
+    async def get_all_trigger_status(self) -> Dict[int, List[TriggerChannel]]:
+        """Get trigger status for all CTDB boards"""
+        tasks = [ctdb.get_trigger_status() for ctdb in self.ctdbs.values()]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        data = {}
+        for slot, res in zip(self.ctdbs.keys(), results):
+            if isinstance(res, Exception):
+                logger.error(f"Error reading trigger status from slot {slot}: {res}")
+            else:
+                data[slot] = res
+        return data
+
     async def get_all_status(self) -> Dict[int, CTDBStatus]:
         """
         Get status of all CTDB boards
