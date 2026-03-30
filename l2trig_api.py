@@ -23,6 +23,14 @@ CHANNELS_PER_SLOT = 15
 DEFAULT_TIMEOUT_US = 10000
 
 # ============================================================================
+# System-Wide Hardware Lock
+# ============================================================================
+
+# Global lock for hardware access to ensure system-wide synchronization
+# This ensures only one operation at a time can access the HAL layer
+_hardware_lock = asyncio.Lock()
+
+# ============================================================================
 # Logging
 # ============================================================================
 
@@ -126,7 +134,6 @@ class CTDBController:
         
         self.slot = slot
         self.timeout = timeout_us
-        self._lock = asyncio.Lock()
         self._last_status: Optional[CTDBStatus] = None
     
     async def get_status(self) -> CTDBStatus:
@@ -136,7 +143,7 @@ class CTDBController:
         Returns:
             CTDBStatus object with all current information
         """
-        async with self._lock:
+        async with _hardware_lock:
             loop = asyncio.get_event_loop()
             
             # Get firmware version
@@ -228,7 +235,7 @@ class CTDBController:
         if not 1 <= channel <= CHANNELS_PER_SLOT:
             raise ValueError(f"Channel must be 1-{CHANNELS_PER_SLOT}")
         
-        async with self._lock:
+        async with _hardware_lock:
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(
                 None, hal.set_power_channel_enable, 
@@ -246,7 +253,7 @@ class CTDBController:
         """
         value = 0xFFFE if enabled else 0x0000  # bits 1-15
         
-        async with self._lock:
+        async with _hardware_lock:
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(
                 None, hal.set_power_enable, self.slot, value, self.timeout
@@ -261,7 +268,7 @@ class CTDBController:
         Args:
             channel_states: Dict mapping channel number to enable state
         """
-        async with self._lock:
+        async with _hardware_lock:
             loop = asyncio.get_event_loop()
             
             # Read current state
@@ -297,7 +304,7 @@ class CTDBController:
         min_raw = hal.current_ma_to_raw(min_ma)
         max_raw = hal.current_ma_to_raw(max_ma)
         
-        async with self._lock:
+        async with _hardware_lock:
             loop = asyncio.get_event_loop()
             
             await loop.run_in_executor(
@@ -312,7 +319,7 @@ class CTDBController:
     
     async def get_trigger_status(self) -> List[TriggerChannel]:
         """Get trigger configuration for all channels"""
-        async with self._lock:
+        async with _hardware_lock:
             loop = asyncio.get_event_loop()
             
             # Get trigger mask
@@ -343,7 +350,7 @@ class CTDBController:
         if not 0 <= channel < CHANNELS_PER_SLOT:
             raise ValueError(f"Channel must be 0-{CHANNELS_PER_SLOT-1}")
         
-        async with self._lock:
+        async with _hardware_lock:
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(
                 None, hal.set_l1_trigger_channel_mask, 
@@ -362,7 +369,7 @@ class CTDBController:
         
         delay_raw = hal.delay_ns_to_raw(delay_ns)
         
-        async with self._lock:
+        async with _hardware_lock:
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(
                 None, hal.set_l1_trigger_delay, 
