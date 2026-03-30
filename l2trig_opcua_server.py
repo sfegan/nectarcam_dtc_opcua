@@ -5,76 +5,44 @@ OPC UA Server for L2 Trigger System
 Exposes L2 trigger hardware control via OPC UA protocol
 """
 
+import argparse
 import asyncio
+import datetime
 import logging
-from typing import Dict, Optional, List
-from datetime import datetime
+import signal
+import sys
+import time
+from typing import Dict, Optional, List, Any
 
 from asyncua import Server, ua
 from asyncua.common.methods import uamethod
 
 from l2trig_api import (
     L2TriggerSystem,
-    CTDBController,
     CTDBStatus,
-    PowerChannel,
-    ChannelState,
     VALID_SLOTS,
     CHANNELS_PER_SLOT
 )
-import l2trig_low_level as hal
 
 # ============================================================================
 # Logging
 # ============================================================================
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+_LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 
-# ============================================================================
-# OPC UA Node References
-# ============================================================================
+def _configure_logging(level: str, log_file: str | None) -> None:
+    """Configure the root logger."""
+    formatter = logging.Formatter(_LOG_FORMAT)
+    stdout_handler = logging.StreamHandler(sys.stdout)
+    stdout_handler.setFormatter(formatter)
+    handlers = [stdout_handler]
+    if log_file:
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setFormatter(formatter)
+        handlers.append(file_handler)
+    logging.basicConfig(level=level, handlers=handlers, force=True)
 
-class NodeRefs:
-    """Storage for OPC UA node references"""
-    def __init__(self):
-        self.slots: Dict[int, 'SlotNodes'] = {}
-        self.l2cb_nodes: Optional['L2CBNodes'] = None
-
-
-class SlotNodes:
-    """Node references for a single CTDB slot"""
-    def __init__(self):
-        self.object_node = None
-        self.firmware_version = None
-        self.ctdb_current = None
-        self.total_current = None
-        self.current_min = None
-        self.current_max = None
-        self.has_errors = None
-        
-        # Channel nodes
-        self.channels: Dict[int, 'ChannelNodes'] = {}
-
-
-class ChannelNodes:
-    """Node references for a single power channel"""
-    def __init__(self):
-        self.enabled = None
-        self.current = None
-        self.state = None
-
-
-class L2CBNodes:
-    """Node references for L2CB board"""
-    def __init__(self):
-        self.object_node = None
-        self.firmware_version = None
-        self.timestamp = None
-
+logger = logging.getLogger("cta.l2trigger.server")
 
 # ============================================================================
 # OPC UA Server
@@ -83,49 +51,66 @@ class L2CBNodes:
 class L2TriggerOPCUAServer:
     """OPC UA Server for L2 Trigger System"""
     
-    def __init__(self, endpoint: str = "opc.tcp://0.0.0.0:4840/l2trigger/",
-                 update_interval: float = 1.0,
+    _DEFAULT_ROOT = "L2Trigger"
+    _DEFAULT_MONITORING_PATH = "Monitoring"
+
+    # OPC UA Status Codes
+    STATUS_GOOD = ua.StatusCode(ua.StatusCodes.Good)
+    STATUS_WAITING = ua.StatusCode(ua.StatusCodes.BadWaitingForInitialData)
+
+    # (name, initial value, OPC UA variant type, description)
+    _MONITORING_VARS = [
+        ("l2cb_firmware", 0, ua.VariantType.UInt16, "L2CB board firmware version"),
+        ("l2cb_timestamp", 0, ua.VariantType.UInt64, "L2CB hardware timestamp"),
+        ("active_slots", [], ua.VariantType.Int32, "List of slots enabled in this server"),
+        ("ctdb_firmware", [], ua.VariantType.UInt16, "CTDB firmware versions (one per active slot)"),
+        ("ctdb_current_ma", [], ua.VariantType.Double, "CTDB board currents in mA (one per active slot)"),
+        ("ctdb_total_channel_current_ma", [], ua.VariantType.Double, "Total channel current per CTDB in mA (one per active slot)"),
+        ("ctdb_limit_min_ma", [], ua.VariantType.Double, "Current limit minimum in mA (one per active slot)"),
+        ("ctdb_limit_max_ma", [], ua.VariantType.Double, "Current limit maximum in mA (one per active slot)"),
+        ("ctdb_has_errors", [], ua.VariantType.Boolean, "Error status flag (one per active slot)"),
+        ("channel_enabled", [], ua.VariantType.Boolean, "Channel power enable status (flattened: slot_idx*15 + ch-1)"),
+        ("channel_current_ma", [], ua.VariantType.Double, "Channel current readings in mA (flattened: slot_idx*15 + ch-1)"),
+        ("channel_state", [], ua.VariantType.String, "Channel state strings (flattened: slot_idx*15 + ch-1)"),
+    ]
+
+    def __init__(self, 
+                 opcua_endpoint: str = "opc.tcp://0.0.0.0:4840/l2trigger/",
+                 opcua_root: str = None,
+                 monitoring_path: str = None,
+                 poll_interval: float = 1.0,
                  timeout_us: int = 10000,
                  enabled_slots: Optional[List[int]] = None):
         """
         Initialize OPC UA server
-        
-        Args:
-            endpoint: OPC UA endpoint URL
-            update_interval: How often to update values (seconds)
-            timeout_us: Hardware timeout in microseconds
-            enabled_slots: List of slots to expose (default: all)
         """
-        self.endpoint = endpoint
-        self.update_interval = update_interval
+        self.endpoint = opcua_endpoint
+        self.opcua_root = opcua_root or self._DEFAULT_ROOT
+        self.monitoring_path = monitoring_path or self._DEFAULT_MONITORING_PATH
+        self.poll_interval = poll_interval
         
         # Hardware interface
         self.system = L2TriggerSystem(
             timeout_us=timeout_us,
             enabled_slots=enabled_slots
         )
+        self.active_slots = sorted(list(self.system.ctdbs.keys()))
         
         # OPC UA server
         self.server = Server()
         self.namespace_idx = None
-        self.node_refs = NodeRefs()
+        self._vars: Dict[str, Any] = {}
         
         # Update task
         self._update_task: Optional[asyncio.Task] = None
         self._running = False
-    
+
     async def init(self):
         """Initialize the OPC UA server"""
         await self.server.init()
         self.server.set_endpoint(self.endpoint)
-        
-        # Set server properties
         self.server.set_server_name("L2 Trigger System OPC UA Server")
         
-        # Setup security (optional - can be enabled for production)
-        # self.server.set_security_policy([ua.SecurityPolicyType.Basic256Sha256_SignAndEncrypt])
-        
-        # Register namespace
         uri = "http://cta.l2trigger.hal"
         self.namespace_idx = await self.server.register_namespace(uri)
         
@@ -133,114 +118,37 @@ class L2TriggerOPCUAServer:
         await self._create_address_space()
         
         logger.info(f"OPC UA Server initialized at {self.endpoint}")
-    
+
     async def _create_address_space(self):
         """Create the OPC UA address space structure"""
         idx = self.namespace_idx
-        objects = self.server.get_objects_node()
         
-        # Create L2 Trigger System root folder
-        l2trig_folder = await objects.add_folder(idx, "L2TriggerSystem")
+        # Build root object
+        components = self.opcua_root.split(".")
+        parent = self.server.nodes.objects
+        for component in components:
+            parent = await parent.add_object(idx, component)
+        root_obj = parent
+
+        # Create Monitoring folder
+        mon_obj = await root_obj.add_object(idx, self.monitoring_path)
         
-        # Create L2CB node
-        await self._create_l2cb_nodes(l2trig_folder, idx)
+        # Create monitoring variables
+        for name, initial, vtype, description in self._MONITORING_VARS:
+            var = await mon_obj.add_variable(idx, name, initial, varianttype=vtype)
+            await var.set_read_only()
+            # Set description
+            await var.write_attribute(
+                ua.AttributeIds.Description,
+                ua.DataValue(ua.Variant(ua.LocalizedText(description), ua.VariantType.LocalizedText))
+            )
+            self._vars[name] = (var, vtype)
+
+        # Create methods on root
+        await self._create_methods(root_obj, idx)
         
-        # Create CTDB folder
-        ctdb_folder = await l2trig_folder.add_folder(idx, "CTDB_Boards")
-        
-        # Create node for each slot
-        for slot in self.system.ctdbs.keys():
-            await self._create_slot_nodes(ctdb_folder, slot, idx)
-        
-        # Create methods
-        await self._create_methods(l2trig_folder, idx)
-        
-        logger.info("Address space created")
-    
-    async def _create_l2cb_nodes(self, parent, idx):
-        """Create nodes for L2CB board"""
-        l2cb_obj = await parent.add_object(idx, "L2CB_Controller")
-        
-        nodes = L2CBNodes()
-        nodes.object_node = l2cb_obj
-        
-        nodes.firmware_version = await l2cb_obj.add_variable(
-            idx, "FirmwareVersion", 0, varianttype=ua.VariantType.UInt16
-        )
-        
-        nodes.timestamp = await l2cb_obj.add_variable(
-            idx, "Timestamp", 0, varianttype=ua.VariantType.UInt64
-        )
-        
-        self.node_refs.l2cb_nodes = nodes
-    
-    async def _create_slot_nodes(self, parent, slot: int, idx):
-        """Create nodes for a single CTDB slot"""
-        slot_obj = await parent.add_object(idx, f"Slot_{slot:02d}")
-        
-        nodes = SlotNodes()
-        nodes.object_node = slot_obj
-        
-        # Slot-level variables
-        nodes.firmware_version = await slot_obj.add_variable(
-            idx, "FirmwareVersion", 0, varianttype=ua.VariantType.UInt16
-        )
-        
-        nodes.ctdb_current = await slot_obj.add_variable(
-            idx, "CTDB_Current_mA", 0.0, varianttype=ua.VariantType.Float
-        )
-        
-        nodes.total_current = await slot_obj.add_variable(
-            idx, "TotalChannelCurrent_mA", 0.0, varianttype=ua.VariantType.Float
-        )
-        
-        nodes.current_min = await slot_obj.add_variable(
-            idx, "CurrentLimit_Min_mA", 0.0, varianttype=ua.VariantType.Float
-        )
-        await nodes.current_min.set_writable()
-        
-        nodes.current_max = await slot_obj.add_variable(
-            idx, "CurrentLimit_Max_mA", 0.0, varianttype=ua.VariantType.Float
-        )
-        await nodes.current_max.set_writable()
-        
-        nodes.has_errors = await slot_obj.add_variable(
-            idx, "HasErrors", False, varianttype=ua.VariantType.Boolean
-        )
-        
-        # Create channel nodes
-        channels_folder = await slot_obj.add_folder(idx, "Channels")
-        
-        for ch in range(1, CHANNELS_PER_SLOT + 1):
-            ch_nodes = await self._create_channel_nodes(channels_folder, ch, idx)
-            nodes.channels[ch] = ch_nodes
-        
-        self.node_refs.slots[slot] = nodes
-    
-    async def _create_channel_nodes(self, parent, channel: int, idx) -> ChannelNodes:
-        """Create nodes for a single power channel"""
-        ch_obj = await parent.add_object(idx, f"Channel_{channel:02d}")
-        
-        nodes = ChannelNodes()
-        
-        # Power enable (writable)
-        nodes.enabled = await ch_obj.add_variable(
-            idx, "Enabled", False, varianttype=ua.VariantType.Boolean
-        )
-        await nodes.enabled.set_writable()
-        
-        # Current reading (read-only)
-        nodes.current = await ch_obj.add_variable(
-            idx, "Current_mA", 0.0, varianttype=ua.VariantType.Float
-        )
-        
-        # State (read-only)
-        nodes.state = await ch_obj.add_variable(
-            idx, "State", "off", varianttype=ua.VariantType.String
-        )
-        
-        return nodes
-    
+        logger.info(f"Address space created with root {self.opcua_root}")
+
     async def _create_methods(self, parent, idx):
         """Create OPC UA methods for system control"""
         
@@ -269,18 +177,46 @@ class L2TriggerOPCUAServer:
             [ua.VariantType.Boolean], [ua.VariantType.String]
         )
         
+        # Set channel power method
+        @uamethod
+        async def set_channel_power(parent_node, slot: int, channel: int, enabled: bool):
+            """Enable or disable a specific power channel"""
+            await self.system.set_slot_power(slot, channel, enabled)
+            return f"Slot {slot} Ch {channel} {'enabled' if enabled else 'disabled'}"
+        
+        await parent.add_method(
+            idx, "SetChannelPower", set_channel_power,
+            [ua.VariantType.Int32, ua.VariantType.Int32, ua.VariantType.Boolean], 
+            [ua.VariantType.String]
+        )
+
+        # Set current limits method
+        @uamethod
+        async def set_current_limits(parent_node, slot: int, min_ma: float, max_ma: float):
+            """Set current limits for a specific slot"""
+            if slot not in self.system.ctdbs:
+                raise ValueError(f"Slot {slot} not enabled")
+            await self.system.ctdbs[slot].set_current_limits(min_ma, max_ma)
+            return f"Slot {slot} limits set to {min_ma}-{max_ma} mA"
+
+        await parent.add_method(
+            idx, "SetCurrentLimits", set_current_limits,
+            [ua.VariantType.Int32, ua.VariantType.Double, ua.VariantType.Double],
+            [ua.VariantType.String]
+        )
+        
         # Health check method
         @uamethod
         async def health_check(parent_node):
             """Perform system health check"""
             health = await self.system.health_check()
-            return health['overall']
+            return f"Health: {health['overall']}. Errors: {health['errors']}"
         
         await parent.add_method(
             idx, "HealthCheck", health_check,
             [], [ua.VariantType.String]
         )
-    
+
     async def _update_loop(self):
         """Background task to update OPC UA values from hardware"""
         logger.info("Update loop started")
@@ -288,62 +224,88 @@ class L2TriggerOPCUAServer:
         while self._running:
             try:
                 # Update L2CB status
-                await self._update_l2cb_status()
+                l2cb_status = await self.system.get_l2cb_status()
+                now = datetime.datetime.now(datetime.timezone.utc)
+                
+                await self._set_var("l2cb_firmware", l2cb_status.firmware_version, now)
+                await self._set_var("l2cb_timestamp", l2cb_status.timestamp, now)
+                await self._set_var("active_slots", self.active_slots, now)
                 
                 # Update all CTDB statuses
                 all_status = await self.system.get_all_status()
                 
-                for slot, status in all_status.items():
-                    await self._update_slot_status(slot, status)
+                # Prepare vectors
+                ctdb_fw = []
+                ctdb_curr = []
+                ctdb_total = []
+                ctdb_min = []
+                ctdb_max = []
+                ctdb_err = []
+                
+                ch_enabled = []
+                ch_curr = []
+                ch_state = []
+                
+                for slot in self.active_slots:
+                    status = all_status.get(slot)
+                    if status:
+                        ctdb_fw.append(status.firmware_version)
+                        ctdb_curr.append(float(status.ctdb_current_ma))
+                        ctdb_total.append(float(status.total_current_ma))
+                        ctdb_min.append(float(status.current_limit_min_ma))
+                        ctdb_max.append(float(status.current_limit_max_ma))
+                        ctdb_err.append(status.has_errors)
+                        
+                        for ch in status.power_channels:
+                            ch_enabled.append(ch.enabled)
+                            ch_curr.append(float(ch.current_ma))
+                            ch_state.append(ch.state.value)
+                    else:
+                        # Placeholder for offline slot
+                        ctdb_fw.append(0)
+                        ctdb_curr.append(0.0)
+                        ctdb_total.append(0.0)
+                        ctdb_min.append(0.0)
+                        ctdb_max.append(0.0)
+                        ctdb_err.append(True)
+                        for _ in range(CHANNELS_PER_SLOT):
+                            ch_enabled.append(False)
+                            ch_curr.append(0.0)
+                            ch_state.append("offline")
+
+                await self._set_var("ctdb_firmware", ctdb_fw, now)
+                await self._set_var("ctdb_current_ma", ctdb_curr, now)
+                await self._set_var("ctdb_total_channel_current_ma", ctdb_total, now)
+                await self._set_var("ctdb_limit_min_ma", ctdb_min, now)
+                await self._set_var("ctdb_limit_max_ma", ctdb_max, now)
+                await self._set_var("ctdb_has_errors", ctdb_err, now)
+                
+                await self._set_var("channel_enabled", ch_enabled, now)
+                await self._set_var("channel_current_ma", ch_curr, now)
+                await self._set_var("channel_state", ch_state, now)
                 
             except Exception as e:
                 logger.error(f"Error in update loop: {e}", exc_info=True)
             
-            await asyncio.sleep(self.update_interval)
+            await asyncio.sleep(self.poll_interval)
         
         logger.info("Update loop stopped")
-    
-    async def _update_l2cb_status(self):
-        """Update L2CB node values"""
+
+    async def _set_var(self, name: str, value: Any, timestamp: datetime.datetime):
+        """Helper to write variable value with timestamp"""
+        if name not in self._vars:
+            return
+        node, vtype = self._vars[name]
         try:
-            status = await self.system.get_l2cb_status()
-            nodes = self.node_refs.l2cb_nodes
-            
-            await nodes.firmware_version.write_value(status.firmware_version)
-            await nodes.timestamp.write_value(status.timestamp)
-            
+            await node.write_value(
+                ua.DataValue(
+                    Value=ua.Variant(value, vtype),
+                    SourceTimestamp=timestamp
+                )
+            )
         except Exception as e:
-            logger.error(f"Error updating L2CB status: {e}")
-    
-    async def _update_slot_status(self, slot: int, status: CTDBStatus):
-        """Update OPC UA nodes for a slot"""
-        try:
-            nodes = self.node_refs.slots[slot]
-            
-            # Update slot-level values
-            await nodes.firmware_version.write_value(status.firmware_version)
-            await nodes.ctdb_current.write_value(status.ctdb_current_ma)
-            await nodes.total_current.write_value(status.total_current_ma)
-            await nodes.current_min.write_value(status.current_limit_min_ma)
-            await nodes.current_max.write_value(status.current_limit_max_ma)
-            await nodes.has_errors.write_value(status.has_errors)
-            
-            # Update channel values
-            for ch in status.power_channels:
-                ch_nodes = nodes.channels[ch.channel]
-                await ch_nodes.enabled.write_value(ch.enabled)
-                await ch_nodes.current.write_value(ch.current_ma)
-                await ch_nodes.state.write_value(ch.state.value)
-            
-        except Exception as e:
-            logger.error(f"Error updating slot {slot} status: {e}")
-    
-    async def _handle_write_callbacks(self):
-        """Monitor writable nodes and handle changes"""
-        # This would be implemented with DataChange subscriptions
-        # For now, we'll use a simpler polling approach
-        pass
-    
+            logger.error(f"Failed to update {name}: {e}")
+
     async def start(self):
         """Start the OPC UA server"""
         await self.init()
@@ -355,26 +317,27 @@ class L2TriggerOPCUAServer:
             self._update_task = asyncio.create_task(self._update_loop())
             
             # Keep server running
+            loop = asyncio.get_running_loop()
+            shutdown = loop.create_future()
+            for sig in (signal.SIGTERM, signal.SIGINT):
+                loop.add_signal_handler(sig, shutdown.set_result, sig)
+            
             try:
-                await asyncio.Event().wait()
-            except KeyboardInterrupt:
-                logger.info("Shutdown requested")
+                sig = await shutdown
+                logger.info(f"Received {sig.name}, shutting down.")
             finally:
                 await self.stop()
-    
+
     async def stop(self):
         """Stop the OPC UA server"""
         logger.info("Stopping OPC UA server...")
-        
         self._running = False
-        
         if self._update_task:
             self._update_task.cancel()
             try:
                 await self._update_task
             except asyncio.CancelledError:
                 pass
-        
         logger.info("OPC UA server stopped")
 
 
@@ -382,24 +345,48 @@ class L2TriggerOPCUAServer:
 # Main Entry Point
 # ============================================================================
 
+def _parse_args():
+    p = argparse.ArgumentParser(description="L2 Trigger System OPC UA Server")
+    p.add_argument("--opcua-endpoint", default="opc.tcp://0.0.0.0:4840/l2trigger/")
+    p.add_argument("--opcua-root", default="L2Trigger", 
+                   help="Root object path (e.g. L2Trigger or Camera.L2Trigger)")
+    p.add_argument("--monitoring-path", default="Monitoring",
+                   help="Name of the monitoring object under the root")
+    p.add_argument("--poll-interval", type=float, default=1.0, help="Polling interval in seconds")
+    p.add_argument("--timeout-us", type=int, default=10000, help="Hardware timeout in microseconds")
+    p.add_argument("--slots", help="Comma-separated list of slots to enable (default: all)")
+    p.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    p.add_argument("--log-file", help="Optional log file path")
+    return p.parse_args()
+
 async def main():
     """Main entry point"""
+    args = _parse_args()
+    _configure_logging(args.log_level, args.log_file)
     
-    # Configuration
-    endpoint = "opc.tcp://0.0.0.0:4840/l2trigger/"
-    update_interval = 1.0  # seconds
-    
-    # Create and start server
+    enabled_slots = None
+    if args.slots:
+        try:
+            enabled_slots = [int(s.strip()) for s in args.slots.split(",")]
+        except ValueError:
+            logger.error(f"Invalid slots argument: {args.slots}")
+            return 1
+
     server = L2TriggerOPCUAServer(
-        endpoint=endpoint,
-        update_interval=update_interval
+        opcua_endpoint=args.opcua_endpoint,
+        opcua_root=args.opcua_root,
+        monitoring_path=args.monitoring_path,
+        poll_interval=args.poll_interval,
+        timeout_us=args.timeout_us,
+        enabled_slots=enabled_slots
     )
     
-    await server.start()
-
+    try:
+        await server.start()
+    except Exception as e:
+        logger.critical(f"Fatal error: {e}", exc_info=True)
+        return 1
+    return 0
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("Server stopped by user")
+    sys.exit(asyncio.run(main()))

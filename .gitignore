@@ -56,3 +56,4 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+nc_lightsource_asyncua_server.py
