@@ -202,7 +202,7 @@ async def interactive_loop(client: L2TrigTestClient):
                 print("  delay <mod> <ns>     Set module trigger delay (0-5.0)")
                 print("  allmask <on|off>     Set all trigger masks")
                 print("  alldelay <ns>        Set all trigger delays")
-                print("  limits <slot> <min> <max> Set current limits for a slot")
+                print("  limits <board> <min> <max> Set current limits for a board (1-based index)")
                 print("  health               Perform health check")
                 print("  shutdown             Emergency power shutdown")
                 print("  call <name> [args]   Generic method call")
@@ -250,8 +250,8 @@ async def interactive_loop(client: L2TrigTestClient):
                 if len(args) != 1: print("Usage: alldelay <ns>")
                 else: await client.call_method("SetAllTriggerDelay", args[0])
             elif cmd == "limits":
-                if len(args) != 3: print("Usage: limits <slot> <min_ma> <max_ma>")
-                else: await client.call_method("SetCurrentLimits", args[0], args[1], args[2])
+                if len(args) != 3: print("Usage: limits <board_index> <min_ma> <max_ma>")
+                else: await client.call_method("SetBoardCurrentLimits", args[0], args[1], args[2])
             elif cmd == "health":
                 await client.call_method("HealthCheck")
             elif cmd == "shutdown":

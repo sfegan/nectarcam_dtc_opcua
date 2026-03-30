@@ -98,7 +98,7 @@ Located under the `<Root>/` object:
 | `EmergencyShutdown` | None | Immediately disables all power channels on all slots. |
 | `SetAllPower` | `enabled: Boolean` | Enables or disables power for all modules. |
 | `SetModulePower` | `module: Int32`, `enabled: Boolean` | Controls power for a specific module (1-270). |
-| `SetCurrentLimits`| `slot: Int32`, `min_ma: Double`, `max_ma: Double` | Sets current limits for a specific CTDB slot. |
+| `SetBoardCurrentLimits`| `board: Int32`, `min_ma: Double`, `max_ma: Double` | Configure safety current limits for an entire CTDB board identified by its sequence index. |
 | `SetModuleTriggerMask` | `module: Int32`, `masked: Boolean` | Sets trigger mask for a specific module. |
 | `SetModuleTriggerDelay`| `module: Int32`, `delay_ns: Double` | Sets trigger delay (0-5 ns) for a specific module. |
 | `SetAllTriggerMask`| `masked: Boolean` | Sets trigger mask for all modules. |
@@ -121,6 +121,7 @@ Once connected, you can use the following commands at the `l2trig>` prompt:
 - `power <module> <on|off>`: Control power for a module (e.g., `power 5 on`).
 - `mask <module> <on|off>`: Control trigger mask for a module.
 - `delay <module> <ns>`: Set trigger delay in nanoseconds.
+- `limits <board> <min> <max>`: Set current limits for a board (1-based index).
 - `health`: Run the system health check.
 - `shutdown`: Trigger emergency shutdown.
 - `help`: Show all available commands.

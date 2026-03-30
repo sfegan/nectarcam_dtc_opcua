@@ -289,18 +289,20 @@ class L2TriggerOPCUAServer:
                                    inputs=[a("module", ua.VariantType.Int32, "Module number (1-270)"),
                                            a("enabled", ua.VariantType.Boolean, "True to enable, False to disable")])
 
-        # Set Current Limits
+        # Set Board Current Limits
         @uamethod
-        async def set_current_limits(parent_node, slot: int, min_ma: float, max_ma: float):
-            """Configure safety current limits for an entire CTDB board."""
-            if slot not in self.system.ctdbs:
-                raise ValueError(f"Slot {slot} not enabled")
+        async def set_board_current_limits(parent_node, board: int, min_ma: float, max_ma: float):
+            """Configure safety current limits for an entire CTDB board identified by its sequence index."""
+            if not 1 <= board <= len(self.active_slots):
+                raise ValueError(f"Board index {board} out of range (1-{len(self.active_slots)})")
+            
+            slot = self.active_slots[board - 1]
             await self.system.ctdbs[slot].set_current_limits(min_ma, max_ma)
             self._force_full_read.set()
-            return f"Slot {slot} limits set to {min_ma}-{max_ma} mA"
+            return f"Board {board} (Slot {slot}) limits set to {min_ma}-{max_ma} mA"
 
-        await add_described_method("SetCurrentLimits", set_current_limits,
-                                   inputs=[a("slot", ua.VariantType.Int32, "Physical slot number of the CTDB board"),
+        await add_described_method("SetBoardCurrentLimits", set_board_current_limits,
+                                   inputs=[a("board", ua.VariantType.Int32, f"Sequential board index (1 to {len(self.active_slots)})"),
                                            a("min_ma", ua.VariantType.Double, "Minimum current threshold in mA"),
                                            a("max_ma", ua.VariantType.Double, "Maximum current threshold in mA")])
 
