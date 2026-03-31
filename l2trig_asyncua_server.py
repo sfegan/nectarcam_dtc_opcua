@@ -262,7 +262,7 @@ class L2TriggerOPCUAServer:
             logger.warning("Emergency shutdown called via OPC UA")
             async with self._lock:
                 await loop.run_in_executor(None, self.system.emergency_shutdown)
-                await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
+            await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
             return "Emergency shutdown complete"
         
         await add_described_method("EmergencyShutdown", emergency_shutdown, 
@@ -274,7 +274,7 @@ class L2TriggerOPCUAServer:
             """Global control to enable or disable power for all modules in the system."""
             async with self._lock:
                 await loop.run_in_executor(None, self.system.set_all_power, enabled)
-                await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
+            await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
             return f"All power {'enabled' if enabled else 'disabled'}"
         
         await add_described_method("SetAllPower", set_all_power,
@@ -289,7 +289,7 @@ class L2TriggerOPCUAServer:
                 raise ValueError(f"Slot {slot} (module {module}) not enabled in this server")
             async with self._lock:
                 await loop.run_in_executor(None, self.system.set_slot_power, slot, channel + 1, enabled)
-                await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
+            await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
             return f"Module {module} (Slot {slot} Ch {channel+1}) {'enabled' if enabled else 'disabled'}"
         
         await add_described_method("SetModulePower", set_module_power,
@@ -306,7 +306,7 @@ class L2TriggerOPCUAServer:
             slot = self.active_slots[board - 1]
             async with self._lock:
                 await loop.run_in_executor(None, self.system.ctdbs[slot].set_current_limits, min_ma, max_ma)
-                await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
+            await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
             return f"Board {board} (Slot {slot}) limits set to {min_ma}-{max_ma} mA"
 
         await add_described_method("SetBoardCurrentLimits", set_board_current_limits,
@@ -323,7 +323,7 @@ class L2TriggerOPCUAServer:
                 raise ValueError(f"Slot {slot} (module {module}) not enabled in this server")
             async with self._lock:
                 await loop.run_in_executor(None, self.system.ctdbs[slot].set_trigger_mask, channel, masked)
-                await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
+            await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
             return f"Module {module} (Slot {slot} Trigger Ch {channel}) {'masked' if masked else 'active'}"
 
         await add_described_method("SetModuleTriggerMask", set_module_trigger_mask,
@@ -339,7 +339,7 @@ class L2TriggerOPCUAServer:
                 raise ValueError(f"Slot {slot} (module {module}) not enabled in this server")
             async with self._lock:
                 await loop.run_in_executor(None, self.system.ctdbs[slot].set_trigger_delay, channel, delay_ns)
-                await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
+            await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
             return f"Module {module} (Slot {slot} Trigger Ch {channel}) delay set to {delay_ns} ns"
 
         await add_described_method("SetModuleTriggerDelay", set_module_trigger_delay,
@@ -352,7 +352,7 @@ class L2TriggerOPCUAServer:
             """Global control to mask or unmask triggers for all modules."""
             async with self._lock:
                 await loop.run_in_executor(None, self.system.set_all_trigger_mask, masked)
-                await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
+            await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
             return f"All triggers {'masked' if masked else 'unmasked'}"
 
         await add_described_method("SetAllTriggerMask", set_all_trigger_mask,
@@ -364,7 +364,7 @@ class L2TriggerOPCUAServer:
             """Apply a uniform trigger delay to all modules in the system."""
             async with self._lock:
                 await loop.run_in_executor(None, self.system.set_all_trigger_delay, delay_ns)
-                await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
+            await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
             return f"All trigger delays set to {delay_ns} ns"
 
         await add_described_method("SetAllTriggerDelay", set_all_trigger_delay,
