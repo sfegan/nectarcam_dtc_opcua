@@ -69,29 +69,30 @@ The server implements a **Phase-Locked Loop (PLL)** polling loop to maintain a c
 - **High-Frequency Data**: Currents and error states are read every cycle (`poll-interval`).
 - **Low-Frequency Data**: Firmware versions, current limits, and trigger settings are read every `poll-ratio` cycles.
 - **Immediate Update**: Calling any control method (e.g., `SetModulePower`) triggers an immediate full status read outside the normal schedule.
+- **Watchdog Timer**: The server logs a system status summary (number of active boards, powered modules, and unmasked trigger modules) at the `INFO` level every 180 seconds.
 
 ## OPC UA Address Space
 
 ### Monitoring Variables
-Located under `<Root>.<MonitoringPath>/` (e.g., `L2Trigger.Monitoring/`):
+Located under `<Root>.<MonitoringPath>/` (e.g., `L2Trigger.Monitoring/`). All monitoring variables have their `MinimumSamplingInterval` attribute set to match the server's polling frequency (fast or slow) for efficient client subscriptions.
 
 | Node Name | Type | Description |
 | :--- | :--- | :--- |
-| `l2cb_firmware` | UInt16 | L2CB board firmware version |
-| `l2cb_timestamp` | DateTime | L2CB hardware timestamp (converted to UTC) |
-| `l2cb_timestamp_raw`| UInt64 | Raw L2CB hardware timestamp counter |
-| `active_slots` | Int32[] | List of slots enabled in the server |
-| `ctdb_firmware` | UInt16[] | Firmware versions for each active slot |
-| `ctdb_current_ma` | Double[] | Current readings for each CTDB board |
-| `ctdb_total_channel_current_ma` | Double[] | Sum of currents for all enabled channels per slot |
-| `ctdb_limit_min_ma` | Double[] | Minimum current limit per slot |
-| `ctdb_limit_max_ma` | Double[] | Maximum current limit per slot |
-| `ctdb_has_errors` | Boolean[] | Error status flag per slot |
-| `channel_enabled` | Boolean[] | Flattened array (slot_idx * 15 + ch-1) of power status |
-| `channel_current_ma` | Double[] | Flattened array of channel currents |
-| `channel_state` | String[] | Flattened array of channel states (on, off, error_over_current, etc.) |
-| `trigger_masked` | Boolean[] | Flattened array of trigger mask status |
-| `trigger_delay_ns` | Double[] | Flattened array of trigger delays (0-5 ns) |
+| `CrateFirmwareRevision` | UInt16 | L2CB board firmware version |
+| `CrateTimestamp` | DateTime | L2CB hardware timestamp (converted to UTC) |
+| `CrateRawTimestamp`| UInt64 | Raw L2CB hardware timestamp counter |
+| `BoardSlots` | Int32[] | List of crate slots enabled in the server (Constant) |
+| `BoardFirmwareRevision` | UInt16[] | Firmware versions for each active slot |
+| `BoardCurrent` | Double[] | Current readings for each CTDB board |
+| `BoardCurrentSum` | Double[] | Sum of currents for all enabled channels per slot |
+| `BoardCurrentLimitMin` | Double[] | Minimum current limit per slot |
+| `BoardCurrentLimitMax` | Double[] | Maximum current limit per slot |
+| `BoardHasErrors` | Boolean[] | Error status flag per slot |
+| `ModulePowerEnabled` | Boolean[] | Flattened array (slot_idx * 15 + ch-1) of power status |
+| `ModuleCurrent` | Double[] | Flattened array of channel currents |
+| `ModuleState` | String[] | Flattened array of channel states (on, off, error_over_current, etc.) |
+| `ModuleTriggerMasked` | Boolean[] | Flattened array of trigger mask status |
+| `ModuleTriggerDelay` | Double[] | Flattened array of trigger delays (0-5 ns) |
 
 ### Control Methods
 Located under the `<Root>/` object:

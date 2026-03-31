@@ -84,7 +84,7 @@ class L2TriggerOPCUAServer:
 
     # (name, initial value, OPC UA variant type, description)
     _MONITORING_VARS = [
-        ("CrateFirmwareRevsion", 0, ua.VariantType.UInt16, "L2CB board firmware version"),
+        ("CrateFirmwareRevision", 0, ua.VariantType.UInt16, "L2CB board firmware version"),
         ("CrateTimestamp", datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc), ua.VariantType.DateTime, "L2CB hardware timestamp"),
         ("CrateRawTimestamp", 0, ua.VariantType.UInt64, "L2CB raw hardware timestamp counter"),
         ("BoardSlots", [], ua.VariantType.Int32, "List of crate slots enabled in this server"),
@@ -97,6 +97,8 @@ class L2TriggerOPCUAServer:
         ("ModulePowerEnabled", [], ua.VariantType.Boolean, "Module power enable status: true if enabled, false otherwise (flattened: slot_idx*15 + ch-1)"),
         ("ModuleCurrent", [], ua.VariantType.Double, "Channel current readings in mA (flattened: slot_idx*15 + ch-1)"),
         ("ModuleState", [], ua.VariantType.String, "Channel state strings: \"on\", \"off\", \"error_over_current\", \"error_under_current\" or \"error_both\" (flattened: slot_idx*15 + ch-1)"),
+        ("ModuleTriggerMasked", [], ua.VariantType.Boolean, "Trigger mask status (flattened: slot_idx*15 + ch)"),
+        ("ModuleTriggerDelay", [], ua.VariantType.Double, "Trigger delay in ns (flattened: slot_idx*15 + ch)"),
     ]
 
     def __init__(self, 
@@ -221,7 +223,7 @@ class L2TriggerOPCUAServer:
         
         # Create monitoring variables with dotted NodeIds
         fast_vars = {
-            "CrateFirmwareRevsion", "CrateTimestamp", "CrateRawTimestamp",
+            "CrateFirmwareRevision", "CrateTimestamp", "CrateRawTimestamp",
             "BoardCurrent", "BoardCurrentSum", "BoardHasErrors",
             "ModuleCurrent", "ModuleState"
         }
@@ -412,7 +414,7 @@ class L2TriggerOPCUAServer:
 
     async def _write_fast_data(self, l2cb_status, monitoring_results, now: datetime.datetime):
         """Update OPC UA variables with high-frequency data"""
-        await self._set_var("CrateFirmwareRevsion", l2cb_status.firmware_version, now)
+        await self._set_var("CrateFirmwareRevision", l2cb_status.firmware_version, now)
         await self._set_var("CrateTimestamp", l2cb_status.timestamp_datetime, now)
         await self._set_var("CrateRawTimestamp", l2cb_status.timestamp, now)
         await self._set_var("BoardSlots", self.active_slots, now)
@@ -523,8 +525,8 @@ class L2TriggerOPCUAServer:
         await self._set_var("BoardCurrentLimitMin", ctdb_min, now)
         await self._set_var("BoardCurrentLimitMax", ctdb_max, now)
         await self._set_var("ModulePowerEnabled", ch_enabled, now)
-        await self._set_var("trigger_masked", trig_masked, now)
-        await self._set_var("trigger_delay_ns", trig_delay, now)
+        await self._set_var("ModuleTriggerMasked", trig_masked, now)
+        await self._set_var("ModuleTriggerDelay", trig_delay, now)
 
     async def _do_poll_fast(self, now: datetime.datetime):
         """Perform high-frequency polling and update variables"""
