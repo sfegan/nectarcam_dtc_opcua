@@ -16,7 +16,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
-async def main():
+def main():
     print("=" * 60)
     print("L2 Trigger System - Quick Start Example")
     print("=" * 60)
@@ -28,7 +28,7 @@ async def main():
     # Get L2CB status
     print("\n2. Reading L2CB controller status...")
     try:
-        l2cb_status = await system.get_l2cb_status()
+        l2cb_status = system.get_l2cb_status()
         print(f"   L2CB Firmware: 0x{l2cb_status.firmware_version:04X}")
         print(f"   Timestamp: {l2cb_status.timestamp}")
     except Exception as e:
@@ -36,7 +36,7 @@ async def main():
     
     # Get status of all configured boards
     print("\n3. Reading CTDB board statuses...")
-    all_status = await system.get_all_status()
+    all_status = system.get_all_status()
     
     for slot, status in all_status.items():
         print(f"\n   Slot {slot}:")
@@ -63,12 +63,13 @@ async def main():
     print("\n4. Demonstrating power control...")
     print("   Enabling channel 5 on slot 1...")
     try:
-        await system.set_slot_power(slot=1, channel=5, enabled=True)
+        system.set_slot_power(slot=1, channel=5, enabled=True)
         print("   ✓ Channel enabled")
         
         # Read back status
-        await asyncio.sleep(0.1)
-        status = await system.get_slot_status(1)
+        import time
+        time.sleep(0.1)
+        status = system.get_slot_status(1)
         ch5 = next(ch for ch in status.power_channels if ch.channel == 5)
         print(f"   Current reading: {ch5.current_ma:.2f} mA")
         print(f"   State: {ch5.state.value}")
@@ -79,7 +80,7 @@ async def main():
     # Demonstrate current limit configuration
     print("\n5. Setting current limits on slot 1...")
     try:
-        await system.ctdbs[1].set_current_limits(min_ma=100.0, max_ma=2000.0)
+        system.ctdbs[1].set_current_limits(min_ma=100.0, max_ma=2000.0)
         print("   ✓ Current limits set to 100-2000 mA")
     except Exception as e:
         print(f"   Error: {e}")
@@ -87,7 +88,7 @@ async def main():
     # Demonstrate trigger configuration
     print("\n6. Reading trigger configuration for slot 1...")
     try:
-        trigger_status = await system.ctdbs[1].get_trigger_status()
+        trigger_status = system.ctdbs[1].get_trigger_status()
         print("   First 5 trigger channels:")
         for trig in trigger_status[:5]:
             status_str = "Masked" if trig.masked else "Active"
@@ -98,7 +99,7 @@ async def main():
     
     # Health check
     print("\n7. Performing system health check...")
-    health = await system.health_check()
+    health = system.health_check()
     print(f"   Overall Status: {health['overall'].upper()}")
     
     if health['errors']:
@@ -121,43 +122,10 @@ async def main():
     
     # Optional: Demonstrate emergency shutdown (COMMENTED OUT FOR SAFETY)
     # print("\n⚠️  Emergency shutdown demonstration (uncomment to test)")
-    # await system.emergency_shutdown()
+    # system.emergency_shutdown()
     # print("All power channels shut down")
-
-
-def example_monitoring():
-    """Example of background monitoring"""
-    print("\n" + "=" * 60)
-    print("Background Monitoring Example")
-    print("=" * 60)
-    
-    async def status_callback(status_dict):
-        """Called on each monitoring interval"""
-        errors = sum(1 for s in status_dict.values() if s.has_errors)
-        total_current = sum(s.total_current_ma for s in status_dict.values())
-        
-        print(f"[Monitor] Total current: {total_current:.1f} mA, "
-              f"Errors: {errors} slots")
-    
-    async def monitor():
-        system = L2TriggerSystem(enabled_slots=[1, 2, 3])
-        
-        # Start monitoring
-        system.start_monitoring(interval=2.0, callback=status_callback)
-        
-        print("Monitoring for 10 seconds...")
-        await asyncio.sleep(10)
-        
-        # Stop monitoring
-        system.stop_monitoring()
-        print("Monitoring stopped")
-    
-    asyncio.run(monitor())
 
 
 if __name__ == "__main__":
     # Run quick start
-    asyncio.run(main())
-    
-    # Uncomment to test monitoring:
-    # example_monitoring()
+    main()
