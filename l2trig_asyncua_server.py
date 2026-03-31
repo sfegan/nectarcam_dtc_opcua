@@ -59,6 +59,7 @@ def _configure_logging(level: str, log_file: str | None) -> None:
     # Suppress noisy asyncua initialization logs
     logging.getLogger("asyncua.server.address_space").setLevel(logging.WARNING)
     logging.getLogger("asyncua.server.internal_server").setLevel(logging.WARNING)
+    logging.getLogger("asyncua.server.uaprocessor").setLevel(logging.WARNING)
     
     # Add filter for method failures
     logging.getLogger("asyncua.server.address_space").addFilter(
@@ -131,10 +132,15 @@ class L2TriggerOPCUAServer:
         self.namespace_idx = None
         self._vars: Dict[str, Any] = {}
         
-        # Update task
+        # Update tasks
         self._update_task: Optional[asyncio.Task] = None
+        self._watchdog_task: Optional[asyncio.Task] = None
         self._running = False
         self._lock = asyncio.Lock()
+        
+        # Statistics for watchdog
+        self._powered_count = 0
+        self._unmasked_count = 0
 
     def _module_to_slot_channel(self, module: int) -> Tuple[int, int]:
         """Convert 1-based module number to (slot, channel)."""
@@ -461,6 +467,9 @@ class L2TriggerOPCUAServer:
         trig_masked = []
         trig_delay = []
 
+        powered_count = 0
+        unmasked_count = 0
+
         for slot in self.active_slots:
             c_data = config_results.get(slot)
             if c_data:
@@ -468,7 +477,10 @@ class L2TriggerOPCUAServer:
                 ctdb_min.append(float(c_data.current_limit_min_ma))
                 ctdb_max.append(float(c_data.current_limit_max_ma))
                 for i in range(CHANNELS_PER_SLOT):
-                    ch_enabled.append(bool(c_data.power_enable_mask & (1 << (i+1))))
+                    enabled = bool(c_data.power_enable_mask & (1 << (i+1)))
+                    ch_enabled.append(enabled)
+                    if enabled:
+                        powered_count += 1
             else:
                 ctdb_fw.append(0)
                 ctdb_min.append(0.0)
@@ -481,10 +493,15 @@ class L2TriggerOPCUAServer:
                 for trig in t_data:
                     trig_masked.append(trig.masked)
                     trig_delay.append(float(trig.delay_ns))
+                    if not trig.masked:
+                        unmasked_count += 1
             else:
                 for _ in range(CHANNELS_PER_SLOT):
                     trig_masked.append(True)
                     trig_delay.append(0.0)
+
+        self._powered_count = powered_count
+        self._unmasked_count = unmasked_count
 
         await self._set_var("ctdb_firmware", ctdb_fw, now)
         await self._set_var("ctdb_limit_min_ma", ctdb_min, now)
@@ -547,6 +564,26 @@ class L2TriggerOPCUAServer:
         
         logger.info("Update loop stopped")
 
+    async def _watchdog_loop(self):
+        """Background task to print system status every 180 seconds"""
+        logger.info("Watchdog loop started")
+        while self._running:
+            try:
+                await asyncio.sleep(180)
+                if not self._running:
+                    break
+                
+                logger.info(
+                    "Watchdog status: %d active boards, %d powered modules, %d active (unmasked) modules",
+                    len(self.active_slots),
+                    self._powered_count,
+                    self._unmasked_count
+                )
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Error in watchdog loop: {e}")
+
     async def _set_var(self, name: str, value: Any, timestamp: datetime.datetime):
         """Helper to write variable value with timestamp"""
         if name not in self._vars:
@@ -571,6 +608,7 @@ class L2TriggerOPCUAServer:
             
             self._running = True
             self._update_task = asyncio.create_task(self._update_loop())
+            self._watchdog_task = asyncio.create_task(self._watchdog_loop())
             
             # Keep server running
             loop = asyncio.get_running_loop()
@@ -588,6 +626,14 @@ class L2TriggerOPCUAServer:
         """Stop the OPC UA server"""
         logger.info("Stopping OPC UA server...")
         self._running = False
+        
+        if self._watchdog_task:
+            self._watchdog_task.cancel()
+            try:
+                await self._watchdog_task
+            except asyncio.CancelledError:
+                pass
+
         if self._update_task:
             self._update_task.cancel()
             try:
