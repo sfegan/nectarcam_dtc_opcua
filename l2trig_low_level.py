@@ -180,6 +180,7 @@ _lib.cta_l2cb_isValidSlot_export.restype = c_int
 
 DEFAULT_TIMEOUT_US = 10000
 CURRENT_CONVERSION_FACTOR = 0.485  # mA per ADC count
+CURRENT_MAX = 0x0FFF * CURRENT_CONVERSION_FACTOR  # Max current corresponding to 12-bit ADC value
 
 # ============================================================================
 # Low-Level Python Wrappers

@@ -321,14 +321,30 @@ class CTDBController:
             min_ma: Minimum current in mA
             max_ma: Maximum current in mA
         """
+
+        if min_ma < 0:
+            logger.warning(f"Requested under-current {min_ma} mA is negative, setting to 0")
+            min_ma = 0.0
+        if min_ma > hal.CURRENT_MAX:
+            logger.warning(f"Requested under-current {min_ma} mA exceeds max {hal.CURRENT_MAX:.1f} mA, setting to max")
+            min_ma = hal.CURRENT_MAX
+        if max_ma < min_ma  :
+            logger.warning(f"Requested over-current {max_ma} mA is less than requested minimum {min_ma} mA, setting to minimum")   
+            max_ma = min_ma
+        if max_ma > hal.CURRENT_MAX:
+            logger.warning(f"Requested over-current {max_ma} mA exceeds max {hal.CURRENT_MAX:.1f} mA, setting to max")
+            max_ma = hal.CURRENT_MAX
+
         min_raw = hal.current_ma_to_raw(min_ma)
         max_raw = hal.current_ma_to_raw(max_ma)
         
         hal.set_power_current_min(self.slot, min_raw, self.timeout)
         hal.set_power_current_max(self.slot, max_raw, self.timeout)
         
-        logger.debug(f"Slot {self.slot}: Current limits set to {min_ma:.1f}-{max_ma:.1f} mA")
+        logger.debug(f"Slot {self.slot}: Current limits set to {min_ma:.1f}-{max_ma:.1f} mA (raw: {min_raw}-{max_raw})")
     
+        return min_ma, max_ma
+
     def get_trigger_status(self) -> List[TriggerChannel]:
         """Get trigger configuration for all channels"""
         # Get trigger mask
@@ -541,7 +557,7 @@ class L2TriggerSystem:
         """Set current limits for all slots"""
         for ctdb in self.ctdbs.values():
             try:
-                ctdb.set_current_limits(min_ma, max_ma)
+                min_ma, max_ma = ctdb.set_current_limits(min_ma, max_ma)
             except Exception as e:
                 logger.error(f"Error setting current limits on slot {ctdb.slot}: {e}")
         

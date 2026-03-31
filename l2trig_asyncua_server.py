@@ -329,7 +329,7 @@ class L2TriggerOPCUAServer:
             slot = self.active_slots[board - 1]
             logger.info(f"Setting current limits for board {board} (Slot {slot}) to {min_ma}-{max_ma} mA")
             async with self._lock:
-                await loop.run_in_executor(None, self.system.ctdbs[slot].set_current_limits, min_ma, max_ma)
+                min_ma, max_ma = await  loop.run_in_executor(None, self.system.ctdbs[slot].set_current_limits, min_ma, max_ma)
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
             return f"Board {board} (Slot {slot}) limits set to {min_ma}-{max_ma} mA"
 
