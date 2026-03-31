@@ -41,7 +41,7 @@ static void init_dummy_state() {
         dummy_slots[i].trigger_mask = 0x0000;    // All masked (assuming 1=active, 0=masked per API use)
         for (int j = 0; j < 15; j++) dummy_slots[i].trigger_delays[j] = 27; // ~1ns
         dummy_slots[i].current_min = 206;       // ~100mA
-        dummy_slots[i].current_max = 4123;      // ~2000mA
+        dummy_slots[i].current_max = 2000;      // ~1000mA
         dummy_slots[i].firmware = 0x0100;
     }
     dummy_initialized = 1;
