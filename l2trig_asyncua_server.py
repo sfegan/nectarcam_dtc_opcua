@@ -272,6 +272,7 @@ class L2TriggerOPCUAServer:
         @uamethod
         async def set_all_power(parent_node, enabled: bool):
             """Global control to enable or disable power for all modules in the system."""
+            logger.info(f"Setting all power to {'enabled' if enabled else 'disabled'}")
             async with self._lock:
                 await loop.run_in_executor(None, self.system.set_all_power, enabled)
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
@@ -287,6 +288,7 @@ class L2TriggerOPCUAServer:
             slot, channel = self._module_to_slot_channel(module)
             if slot not in self.system.ctdbs:
                 raise ValueError(f"Slot {slot} (module {module}) not enabled in this server")
+            logger.info(f"Setting power for module {module} (Slot {slot} Ch {channel+1}) to {'enabled' if enabled else 'disabled'}")
             async with self._lock:
                 await loop.run_in_executor(None, self.system.set_slot_power, slot, channel + 1, enabled)
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
@@ -302,8 +304,8 @@ class L2TriggerOPCUAServer:
             """Configure safety current limits for an entire CTDB board identified by its sequence index."""
             if not 1 <= board <= len(self.active_slots):
                 raise ValueError(f"Board index {board} out of range (1-{len(self.active_slots)})")
-            
             slot = self.active_slots[board - 1]
+            logger.info(f"Setting current limits for board {board} (Slot {slot}) to {min_ma}-{max_ma} mA")
             async with self._lock:
                 await loop.run_in_executor(None, self.system.ctdbs[slot].set_current_limits, min_ma, max_ma)
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
@@ -321,6 +323,7 @@ class L2TriggerOPCUAServer:
             slot, channel = self._module_to_slot_channel(module)
             if slot not in self.system.ctdbs:
                 raise ValueError(f"Slot {slot} (module {module}) not enabled in this server")
+            logger.info(f"Setting trigger mask for module {module} (Slot {slot} Ch {channel+1}) to {'masked' if masked else 'unmasked'}")
             async with self._lock:
                 await loop.run_in_executor(None, self.system.ctdbs[slot].set_trigger_mask, channel, masked)
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
@@ -337,6 +340,7 @@ class L2TriggerOPCUAServer:
             slot, channel = self._module_to_slot_channel(module)
             if slot not in self.system.ctdbs:
                 raise ValueError(f"Slot {slot} (module {module}) not enabled in this server")
+            logger.info(f"Setting trigger delay for module {module} (Slot {slot} Ch {channel+1}) to {delay_ns} ns")
             async with self._lock:
                 await loop.run_in_executor(None, self.system.ctdbs[slot].set_trigger_delay, channel, delay_ns)
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
@@ -350,6 +354,7 @@ class L2TriggerOPCUAServer:
         @uamethod
         async def set_all_trigger_mask(parent_node, masked: bool):
             """Global control to mask or unmask triggers for all modules."""
+            logger.info(f"Setting all trigger masks to {'masked' if masked else 'unmasked'}")
             async with self._lock:
                 await loop.run_in_executor(None, self.system.set_all_trigger_mask, masked)
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
@@ -362,6 +367,7 @@ class L2TriggerOPCUAServer:
         @uamethod
         async def set_all_trigger_delay(parent_node, delay_ns: float):
             """Apply a uniform trigger delay to all modules in the system."""
+            logger.info(f"Setting all trigger delays to {delay_ns} ns")
             async with self._lock:
                 await loop.run_in_executor(None, self.system.set_all_trigger_delay, delay_ns)
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
@@ -374,6 +380,7 @@ class L2TriggerOPCUAServer:
         @uamethod
         async def health_check(parent_node):
             """Run a comprehensive diagnostic of the L2 Trigger System hardware."""
+            logger.info("Running health check on L2 Trigger System")
             async with self._lock:
                 health = await loop.run_in_executor(None, self.system.health_check)
             return f"Health: {health['overall']}. Errors: {health['errors']}"
