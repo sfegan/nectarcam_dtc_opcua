@@ -84,21 +84,19 @@ class L2TriggerOPCUAServer:
 
     # (name, initial value, OPC UA variant type, description)
     _MONITORING_VARS = [
-        ("l2cb_firmware", 0, ua.VariantType.UInt16, "L2CB board firmware version"),
-        ("l2cb_timestamp", datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc), ua.VariantType.DateTime, "L2CB hardware timestamp"),
-        ("l2cb_timestamp_raw", 0, ua.VariantType.UInt64, "L2CB raw hardware timestamp counter"),
-        ("active_slots", [], ua.VariantType.Int32, "List of slots enabled in this server"),
-        ("ctdb_firmware", [], ua.VariantType.UInt16, "CTDB firmware versions (one per active slot)"),
-        ("ctdb_current_ma", [], ua.VariantType.Double, "CTDB board currents in mA (one per active slot)"),
-        ("ctdb_total_channel_current_ma", [], ua.VariantType.Double, "Total channel current per CTDB in mA (one per active slot)"),
-        ("ctdb_limit_min_ma", [], ua.VariantType.Double, "Current limit minimum in mA (one per active slot)"),
-        ("ctdb_limit_max_ma", [], ua.VariantType.Double, "Current limit maximum in mA (one per active slot)"),
-        ("ctdb_has_errors", [], ua.VariantType.Boolean, "Error status flag (one per active slot)"),
-        ("channel_enabled", [], ua.VariantType.Boolean, "Channel power enable status (flattened: slot_idx*15 + ch-1)"),
-        ("channel_current_ma", [], ua.VariantType.Double, "Channel current readings in mA (flattened: slot_idx*15 + ch-1)"),
-        ("channel_state", [], ua.VariantType.String, "Channel state strings (flattened: slot_idx*15 + ch-1)"),
-        ("trigger_masked", [], ua.VariantType.Boolean, "Trigger mask status (flattened: slot_idx*15 + ch)"),
-        ("trigger_delay_ns", [], ua.VariantType.Double, "Trigger delay in ns (flattened: slot_idx*15 + ch)"),
+        ("CrateFirmwareRevsion", 0, ua.VariantType.UInt16, "L2CB board firmware version"),
+        ("CrateTimestamp", datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc), ua.VariantType.DateTime, "L2CB hardware timestamp"),
+        ("CrateRawTimestamp", 0, ua.VariantType.UInt64, "L2CB raw hardware timestamp counter"),
+        ("BoardSlots", [], ua.VariantType.Int32, "List of crate slots enabled in this server"),
+        ("BoardFirmwareRevision", [], ua.VariantType.UInt16, "CTDB firmware versions (one per active slot)"),
+        ("BoardCurrent", [], ua.VariantType.Double, "CTDB board currents in mA (one per active slot)"),
+        ("BoardCurrentSum", [], ua.VariantType.Double, "Total channel current per CTDB in mA (one per active slot)"),
+        ("BoardCurrentLimitMin", [], ua.VariantType.Double, "Current limit minimum in mA (one per active slot)"),
+        ("BoardCurrentLimitMax", [], ua.VariantType.Double, "Current limit maximum in mA (one per active slot)"),
+        ("BoardHasErrors", [], ua.VariantType.Boolean, "Error status flag: true if under or over current flagged in this board, false otherwise (one per active slot)"),
+        ("ModulePowerEnabled", [], ua.VariantType.Boolean, "Module power enable status: true if enabled, false otherwise (flattened: slot_idx*15 + ch-1)"),
+        ("ModuleCurrent", [], ua.VariantType.Double, "Channel current readings in mA (flattened: slot_idx*15 + ch-1)"),
+        ("ModuleState", [], ua.VariantType.String, "Channel state strings: \"on\", \"off\", \"error_over_current\", \"error_under_current\" or \"error_both\" (flattened: slot_idx*15 + ch-1)"),
     ]
 
     def __init__(self, 
@@ -222,6 +220,14 @@ class L2TriggerOPCUAServer:
         await self._set_node_description(mon_obj, "Folder containing real-time monitoring variables and system status.")
         
         # Create monitoring variables with dotted NodeIds
+        fast_vars = {
+            "CrateFirmwareRevsion", "CrateTimestamp", "CrateRawTimestamp",
+            "BoardCurrent", "BoardCurrentSum", "BoardHasErrors",
+            "ModuleCurrent", "ModuleState"
+        }
+        fast_interval = float(self.poll_interval * 1000)
+        slow_interval = float(self.poll_interval * self.poll_ratio * 1000)
+
         for name, initial, vtype, description in self._MONITORING_VARS:
             var_node_id = f"{mon_node_id}.{name}"
             var = await mon_obj.add_variable(
@@ -232,6 +238,16 @@ class L2TriggerOPCUAServer:
             )
             await var.set_read_only()
             await self._set_node_description(var, description)
+            
+            # Set MinimumSamplingInterval
+            if name == "BoardSlots":
+                interval = 0.0  # Constant
+            elif name in fast_vars:
+                interval = fast_interval
+            else:
+                interval = slow_interval
+            
+            await var.write_attribute(ua.AttributeIds.MinimumSamplingInterval, ua.DataValue(interval))
             self._vars[name] = (var, vtype)
 
         # Create methods on root
@@ -396,10 +412,10 @@ class L2TriggerOPCUAServer:
 
     async def _write_fast_data(self, l2cb_status, monitoring_results, now: datetime.datetime):
         """Update OPC UA variables with high-frequency data"""
-        await self._set_var("l2cb_firmware", l2cb_status.firmware_version, now)
-        await self._set_var("l2cb_timestamp", l2cb_status.timestamp_datetime, now)
-        await self._set_var("l2cb_timestamp_raw", l2cb_status.timestamp, now)
-        await self._set_var("active_slots", self.active_slots, now)
+        await self._set_var("CrateFirmwareRevsion", l2cb_status.firmware_version, now)
+        await self._set_var("CrateTimestamp", l2cb_status.timestamp_datetime, now)
+        await self._set_var("CrateRawTimestamp", l2cb_status.timestamp, now)
+        await self._set_var("BoardSlots", self.active_slots, now)
 
         ctdb_curr = []
         ctdb_total = []
@@ -452,11 +468,11 @@ class L2TriggerOPCUAServer:
                     ch_curr.append(0.0)
                     ch_state.append("offline")
 
-        await self._set_var("ctdb_current_ma", ctdb_curr, now)
-        await self._set_var("ctdb_total_channel_current_ma", ctdb_total, now)
-        await self._set_var("ctdb_has_errors", ctdb_err, now)
-        await self._set_var("channel_current_ma", ch_curr, now)
-        await self._set_var("channel_state", ch_state, now)
+        await self._set_var("BoardCurrent", ctdb_curr, now)
+        await self._set_var("BoardCurrentSum", ctdb_total, now)
+        await self._set_var("BoardHasErrors", ctdb_err, now)
+        await self._set_var("ModuleCurrent", ch_curr, now)
+        await self._set_var("ModuleState", ch_state, now)
 
     async def _write_slow_data(self, config_results, trigger_results, now: datetime.datetime):
         """Update OPC UA variables with low-frequency data"""
@@ -503,10 +519,10 @@ class L2TriggerOPCUAServer:
         self._powered_count = powered_count
         self._unmasked_count = unmasked_count
 
-        await self._set_var("ctdb_firmware", ctdb_fw, now)
-        await self._set_var("ctdb_limit_min_ma", ctdb_min, now)
-        await self._set_var("ctdb_limit_max_ma", ctdb_max, now)
-        await self._set_var("channel_enabled", ch_enabled, now)
+        await self._set_var("BoardFirmwareRevision", ctdb_fw, now)
+        await self._set_var("BoardCurrentLimitMin", ctdb_min, now)
+        await self._set_var("BoardCurrentLimitMax", ctdb_max, now)
+        await self._set_var("ModulePowerEnabled", ch_enabled, now)
         await self._set_var("trigger_masked", trig_masked, now)
         await self._set_var("trigger_delay_ns", trig_delay, now)
 
