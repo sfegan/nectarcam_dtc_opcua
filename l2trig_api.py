@@ -273,7 +273,7 @@ class CTDBController:
             self.slot, channel, enabled, self.timeout
         )
             
-        logger.info(f"Slot {self.slot} Ch{channel}: Power {'enabled' if enabled else 'disabled'}")
+        logger.debug(f"Slot {self.slot} Ch{channel}: Power {'enabled' if enabled else 'disabled'}")
     
     def set_all_channels(self, enabled: bool) -> None:
         """
@@ -286,7 +286,7 @@ class CTDBController:
         
         hal.set_power_enable(self.slot, value, self.timeout)
         
-        logger.info(f"Slot {self.slot}: All channels {'enabled' if enabled else 'disabled'}")
+        logger.debug(f"Slot {self.slot}: All channels {'enabled' if enabled else 'disabled'}")
     
     def set_channels(self, channel_states: Dict[int, bool]) -> None:
         """
@@ -311,7 +311,7 @@ class CTDBController:
         # Write back
         hal.set_power_enable(self.slot, power_reg, self.timeout)
         
-        logger.info(f"Slot {self.slot}: Set channels {channel_states}")
+        logger.debug(f"Slot {self.slot}: Set channels {channel_states}")
     
     def set_current_limits(self, min_ma: float, max_ma: float) -> None:
         """
@@ -327,7 +327,7 @@ class CTDBController:
         hal.set_power_current_min(self.slot, min_raw, self.timeout)
         hal.set_power_current_max(self.slot, max_raw, self.timeout)
         
-        logger.info(f"Slot {self.slot}: Current limits set to {min_ma:.1f}-{max_ma:.1f} mA")
+        logger.debug(f"Slot {self.slot}: Current limits set to {min_ma:.1f}-{max_ma:.1f} mA")
     
     def get_trigger_status(self) -> List[TriggerChannel]:
         """Get trigger configuration for all channels"""
@@ -359,7 +359,7 @@ class CTDBController:
             self.slot, channel, not masked  # Note: API uses 'enabled' not 'masked'
         )
         
-        logger.info(f"Slot {self.slot} Trigger Ch{channel}: {'Masked' if masked else 'Unmasked'}")
+        logger.debug(f"Slot {self.slot} Trigger Ch{channel}: {'Masked' if masked else 'Unmasked'}")
     
     def set_trigger_delay(self, channel: int, delay_ns: float) -> None:
         """Set trigger delay for a channel"""
@@ -375,7 +375,7 @@ class CTDBController:
             self.slot, channel, delay_raw, self.timeout
         )
         
-        logger.info(f"Slot {self.slot} Trigger Ch{channel}: Delay set to {delay_ns:.3f} ns")
+        logger.debug(f"Slot {self.slot} Trigger Ch{channel}: Delay set to {delay_ns:.3f} ns")
 
 
 # ============================================================================
@@ -506,7 +506,7 @@ class L2TriggerSystem:
             except Exception as e:
                 logger.error(f"Error setting power on slot {ctdb.slot}: {e}")
         
-        logger.info(f"All power channels {'enabled' if enabled else 'disabled'}")
+        logger.debug(f"All power channels {'enabled' if enabled else 'disabled'}")
 
     def set_all_trigger_mask(self, masked: bool) -> None:
         """Set trigger mask for all channels on all boards"""
@@ -516,7 +516,7 @@ class L2TriggerSystem:
                     ctdb.set_trigger_mask(ch, masked)
                 except Exception as e:
                     logger.error(f"Error setting trigger mask on slot {ctdb.slot} ch {ch}: {e}")
-        logger.info(f"All trigger channels {'masked' if masked else 'unmasked'}")
+        logger.debug(f"All trigger channels {'masked' if masked else 'unmasked'}")
 
     def set_all_trigger_delay(self, delay_ns: float) -> None:
         """Set trigger delay for all channels on all boards"""
@@ -526,7 +526,7 @@ class L2TriggerSystem:
                     ctdb.set_trigger_delay(ch, delay_ns)
                 except Exception as e:
                     logger.error(f"Error setting trigger delay on slot {ctdb.slot} ch {ch}: {e}")
-        logger.info(f"All trigger delays set to {delay_ns:.3f} ns")
+        logger.debug(f"All trigger delays set to {delay_ns:.3f} ns")
     
     def emergency_shutdown(self) -> None:
         """Emergency shutdown - turn off all power channels immediately"""
@@ -545,7 +545,7 @@ class L2TriggerSystem:
             except Exception as e:
                 logger.error(f"Error setting current limits on slot {ctdb.slot}: {e}")
         
-        logger.info(f"Current limits set to {min_ma:.1f}-{max_ma:.1f} mA on all slots")
+        logger.debug(f"Current limits set to {min_ma:.1f}-{max_ma:.1f} mA on all slots")
     
     def get_slots_with_errors(self) -> List[int]:
         """Get list of slots that have error conditions"""
