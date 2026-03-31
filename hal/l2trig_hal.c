@@ -5,6 +5,9 @@
  *      Author: marekp
  */
 
+#include <time.h>
+#include <stdint.h>
+
 #include "l2trig_hal.h"
 
 // ***** Helper Functions for the SPI Interface to access registers of the CTDB modules
@@ -15,16 +18,40 @@
 // returns CTA_L2CB_ERROR_TIMEOUT on timeout error
 int cta_l2cb_spi_wait(int _timeout_us)
 {
-	int timer = 0;
-	usleep(100);
-	while(testBitVal16(IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_STAT), BIT_CTA_L2CB_STAT_SPIBUSY))
-	{
-		// spi transfer ongoing, lets wait
-		usleep(10);
-		timer+=10;
-		if(timer >= _timeout_us) return CTA_L2CB_ERROR_TIMEOUT; // error, timeout
-	}
-	return CTA_L2CB_NO_ERROR;
+    if (_timeout_us <= 0)
+        return CTA_L2CB_ERROR_TIMEOUT;
+
+    const int64_t timeout_ns = (int64_t)_timeout_us * 1000;
+
+    struct timespec start, now;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+
+    // Fixed small sleep interval (10 µs)
+    const struct timespec sleep_ts = {
+        .tv_sec = 0,
+        .tv_nsec = 10000
+    };
+
+	// Simple relative sleep
+	nanosleep(&sleep_ts, NULL);
+
+    while (testBitVal16(IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_STAT),
+                        BIT_CTA_L2CB_STAT_SPIBUSY))
+    {
+        clock_gettime(CLOCK_MONOTONIC, &now);
+
+        int64_t elapsed_ns =
+            (int64_t)(now.tv_sec - start.tv_sec) * 1000000000LL +
+            (int64_t)(now.tv_nsec - start.tv_nsec);
+
+        if (elapsed_ns >= timeout_ns)
+            return CTA_L2CB_ERROR_TIMEOUT;
+
+        // Simple relative sleep
+        nanosleep(&sleep_ts, NULL);
+    }
+
+    return CTA_L2CB_NO_ERROR;
 }
 
 // reads a register from a CTDB at slot x
@@ -73,7 +100,11 @@ int cta_l2cb_spi_write(uint8_t _slot, uint8_t _register, uint16_t _value, int _t
 	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_SPTX, _value);
 	uint16_t config = (_register & 0xff) | ((_slot & 0x1f) << 8) | 0x8000;
 	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_SPAD, config);
-	// no need to wait for completion
+	// wait for completion
+	{
+		int err=cta_l2cb_spi_wait(_timeout_us);
+		if (err!=CTA_L2CB_NO_ERROR) return err; // return error
+	}
 	return CTA_L2CB_NO_ERROR;
 }
 

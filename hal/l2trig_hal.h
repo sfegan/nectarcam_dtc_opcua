@@ -239,7 +239,7 @@ static inline int cta_ctdb_setPowerEnable(uint8_t _slot, uint16_t _value, int _t
 // returns CTA_L2CB_ERROR_TIMEOUT on timeout error
 static inline void cta_ctdb_setPowerEnableToAll(uint16_t _on, int _timeout_us)
 {
-	int s,err;
+	int s;
 	int value=(_on)?0xfffe:0x0;
 	int slots[] = CTA_L2CB_SLOT_LIST;
 	for(s=0;s<CTA_L2CB_SLOT_COUNT;s++) {

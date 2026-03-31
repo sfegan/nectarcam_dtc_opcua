@@ -57,3 +57,4 @@ __pycache__/
 *.pyo
 *.pyd
 nc_lightsource_asyncua_server.py
+.DS_Store
