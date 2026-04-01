@@ -364,7 +364,7 @@ class CTDBController:
         
         return channels
     
-    def set_trigger_enabled(self, channel: int, enabled: bool) -> None:
+    def set_channel_trigger_enabled(self, channel: int, enabled: bool) -> None:
         """Set trigger enabled status for a channel"""
         if not 0 <= channel < CHANNELS_PER_SLOT:
             raise ValueError(f"Channel must be 0-{CHANNELS_PER_SLOT-1}")
@@ -381,7 +381,7 @@ class CTDBController:
         hal.set_l1_trigger_enabled(self.slot, mask)
         logger.debug(f"Slot {self.slot}: All trigger channels {'enabled' if enabled else 'disabled'}")
     
-    def set_trigger_delay(self, channel: int, delay_ns: float) -> None:
+    def set_channel_trigger_delay(self, channel: int, delay_ns: float) -> None:
         """Set trigger delay for a channel"""
         if not 0 <= channel < CHANNELS_PER_SLOT:
             raise ValueError(f"Channel must be 0-{CHANNELS_PER_SLOT-1}")
@@ -508,18 +508,18 @@ class L2TriggerSystem:
         
         return self.ctdbs[slot].get_status()
     
-    def set_slot_power(self, slot: int, channel: int, enabled: bool) -> None:
+    def set_channel_power_enabled(self, slot: int, channel: int, enabled: bool) -> None:
         """Set power for a specific slot/channel"""
         if slot not in self.ctdbs:
             raise ValueError(f"Slot {slot} not enabled")
         
-        self.ctdbs[slot].set_channel_power(channel, enabled)
+        self.ctdbs[slot].set_channel_power_enabled(channel, enabled)
     
-    def set_all_power(self, enabled: bool) -> None:
+    def set_all_power_enabled(self, enabled: bool) -> None:
         """Enable or disable all power channels on all boards"""
         for ctdb in self.ctdbs.values():
             try:
-                ctdb.set_all_channels(enabled)
+                ctdb.set_all_power_enabled(enabled)
             except Exception as e:
                 logger.error(f"Error setting power on slot {ctdb.slot}: {e}")
         
@@ -539,7 +539,7 @@ class L2TriggerSystem:
         for ctdb in self.ctdbs.values():
             for ch in range(CHANNELS_PER_SLOT):
                 try:
-                    ctdb.set_trigger_delay(ch, delay_ns)
+                    ctdb.set_channel_trigger_delay(ch, delay_ns)
                 except Exception as e:
                     logger.error(f"Error setting trigger delay on slot {ctdb.slot} ch {ch}: {e}")
         logger.debug(f"All trigger delays set to {delay_ns:.3f} ns")
@@ -658,7 +658,7 @@ def example_usage():
     
     # Control specific channel
     print("\n=== Controlling power ===")
-    system.set_slot_power(slot=1, channel=5, enabled=True)
+    system.set_channel_power_enabled(slot=1, channel=5, enabled=True)
     
     # Set current limits
     system.ctdbs[1].set_current_limits(min_ma=100, max_ma=2000)

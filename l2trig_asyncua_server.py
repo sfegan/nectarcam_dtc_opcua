@@ -292,15 +292,15 @@ class L2TriggerOPCUAServer:
         
         # Set All Power
         @uamethod
-        async def set_all_power(parent_node, enabled: bool):
+        async def set_all_power_enabled(parent_node, enabled: bool):
             """Global control to enable or disable power for all modules in the system."""
             logger.info(f"Setting all power to {'enabled' if enabled else 'disabled'}")
             async with self._lock:
-                await loop.run_in_executor(None, self.system.set_all_power, enabled)
+                await loop.run_in_executor(None, self.system.set_all_power_enabled, enabled)
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
             return f"All power {'enabled' if enabled else 'disabled'}"
         
-        await add_described_method("SetAllPower", set_all_power,
+        await add_described_method("SetAllPower", set_all_power_enabled,
                                    inputs=[a("enabled", ua.VariantType.Boolean, "True to enable all modules, False to disable all")])
         
         # Set Module Power
@@ -312,7 +312,7 @@ class L2TriggerOPCUAServer:
                 raise ValueError(f"Slot {slot} (module {module}) not enabled in this server")
             logger.info(f"Setting power for module {module} (Slot {slot} Ch {channel+1}) to {'enabled' if enabled else 'disabled'}")
             async with self._lock:
-                await loop.run_in_executor(None, self.system.set_slot_power, slot, channel + 1, enabled)
+                await loop.run_in_executor(None, self.system.set_channel_power_enabled, slot, channel + 1, enabled)
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
             return f"Module {module} (Slot {slot} Ch {channel+1}) {'enabled' if enabled else 'disabled'}"
         
@@ -347,7 +347,7 @@ class L2TriggerOPCUAServer:
                 raise ValueError(f"Slot {slot} (module {module}) not enabled in this server")
             logger.info(f"Setting trigger enabled for module {module} (Slot {slot} Ch {channel+1}) to {'enabled' if enabled else 'disabled'}")
             async with self._lock:
-                await loop.run_in_executor(None, self.system.ctdbs[slot].set_trigger_enabled, channel, enabled)
+                await loop.run_in_executor(None, self.system.ctdbs[slot].set_channel_trigger_enabled, channel, enabled)
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
             return f"Module {module} (Slot {slot} Trigger Ch {channel}) {'enabled' if enabled else 'disabled'}"
 
@@ -364,7 +364,7 @@ class L2TriggerOPCUAServer:
                 raise ValueError(f"Slot {slot} (module {module}) not enabled in this server")
             logger.info(f"Setting trigger delay for module {module} (Slot {slot} Ch {channel+1}) to {delay_ns} ns")
             async with self._lock:
-                await loop.run_in_executor(None, self.system.ctdbs[slot].set_trigger_delay, channel, delay_ns)
+                await loop.run_in_executor(None, self.system.ctdbs[slot].set_channel_trigger_delay, channel, delay_ns)
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
             return f"Module {module} (Slot {slot} Trigger Ch {channel}) delay set to {delay_ns} ns"
 

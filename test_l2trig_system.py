@@ -155,27 +155,27 @@ class TestCTDBController:
         assert len(status.power_channels) == CHANNELS_PER_SLOT
         assert status.ctdb_current_ma == 100.0
     
-    def test_set_channel_power(self, ctdb_controller, mock_hal):
+    def test_set_channel_power_enabled(self, ctdb_controller, mock_hal):
         """Test enabling/disabling a channel"""
-        ctdb_controller.set_channel_power(5, True)
+        ctdb_controller.set_channel_power_enabled(5, True)
         mock_hal['set_power_channel_enabled'].assert_called()
         
         # Test invalid channel
         with pytest.raises(ValueError):
-            ctdb_controller.set_channel_power(20, True)
+            ctdb_controller.set_channel_power_enabled(20, True)
     
-    def test_set_all_channels(self, ctdb_controller, mock_hal):
+    def test_set_all_power_enabled(self, ctdb_controller, mock_hal):
         """Test enabling/disabling all channels"""
-        ctdb_controller.set_all_channels(True)
+        ctdb_controller.set_all_power_enabled(True)
         mock_hal['set_power_enabled'].assert_called_with(1, 0xFFFE)
         
-        ctdb_controller.set_all_channels(False)
+        ctdb_controller.set_all_power_enabled(False)
         mock_hal['set_power_enabled'].assert_called_with(1, 0x0000)
     
-    def test_set_channels_multiple(self, ctdb_controller, mock_hal):
+    def test_set_some_power_enabled_multiple(self, ctdb_controller, mock_hal):
         """Test setting multiple channels at once"""
         channel_states = {1: True, 3: False, 5: True}
-        ctdb_controller.set_channels(channel_states)
+        ctdb_controller.set_some_power_enabled(channel_states)
         
         mock_hal['set_power_enabled'].assert_called()
     
@@ -222,10 +222,10 @@ class TestL2TriggerSystem:
         with pytest.raises(ValueError):
             l2_system.get_slot_status(99)
     
-    def test_set_all_power(self, l2_system, mock_hal):
+    def test_set_all_power_enabled(self, l2_system, mock_hal):
         """Test setting all power"""
-        l2_system.set_all_power(True)
-        # Should call set_all_channels for each CTDB
+        l2_system.set_all_power_enabled(True)
+        # Should call set_all_power_enabled for each CTDB
         
     def test_emergency_shutdown(self, l2_system, mock_hal):
         """Test emergency shutdown"""
@@ -254,10 +254,10 @@ class TestIntegration:
         initial_status = l2_system.get_slot_status(1)
         
         # Turn off all channels
-        l2_system.ctdbs[1].set_all_channels(False)
+        l2_system.ctdbs[1].set_all_power_enabled(False)
         
         # Turn on specific channel
-        l2_system.ctdbs[1].set_channel_power(5, True)
+        l2_system.ctdbs[1].set_channel_power_enabled(5, True)
         
         # Get final status
         final_status = l2_system.get_slot_status(1)
