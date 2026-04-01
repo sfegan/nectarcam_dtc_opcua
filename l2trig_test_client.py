@@ -95,20 +95,20 @@ class L2TrigTestClient:
         print("\n--- L2 Trigger System Summary ---")
         
         # Read essential variables
-        slots = await self.read_variable("active_slots")
+        slots = await self.read_variable("BoardSlots")
         if slots is None:
-            print("Could not retrieve active slots.")
+            print("Could not retrieve BoardSlots.")
             return
         
-        l2cb_fw = await self.read_variable("l2cb_firmware")
-        l2cb_ts = await self.read_variable("l2cb_timestamp")
+        l2cb_fw = await self.read_variable("CrateFirmwareRevision")
+        l2cb_ts = await self.read_variable("CrateTimestamp")
         print(f"L2CB Firmware: 0x{l2cb_fw:04X} | Timestamp: {l2cb_ts}")
         
-        ctdb_fw = await self.read_variable("ctdb_firmware")
-        ctdb_curr = await self.read_variable("ctdb_current_ma")
-        ctdb_err = await self.read_variable("ctdb_has_errors")
-        ctdb_min = await self.read_variable("ctdb_limit_min_ma")
-        ctdb_max = await self.read_variable("ctdb_limit_max_ma")
+        ctdb_fw = await self.read_variable("BoardFirmwareRevision")
+        ctdb_curr = await self.read_variable("BoardCurrent")
+        ctdb_err = await self.read_variable("BoardHasErrors")
+        ctdb_min = await self.read_variable("BoardCurrentLimitMin")
+        ctdb_max = await self.read_variable("BoardCurrentLimitMax")
         
         ch_enabled = await self.read_variable("ModulePowerEnabled")
         ch_curr = await self.read_variable("ModuleCurrent")

@@ -374,6 +374,12 @@ class CTDBController:
         )
         
         logger.debug(f"Slot {self.slot} Trigger Ch{channel}: {'Enabled' if enabled else 'Disabled'}")
+
+    def set_all_trigger_enabled(self, enabled: bool) -> None:
+        """Set trigger enabled status for all channels on this board"""
+        mask = 0x7FFF if enabled else 0x0000
+        hal.set_l1_trigger_enabled(self.slot, mask)
+        logger.debug(f"Slot {self.slot}: All trigger channels {'enabled' if enabled else 'disabled'}")
     
     def set_trigger_delay(self, channel: int, delay_ns: float) -> None:
         """Set trigger delay for a channel"""
@@ -511,22 +517,25 @@ class L2TriggerSystem:
     
     def set_all_power(self, enabled: bool) -> None:
         """Enable or disable all power channels on all boards"""
-        for ctdb in self.ctdbs.values():
-            try:
-                ctdb.set_all_channels(enabled)
-            except Exception as e:
-                logger.error(f"Error setting power on slot {ctdb.slot}: {e}")
-        
-        logger.debug(f"All power channels {'enabled' if enabled else 'disabled'}")
+        try:
+            hal.set_power_enabled_all(enabled)
+            logger.debug(f"All power channels {'enabled' if enabled else 'disabled'}")
+        except Exception as e:
+            logger.error(f"Error in global set_all_power: {e}")
+            # Fallback to per-slot if global fails
+            for ctdb in self.ctdbs.values():
+                try:
+                    ctdb.set_all_channels(enabled)
+                except Exception as e:
+                    logger.error(f"Error setting power on slot {ctdb.slot}: {e}")
 
     def set_all_trigger_enabled(self, enabled: bool) -> None:
         """Set trigger enabled status for all channels on all boards"""
         for ctdb in self.ctdbs.values():
-            for ch in range(CHANNELS_PER_SLOT):
-                try:
-                    ctdb.set_trigger_enabled(ch, enabled)
-                except Exception as e:
-                    logger.error(f"Error setting trigger enabled on slot {ctdb.slot} ch {ch}: {e}")
+            try:
+                ctdb.set_all_trigger_enabled(enabled)
+            except Exception as e:
+                logger.error(f"Error setting trigger enabled on slot {ctdb.slot}: {e}")
         logger.debug(f"All trigger channels {'enabled' if enabled else 'disabled'}")
 
     def set_all_trigger_delay(self, delay_ns: float) -> None:
