@@ -97,7 +97,7 @@ class L2TriggerOPCUAServer:
         ("ModulePowerEnabled", [], ua.VariantType.Boolean, "Module power enable status: true if enabled, false otherwise (flattened: slot_idx*15 + ch-1)"),
         ("ModuleCurrent", [], ua.VariantType.Double, "Channel current readings in mA (flattened: slot_idx*15 + ch-1)"),
         ("ModuleState", [], ua.VariantType.String, "Channel state strings: \"on\", \"off\", \"error_over_current\", \"error_under_current\" or \"error_both\" (flattened: slot_idx*15 + ch-1)"),
-        ("ModuleTriggerMasked", [], ua.VariantType.Boolean, "Trigger mask status (flattened: slot_idx*15 + ch)"),
+        ("ModuleTriggerEnabled", [], ua.VariantType.Boolean, "Trigger enabled status (flattened: slot_idx*15 + ch)"),
         ("ModuleTriggerDelay", [], ua.VariantType.Double, "Trigger delay in ns (flattened: slot_idx*15 + ch)"),
     ]
 
@@ -140,7 +140,7 @@ class L2TriggerOPCUAServer:
         
         # Statistics for watchdog
         self._powered_count = 0
-        self._unmasked_count = 0
+        self._enabled_count = 0
 
     def _module_to_slot_channel(self, module: int) -> Tuple[int, int]:
         """Convert 1-based module number to (slot, channel)."""
@@ -340,22 +340,22 @@ class L2TriggerOPCUAServer:
                                            a("min_ma", ua.VariantType.Double, "Minimum current threshold in mA"),
                                            a("max_ma", ua.VariantType.Double, "Maximum current threshold in mA")])
 
-        # Set Module Trigger Mask
+        # Set Module Trigger Enabled
         @uamethod
-        async def set_module_trigger_mask(parent_node, module: int, masked: bool):
+        async def set_module_trigger_enabled(parent_node, module: int, enabled: bool):
             """Enable or disable the L1 trigger contribution for a specific module."""
             slot, channel = self._module_to_slot_channel(module)
             if slot not in self.system.ctdbs:
                 raise ValueError(f"Slot {slot} (module {module}) not enabled in this server")
-            logger.info(f"Setting trigger mask for module {module} (Slot {slot} Ch {channel+1}) to {'masked' if masked else 'unmasked'}")
+            logger.info(f"Setting trigger enabled for module {module} (Slot {slot} Ch {channel+1}) to {'enabled' if enabled else 'disabled'}")
             async with self._lock:
-                await loop.run_in_executor(None, self.system.ctdbs[slot].set_trigger_mask, channel, masked)
+                await loop.run_in_executor(None, self.system.ctdbs[slot].set_trigger_enabled, channel, enabled)
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
-            return f"Module {module} (Slot {slot} Trigger Ch {channel}) {'masked' if masked else 'active'}"
+            return f"Module {module} (Slot {slot} Trigger Ch {channel}) {'enabled' if enabled else 'disabled'}"
 
-        await add_described_method("SetModuleTriggerMask", set_module_trigger_mask,
+        await add_described_method("SetModuleTriggerEnabled", set_module_trigger_enabled,
                                    inputs=[a("module", ua.VariantType.Int32, "Module number (1-270)"),
-                                           a("masked", ua.VariantType.Boolean, "True to mask (disable) trigger, False to unmask (enable)")])
+                                           a("enabled", ua.VariantType.Boolean, "True to enable trigger, False to disable trigger")])
 
         # Set Module Trigger Delay
         @uamethod
@@ -374,18 +374,18 @@ class L2TriggerOPCUAServer:
                                    inputs=[a("module", ua.VariantType.Int32, "Module number (1-270)"),
                                            a("delay_ns", ua.VariantType.Double, "Delay in nanoseconds (0.0 to 5.0 ns)")])
 
-        # Set All Trigger Mask
+        # Set All Trigger Enabled
         @uamethod
-        async def set_all_trigger_mask(parent_node, masked: bool):
-            """Global control to mask or unmask triggers for all modules."""
-            logger.info(f"Setting all trigger masks to {'masked' if masked else 'unmasked'}")
+        async def set_all_trigger_enabled(parent_node, enabled: bool):
+            """Global control to enable or disable triggers for all modules."""
+            logger.info(f"Setting all trigger enabled status to {'enabled' if enabled else 'disabled'}")
             async with self._lock:
-                await loop.run_in_executor(None, self.system.set_all_trigger_mask, masked)
+                await loop.run_in_executor(None, self.system.set_all_trigger_enabled, enabled)
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
-            return f"All triggers {'masked' if masked else 'unmasked'}"
+            return f"All triggers {'enabled' if enabled else 'disabled'}"
 
-        await add_described_method("SetAllTriggerMask", set_all_trigger_mask,
-                                   inputs=[a("masked", ua.VariantType.Boolean, "True to mask all triggers, False to unmask all")])
+        await add_described_method("SetAllTriggerEnabled", set_all_trigger_enabled,
+                                   inputs=[a("enabled", ua.VariantType.Boolean, "True to enable all triggers, False to disable all")])
 
         # Set All Trigger Delay
         @uamethod
@@ -482,11 +482,11 @@ class L2TriggerOPCUAServer:
         ctdb_min = []
         ctdb_max = []
         ch_enabled = []
-        trig_masked = []
+        trig_enabled = []
         trig_delay = []
 
         powered_count = 0
-        unmasked_count = 0
+        enabled_count = 0
 
         for slot in self.active_slots:
             c_data = config_results.get(slot)
@@ -509,23 +509,23 @@ class L2TriggerOPCUAServer:
             t_data = trigger_results.get(slot)
             if t_data:
                 for trig in t_data:
-                    trig_masked.append(trig.masked)
+                    trig_enabled.append(trig.enabled)
                     trig_delay.append(float(trig.delay_ns))
-                    if not trig.masked:
-                        unmasked_count += 1
+                    if trig.enabled:
+                        enabled_count += 1
             else:
                 for _ in range(CHANNELS_PER_SLOT):
-                    trig_masked.append(True)
+                    trig_enabled.append(False)
                     trig_delay.append(0.0)
 
         self._powered_count = powered_count
-        self._unmasked_count = unmasked_count
+        self._enabled_count = enabled_count
 
         await self._set_var("BoardFirmwareRevision", ctdb_fw, now)
         await self._set_var("BoardCurrentLimitMin", ctdb_min, now)
         await self._set_var("BoardCurrentLimitMax", ctdb_max, now)
         await self._set_var("ModulePowerEnabled", ch_enabled, now)
-        await self._set_var("ModuleTriggerMasked", trig_masked, now)
+        await self._set_var("ModuleTriggerEnabled", trig_enabled, now)
         await self._set_var("ModuleTriggerDelay", trig_delay, now)
 
     async def _do_poll_fast(self, now: datetime.datetime):
@@ -592,10 +592,10 @@ class L2TriggerOPCUAServer:
                     break
                 
                 logger.info(
-                    "Watchdog status: %d active boards, %d powered modules, %d active (unmasked) modules",
+                    "Watchdog status: %d active boards, %d powered modules, %d enabled trigger modules",
                     len(self.active_slots),
                     self._powered_count,
-                    self._unmasked_count
+                    self._enabled_count
                 )
             except asyncio.CancelledError:
                 break

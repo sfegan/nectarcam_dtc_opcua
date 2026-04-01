@@ -67,7 +67,7 @@ class TriggerChannel:
     """Trigger configuration for a single channel"""
     slot: int
     channel: int
-    masked: bool
+    enabled: bool
     delay_ns: float
 
 
@@ -347,12 +347,12 @@ class CTDBController:
 
     def get_trigger_status(self) -> List[TriggerChannel]:
         """Get trigger configuration for all channels"""
-        # Get trigger mask
-        mask = hal.get_l1_trigger_mask(self.slot)
+        # Get trigger enabled status
+        mask = hal.get_l1_trigger_enabled(self.slot)
         
         channels = []
         for ch in range(CHANNELS_PER_SLOT):
-            masked = bool(mask & (1 << ch))
+            enabled = bool(mask & (1 << ch))
             
             # Get delay
             delay_raw = hal.get_l1_trigger_delay(self.slot, ch)
@@ -360,22 +360,22 @@ class CTDBController:
             channels.append(TriggerChannel(
                 slot=self.slot,
                 channel=ch,
-                masked=masked,
+                enabled=enabled,
                 delay_ns=hal.delay_raw_to_ns(delay_raw)
             ))
         
         return channels
     
-    def set_trigger_mask(self, channel: int, masked: bool) -> None:
-        """Set trigger mask for a channel"""
+    def set_trigger_enabled(self, channel: int, enabled: bool) -> None:
+        """Set trigger enabled status for a channel"""
         if not 0 <= channel < CHANNELS_PER_SLOT:
             raise ValueError(f"Channel must be 0-{CHANNELS_PER_SLOT-1}")
         
-        hal.set_l1_trigger_channel_mask( 
-            self.slot, channel, not masked  # Note: API uses 'enabled' not 'masked'
+        hal.set_l1_trigger_channel_enabled( 
+            self.slot, channel, enabled
         )
         
-        logger.debug(f"Slot {self.slot} Trigger Ch{channel}: {'Masked' if masked else 'Unmasked'}")
+        logger.debug(f"Slot {self.slot} Trigger Ch{channel}: {'Enabled' if enabled else 'Disabled'}")
     
     def set_trigger_delay(self, channel: int, delay_ns: float) -> None:
         """Set trigger delay for a channel"""
@@ -524,15 +524,15 @@ class L2TriggerSystem:
         
         logger.debug(f"All power channels {'enabled' if enabled else 'disabled'}")
 
-    def set_all_trigger_mask(self, masked: bool) -> None:
-        """Set trigger mask for all channels on all boards"""
+    def set_all_trigger_enabled(self, enabled: bool) -> None:
+        """Set trigger enabled status for all channels on all boards"""
         for ctdb in self.ctdbs.values():
             for ch in range(CHANNELS_PER_SLOT):
                 try:
-                    ctdb.set_trigger_mask(ch, masked)
+                    ctdb.set_trigger_enabled(ch, enabled)
                 except Exception as e:
-                    logger.error(f"Error setting trigger mask on slot {ctdb.slot} ch {ch}: {e}")
-        logger.debug(f"All trigger channels {'masked' if masked else 'unmasked'}")
+                    logger.error(f"Error setting trigger enabled on slot {ctdb.slot} ch {ch}: {e}")
+        logger.debug(f"All trigger channels {'enabled' if enabled else 'disabled'}")
 
     def set_all_trigger_delay(self, delay_ns: float) -> None:
         """Set trigger delay for all channels on all boards"""
@@ -667,7 +667,7 @@ def example_usage():
     print("\n=== Trigger Configuration ===")
     trigger_status = system.ctdbs[1].get_trigger_status()
     for trig in trigger_status[:5]:  # Show first 5
-        print(f"  Ch{trig.channel}: {'Masked' if trig.masked else 'Active'}, Delay={trig.delay_ns:.3f}ns")
+        print(f"  Ch{trig.channel}: {'Enabled' if trig.enabled else 'Disabled'}, Delay={trig.delay_ns:.3f}ns")
     
     # Health check
     print("\n=== Health Check ===")

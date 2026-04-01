@@ -24,7 +24,7 @@
 
 typedef struct {
     uint16_t power_enable;      // bits 1-15
-    uint16_t trigger_mask;      // bits 0-14
+    uint16_t trigger_enabled;   // bits 0-14
     uint16_t trigger_delays[15];
     uint16_t current_min;
     uint16_t current_max;
@@ -38,7 +38,7 @@ static void init_dummy_state() {
     if (dummy_initialized) return;
     for (int i = 0; i < 32; i++) {
         dummy_slots[i].power_enable = 0x0000;    // All off
-        dummy_slots[i].trigger_mask = 0x0000;    // All masked (assuming 1=active, 0=masked per API use)
+        dummy_slots[i].trigger_enabled = 0x0000; // All disabled (assuming 1=active, 0=disabled)
         for (int j = 0; j < 15; j++) dummy_slots[i].trigger_delays[j] = 27; // ~1ns
         dummy_slots[i].current_min = 206;       // ~100mA
         dummy_slots[i].current_max = 2000;      // ~1000mA
@@ -73,51 +73,51 @@ uint64_t cta_l2cb_readTimestamp_export(void)
     return timestamp;
 }
 
-void cta_l2cb_setL1TriggerMask_export(uint8_t slot, uint16_t mask)
+void cta_l2cb_setL1TriggerEnabled_export(uint8_t slot, uint16_t enabled)
 {
     init_dummy_state();
     if (slot < 32) {
-        dummy_slots[slot].trigger_mask = mask;
+        dummy_slots[slot].trigger_enabled = enabled;
 #ifdef DUMMY_DEBUG
-        printf("cta_l2cb_setL1TriggerMask(slot=%u, mask=0x%04x)\n", slot, mask);
+        printf("cta_l2cb_setL1TriggerEnabled(slot=%u, enabled=0x%04x)\n", slot, enabled);
         fflush(stdout);
 #endif
     }
 }
 
-uint16_t cta_l2cb_getL1TriggerMask_export(uint8_t slot)
+uint16_t cta_l2cb_getL1TriggerEnabled_export(uint8_t slot)
 {
     init_dummy_state();
-    uint16_t mask = (slot < 32) ? dummy_slots[slot].trigger_mask : 0;
+    uint16_t enabled = (slot < 32) ? dummy_slots[slot].trigger_enabled : 0;
 #ifdef DUMMY_DEBUG
-    printf("cta_l2cb_getL1TriggerMask(slot=%u) -> 0x%04x\n", slot, mask);
+    printf("cta_l2cb_getL1TriggerEnabled(slot=%u) -> 0x%04x\n", slot, enabled);
     fflush(stdout);
 #endif
-    return mask;
+    return enabled;
 }
 
-void cta_l2cb_setL1TriggerChannelMask_export(uint8_t slot, uint8_t channel, uint16_t on)
+void cta_l2cb_setL1TriggerChannelEnabled_export(uint8_t slot, uint8_t channel, uint16_t on)
 {
     init_dummy_state();
     if (slot < 32 && channel < 15) {
-        if (on) dummy_slots[slot].trigger_mask |= (1 << channel);
-        else dummy_slots[slot].trigger_mask &= ~(1 << channel);
+        if (on) dummy_slots[slot].trigger_enabled |= (1 << channel);
+        else dummy_slots[slot].trigger_enabled &= ~(1 << channel);
 #ifdef DUMMY_DEBUG
-        printf("cta_l2cb_setL1TriggerChannelMask(slot=%u, channel=%u, on=%u)\n", slot, channel, on);
+        printf("cta_l2cb_setL1TriggerChannelEnabled(slot=%u, channel=%u, on=%u)\n", slot, channel, on);
         fflush(stdout);
 #endif
     }
 }
 
-uint16_t cta_l2cb_getL1TriggerChannelMask_export(uint8_t slot, uint8_t channel)
+uint16_t cta_l2cb_getL1TriggerChannelEnabled_export(uint8_t slot, uint8_t channel)
 {
     init_dummy_state();
     uint16_t active = 0;
     if (slot < 32 && channel < 15) {
-        active = (dummy_slots[slot].trigger_mask & (1 << channel)) ? 1 : 0;
+        active = (dummy_slots[slot].trigger_enabled & (1 << channel)) ? 1 : 0;
     }
 #ifdef DUMMY_DEBUG
-    printf("cta_l2cb_getL1TriggerChannelMask(slot=%u, channel=%u) -> %u\n", slot, channel, active);
+    printf("cta_l2cb_getL1TriggerChannelEnabled(slot=%u, channel=%u) -> %u\n", slot, channel, active);
     fflush(stdout);
 #endif
     return active;
@@ -392,24 +392,24 @@ uint64_t cta_l2cb_readTimestamp_export(void)
 // L1 Trigger Control Functions
 // ============================================================================
 
-void cta_l2cb_setL1TriggerMask_export(uint8_t slot, uint16_t mask)
+void cta_l2cb_setL1TriggerEnabled_export(uint8_t slot, uint16_t enabled)
 {
-    cta_l2cb_setL1TriggerMask(slot, mask);
+    cta_l2cb_setL1TriggerEnabled(slot, enabled);
 }
 
-uint16_t cta_l2cb_getL1TriggerMask_export(uint8_t slot)
+uint16_t cta_l2cb_getL1TriggerEnabled_export(uint8_t slot)
 {
-    return cta_l2cb_getL1TriggerMask(slot);
+    return cta_l2cb_getL1TriggerEnabled(slot);
 }
 
-void cta_l2cb_setL1TriggerChannelMask_export(uint8_t slot, uint8_t channel, uint16_t on)
+void cta_l2cb_setL1TriggerChannelEnabled_export(uint8_t slot, uint8_t channel, uint16_t on)
 {
-    cta_l2cb_setL1TriggerChannelMask(slot, channel, on);
+    cta_l2cb_setL1TriggerChannelEnabled(slot, channel, on);
 }
 
-uint16_t cta_l2cb_getL1TriggerChannelMask_export(uint8_t slot, uint8_t channel)
+uint16_t cta_l2cb_getL1TriggerChannelEnabled_export(uint8_t slot, uint8_t channel)
 {
-    return cta_l2cb_getL1TriggerChannelMask(slot, channel);
+    return cta_l2cb_getL1TriggerChannelEnabled(slot, channel);
 }
 
 int cta_l2cb_setL1TriggerDelay_export(uint8_t slot, uint8_t channel, uint16_t delay, uint16_t timeout_us)

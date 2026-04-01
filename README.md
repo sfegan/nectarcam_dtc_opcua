@@ -69,7 +69,7 @@ The server implements a **Phase-Locked Loop (PLL)** polling loop to maintain a c
 - **High-Frequency Data**: Currents and error states are read every cycle (`poll-interval`).
 - **Low-Frequency Data**: Firmware versions, current limits, and trigger settings are read every `poll-ratio` cycles.
 - **Immediate Update**: Calling any control method (e.g., `SetModulePower`) triggers an immediate full status read outside the normal schedule.
-- **Watchdog Timer**: The server logs a system status summary (number of active boards, powered modules, and unmasked trigger modules) at the `INFO` level every 180 seconds.
+- **Watchdog Timer**: The server logs a system status summary (number of active boards, powered modules, and enabled trigger modules) at the `INFO` level every 180 seconds.
 
 ## OPC UA Address Space
 
@@ -91,7 +91,7 @@ Located under `<Root>.<MonitoringPath>/` (e.g., `L2Trigger.Monitoring/`). All mo
 | `ModulePowerEnabled` | Boolean[] | Flattened array (slot_idx * 15 + ch-1) of power status |
 | `ModuleCurrent` | Double[] | Flattened array of channel currents |
 | `ModuleState` | String[] | Flattened array of channel states (on, off, error_over_current, etc.) |
-| `ModuleTriggerMasked` | Boolean[] | Flattened array of trigger mask status |
+| `ModuleTriggerEnabled` | Boolean[] | Flattened array of trigger enabled status |
 | `ModuleTriggerDelay` | Double[] | Flattened array of trigger delays (0-5 ns) |
 
 ### Control Methods
@@ -103,9 +103,9 @@ Located under the `<Root>/` object:
 | `SetAllPower` | `enabled: Boolean` | Enables or disables power for all modules. |
 | `SetModulePower` | `module: Int32`, `enabled: Boolean` | Controls power for a specific module (1-270). |
 | `SetBoardCurrentLimits`| `board: Int32`, `min_ma: Double`, `max_ma: Double` | Configure safety current limits for an entire CTDB board identified by its sequence index. |
-| `SetModuleTriggerMask` | `module: Int32`, `masked: Boolean` | Sets trigger mask for a specific module. |
+| `SetModuleTriggerEnabled` | `module: Int32`, `enabled: Boolean` | Enables or disables trigger for a specific module. |
 | `SetModuleTriggerDelay`| `module: Int32`, `delay_ns: Double` | Sets trigger delay (0-5 ns) for a specific module. |
-| `SetAllTriggerMask`| `masked: Boolean` | Sets trigger mask for all modules. |
+| `SetAllTriggerEnabled`| `enabled: Boolean` | Enables or disables all triggers. |
 | `SetAllTriggerDelay`| `delay_ns: Double` | Sets trigger delay for all modules. |
 | `HealthCheck` | None | Returns a summary string of system health. |
 
@@ -123,13 +123,12 @@ Once connected, you can use the following commands at the `l2trig>` prompt:
 - `summary`: Displays a formatted table of all slots, channels, currents, and states.
 - `list`: Lists all raw monitoring variables and their current values.
 - `power <module> <on|off>`: Control power for a module (e.g., `power 5 on`).
-- `mask <module> <on|off>`: Control trigger mask for a module.
+- `trig <module> <on|off>`: Enable or disable trigger for a module (e.g., `trig 5 on`).
 - `delay <module> <ns>`: Set trigger delay in nanoseconds.
 - `limits <board> <min> <max>`: Set current limits for a board (1-based index).
 - `health`: Run the system health check.
 - `shutdown`: Trigger emergency shutdown.
-- `help`: Show all available commands.
-- `exit`: Close the client.
+- `alltrig <on|off>`: Enable or disable all triggers.
 
 ## Development and Testing
 

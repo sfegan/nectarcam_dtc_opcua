@@ -110,11 +110,11 @@ class L2TrigTestClient:
         ctdb_min = await self.read_variable("ctdb_limit_min_ma")
         ctdb_max = await self.read_variable("ctdb_limit_max_ma")
         
-        ch_enabled = await self.read_variable("channel_enabled")
-        ch_curr = await self.read_variable("channel_current_ma")
-        ch_state = await self.read_variable("channel_state")
-        trig_mask = await self.read_variable("trigger_masked")
-        trig_delay = await self.read_variable("trigger_delay_ns")
+        ch_enabled = await self.read_variable("ModulePowerEnabled")
+        ch_curr = await self.read_variable("ModuleCurrent")
+        ch_state = await self.read_variable("ModuleState")
+        trig_enabled = await self.read_variable("ModuleTriggerEnabled")
+        trig_delay = await self.read_variable("ModuleTriggerDelay")
 
         CHANNELS_PER_SLOT = 15
 
@@ -122,14 +122,14 @@ class L2TrigTestClient:
             status = "ERROR" if ctdb_err[i] else "OK"
             print(f"\nSlot {slot:2d} | FW: 0x{ctdb_fw[i]:04X} | Current: {ctdb_curr[i]:6.1f} mA | Status: {status}")
             print(f"        Limits: {ctdb_min[i]:.1f} - {ctdb_max[i]:.1f} mA")
-            print(f"        {'Ch':<3} | {'Pwr':<4} | {'Current':<10} | {'State':<10} | {'Trig':<6} | {'Delay'}")
-            print(f"        " + "-" * 66)
+            print(f"        {'Ch':<3} | {'Pwr':<4} | {'Current':<10} | {'State':<10} | {'Trig':<8} | {'Delay'}")
+            print(f"        " + "-" * 68)
             
             for ch in range(CHANNELS_PER_SLOT):
                 idx = i * CHANNELS_PER_SLOT + ch
                 pwr = "ON" if ch_enabled[idx] else "OFF"
-                mask = "MASKED" if trig_mask[idx] else "ACTIVE"
-                print(f"        {ch+1:<3d} | {pwr:<4} | {ch_curr[idx]:8.1f} mA | {ch_state[idx]:<10} | {mask:<6} | {trig_delay[idx]:.2f} ns")
+                en_status = "ENABLED" if trig_enabled[idx] else "DISABLED"
+                print(f"        {ch+1:<3d} | {pwr:<4} | {ch_curr[idx]:8.1f} mA | {ch_state[idx]:<10} | {en_status:<8} | {trig_delay[idx]:.2f} ns")
         print("")
 
     async def list_methods(self):
@@ -201,9 +201,9 @@ async def interactive_loop(client: L2TrigTestClient):
                 print("\nControl Commands:")
                 print("  power <mod> <on|off> Set module power (1-270)")
                 print("  allpower <on|off>    Set all modules power")
-                print("  mask <mod> <on|off>  Set module trigger mask")
+                print("  trig <mod> <on|off>  Enable or disable module trigger")
                 print("  delay <mod> <ns>     Set module trigger delay (0-5.0)")
-                print("  allmask <on|off>     Set all trigger masks")
+                print("  alltrig <on|off>     Enable or disable all triggers")
                 print("  alldelay <ns>        Set all trigger delays")
                 print("  limits <board> <min> <max> Set current limits for a board (1-based index)")
                 print("  health               Perform health check")
@@ -240,15 +240,15 @@ async def interactive_loop(client: L2TrigTestClient):
             elif cmd == "allpower":
                 if len(args) != 1: print("Usage: allpower <on|off>")
                 else: await client.call_method("SetAllPower", args[0])
-            elif cmd == "mask":
-                if len(args) != 2: print("Usage: mask <module> <on|off>")
-                else: await client.call_method("SetModuleTriggerMask", args[0], args[1])
+            elif cmd == "trig":
+                if len(args) != 2: print("Usage: trig <module> <on|off>")
+                else: await client.call_method("SetModuleTriggerEnabled", args[0], args[1])
             elif cmd == "delay":
                 if len(args) != 2: print("Usage: delay <module> <ns>")
                 else: await client.call_method("SetModuleTriggerDelay", args[0], args[1])
-            elif cmd == "allmask":
-                if len(args) != 1: print("Usage: allmask <on|off>")
-                else: await client.call_method("SetAllTriggerMask", args[0])
+            elif cmd == "alltrig":
+                if len(args) != 1: print("Usage: alltrig <on|off>")
+                else: await client.call_method("SetAllTriggerEnabled", args[0])
             elif cmd == "alldelay":
                 if len(args) != 1: print("Usage: alldelay <ns>")
                 else: await client.call_method("SetAllTriggerDelay", args[0])

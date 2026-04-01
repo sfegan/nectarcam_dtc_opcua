@@ -41,9 +41,9 @@ def mock_hal():
         get_power_current_max=DEFAULT,
         set_power_channel_enable=DEFAULT,
         set_power_enable_all=DEFAULT,
-        get_l1_trigger_mask=DEFAULT,
+        get_l1_trigger_enabled=DEFAULT,
         get_l1_trigger_delay=DEFAULT,
-        set_l1_trigger_channel_mask=DEFAULT,
+        set_l1_trigger_channel_enabled=DEFAULT,
         set_l1_trigger_delay=DEFAULT,
         get_l2cb_firmware_revision=DEFAULT,
         read_timestamp=DEFAULT,
@@ -55,7 +55,7 @@ def mock_hal():
         mocks['get_under_current_errors'].return_value = 0x0000
         mocks['get_power_current_min'].return_value = 100
         mocks['get_power_current_max'].return_value = 2000
-        mocks['get_l1_trigger_mask'].return_value = 0x0000
+        mocks['get_l1_trigger_enabled'].return_value = 0x0000
         mocks['get_l1_trigger_delay'].return_value = 27
         mocks['get_l2cb_firmware_revision'].return_value = 0x0100
         mocks['read_timestamp'].return_value = 123456789

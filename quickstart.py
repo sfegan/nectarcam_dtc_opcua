@@ -91,7 +91,7 @@ def main():
         trigger_status = system.ctdbs[1].get_trigger_status()
         print("   First 5 trigger channels:")
         for trig in trigger_status[:5]:
-            status_str = "Masked" if trig.masked else "Active"
+            status_str = "Enabled" if trig.enabled else "Disabled"
             print(f"   ├─ Channel {trig.channel}: {status_str}, "
                   f"Delay={trig.delay_ns:.3f}ns")
     except Exception as e:

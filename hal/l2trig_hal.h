@@ -126,7 +126,7 @@ static inline uint16_t cta_l2cb_getFirmwareRevision(void)
 	return IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_FRREV);
 }
 
-// ***** Helper Functions to set trigger masks and delays
+// ***** Helper Functions to set trigger enabled status and delays
 
 // select CTDB trigger cluster/channels by selecting a CTDB slot and CTDB cluster/channel
 // for internal use only
@@ -135,22 +135,22 @@ static inline void cta_l2cb_l1sel(uint8_t _slot, uint8_t _channel)
 	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_L1SEL, ((_slot & 0x1f) << 4) | (_channel & 0xf));
 }
 
-// set trigger mask for CTDB trigger cluster/channels
-static inline void cta_l2cb_setL1TriggerMask(uint8_t _slot, uint16_t _mask)
+// set trigger enabled status for CTDB trigger cluster/channels
+static inline void cta_l2cb_setL1TriggerEnabled(uint8_t _slot, uint16_t _enabled)
 {
 	cta_l2cb_l1sel(_slot, 0); // channel parameter does matter at this point
-	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_L1MSK, _mask);
+	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_L1MSK, _enabled);
 }
 
-// get trigger mask for CTDB trigger cluster/channels
-static inline uint16_t cta_l2cb_getL1TriggerMask(uint8_t _slot)
+// get trigger enabled status for CTDB trigger cluster/channels
+static inline uint16_t cta_l2cb_getL1TriggerEnabled(uint8_t _slot)
 {
 	cta_l2cb_l1sel(_slot, 0); // channel parameter does matter at this point
 	return IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_L1MSK);
 }
 
-// set trigger mask for given CTDB trigger cluster/channel
-static inline void cta_l2cb_setL1TriggerChannelMask(uint8_t _slot, uint8_t _channel, uint16_t _on)
+// set trigger enabled status for given CTDB trigger cluster/channel
+static inline void cta_l2cb_setL1TriggerChannelEnabled(uint8_t _slot, uint8_t _channel, uint16_t _on)
 {
 	cta_l2cb_l1sel(_slot, 0); // channel parameter does matter at this point
 	uint16_t val=IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_L1MSK);
@@ -158,8 +158,8 @@ static inline void cta_l2cb_setL1TriggerChannelMask(uint8_t _slot, uint8_t _chan
 	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_L1MSK, val);
 }
 
-// get trigger mask for CTDB trigger cluster/channel
-static inline uint16_t cta_l2cb_getL1TriggerChannelMask(uint8_t _slot, uint8_t _channel)
+// get trigger enabled status for CTDB trigger cluster/channel
+static inline uint16_t cta_l2cb_getL1TriggerChannelEnabled(uint8_t _slot, uint8_t _channel)
 {
 	cta_l2cb_l1sel(_slot, 0); // channel parameter does matter at this point
 	return testBitVal16(IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_L1MSK), _channel);

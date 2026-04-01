@@ -99,17 +99,17 @@ _lib.cta_l2cb_readTimestamp_export.argtypes = []
 _lib.cta_l2cb_readTimestamp_export.restype = c_uint64
 
 # L1 Trigger Control
-_lib.cta_l2cb_setL1TriggerMask_export.argtypes = [c_uint8, c_uint16]
-_lib.cta_l2cb_setL1TriggerMask_export.restype = None
+_lib.cta_l2cb_setL1TriggerEnabled_export.argtypes = [c_uint8, c_uint16]
+_lib.cta_l2cb_setL1TriggerEnabled_export.restype = None
 
-_lib.cta_l2cb_getL1TriggerMask_export.argtypes = [c_uint8]
-_lib.cta_l2cb_getL1TriggerMask_export.restype = c_uint16
+_lib.cta_l2cb_getL1TriggerEnabled_export.argtypes = [c_uint8]
+_lib.cta_l2cb_getL1TriggerEnabled_export.restype = c_uint16
 
-_lib.cta_l2cb_setL1TriggerChannelMask_export.argtypes = [c_uint8, c_uint8, c_uint16]
-_lib.cta_l2cb_setL1TriggerChannelMask_export.restype = None
+_lib.cta_l2cb_setL1TriggerChannelEnabled_export.argtypes = [c_uint8, c_uint8, c_uint16]
+_lib.cta_l2cb_setL1TriggerChannelEnabled_export.restype = None
 
-_lib.cta_l2cb_getL1TriggerChannelMask_export.argtypes = [c_uint8, c_uint8]
-_lib.cta_l2cb_getL1TriggerChannelMask_export.restype = c_uint16
+_lib.cta_l2cb_getL1TriggerChannelEnabled_export.argtypes = [c_uint8, c_uint8]
+_lib.cta_l2cb_getL1TriggerChannelEnabled_export.restype = c_uint16
 
 _lib.cta_l2cb_setL1TriggerDelay_export.argtypes = [c_uint8, c_uint8, c_uint16, c_uint16]
 _lib.cta_l2cb_setL1TriggerDelay_export.restype = c_int
@@ -222,24 +222,24 @@ def read_timestamp() -> int:
 
 # --- L1 Trigger Control ---
 
-def set_l1_trigger_mask(slot: int, mask: int) -> None:
-    """Set trigger mask for all channels of a slot"""
-    _lib.cta_l2cb_setL1TriggerMask_export(slot, mask)
+def set_l1_trigger_enabled(slot: int, enabled: int) -> None:
+    """Set trigger enabled status for all channels of a slot"""
+    _lib.cta_l2cb_setL1TriggerEnabled_export(slot, enabled)
 
 
-def get_l1_trigger_mask(slot: int) -> int:
-    """Get trigger mask for all channels of a slot"""
-    return _lib.cta_l2cb_getL1TriggerMask_export(slot)
+def get_l1_trigger_enabled(slot: int) -> int:
+    """Get trigger enabled status for all channels of a slot"""
+    return _lib.cta_l2cb_getL1TriggerEnabled_export(slot)
 
 
-def set_l1_trigger_channel_mask(slot: int, channel: int, enabled: bool) -> None:
-    """Set trigger mask for a specific channel"""
-    _lib.cta_l2cb_setL1TriggerChannelMask_export(slot, channel, 1 if enabled else 0)
+def set_l1_trigger_channel_enabled(slot: int, channel: int, enabled: bool) -> None:
+    """Set trigger enabled status for a specific channel"""
+    _lib.cta_l2cb_setL1TriggerChannelEnabled_export(slot, channel, 1 if enabled else 0)
 
 
-def get_l1_trigger_channel_mask(slot: int, channel: int) -> bool:
-    """Get trigger mask for a specific channel"""
-    return bool(_lib.cta_l2cb_getL1TriggerChannelMask_export(slot, channel))
+def get_l1_trigger_channel_enabled(slot: int, channel: int) -> bool:
+    """Get trigger enabled status for a specific channel"""
+    return bool(_lib.cta_l2cb_getL1TriggerChannelEnabled_export(slot, channel))
 
 
 def set_l1_trigger_delay(slot: int, channel: int, delay: int, 
