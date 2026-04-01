@@ -256,7 +256,7 @@ class CTDBController:
         self._last_status = status
         return status
     
-    def set_channel_power(self, channel: int, enabled: bool) -> None:
+    def set_channel_power_enabled(self, channel: int, enabled: bool) -> None:
         """
         Enable or disable a single power channel
         
@@ -273,7 +273,7 @@ class CTDBController:
             
         logger.debug(f"Slot {self.slot} Ch{channel}: Power {'enabled' if enabled else 'disabled'}")
     
-    def set_all_channels(self, enabled: bool) -> None:
+    def set_all_power_enabled(self, enabled: bool) -> None:
         """
         Enable or disable all power channels
         
@@ -286,7 +286,7 @@ class CTDBController:
         
         logger.debug(f"Slot {self.slot}: All channels {'enabled' if enabled else 'disabled'}")
     
-    def set_channels(self, channel_states: Dict[int, bool]) -> None:
+    def set_some_power_enabled(self, channel_states: Dict[int, bool]) -> None:
         """
         Set multiple channels at once
         
@@ -517,17 +517,13 @@ class L2TriggerSystem:
     
     def set_all_power(self, enabled: bool) -> None:
         """Enable or disable all power channels on all boards"""
-        try:
-            hal.set_power_enabled_all(enabled)
-            logger.debug(f"All power channels {'enabled' if enabled else 'disabled'}")
-        except Exception as e:
-            logger.error(f"Error in global set_all_power: {e}")
-            # Fallback to per-slot if global fails
-            for ctdb in self.ctdbs.values():
-                try:
-                    ctdb.set_all_channels(enabled)
-                except Exception as e:
-                    logger.error(f"Error setting power on slot {ctdb.slot}: {e}")
+        for ctdb in self.ctdbs.values():
+            try:
+                ctdb.set_all_channels(enabled)
+            except Exception as e:
+                logger.error(f"Error setting power on slot {ctdb.slot}: {e}")
+        
+        logger.debug(f"All power channels {'enabled' if enabled else 'disabled'}")
 
     def set_all_trigger_enabled(self, enabled: bool) -> None:
         """Set trigger enabled status for all channels on all boards"""
