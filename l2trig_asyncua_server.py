@@ -108,7 +108,6 @@ class L2TriggerOPCUAServer:
                  opcua_users: dict = None,
                  poll_interval: float = 1.0,
                  poll_ratio: int = 10,
-                 timeout_us: int = 10000,
                  enabled_slots: Optional[List[int]] = None):
         """
         Initialize OPC UA server
@@ -122,7 +121,6 @@ class L2TriggerOPCUAServer:
         
         # Hardware interface
         self.system = L2TriggerSystem(
-            timeout_us=timeout_us,
             enabled_slots=enabled_slots
         )
         self.active_slots = sorted(list(self.system.ctdbs.keys()))
@@ -710,7 +708,6 @@ async def main():
         opcua_users=opcua_users,
         poll_interval=args.poll_interval,
         poll_ratio=args.poll_ratio,
-        timeout_us=args.timeout_us,
         enabled_slots=enabled_slots
     )
     

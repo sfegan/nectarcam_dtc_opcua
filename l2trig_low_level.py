@@ -82,14 +82,20 @@ if _lib is None:
 # ============================================================================
 
 # SPI Functions
-_lib.cta_l2cb_spi_read.argtypes = [c_uint8, c_uint8, POINTER(c_uint16), c_int]
+_lib.cta_l2cb_spi_read.argtypes = [c_uint8, c_uint8, POINTER(c_uint16)]
 _lib.cta_l2cb_spi_read.restype = c_int
 
-_lib.cta_l2cb_spi_write.argtypes = [c_uint8, c_uint8, c_uint16, c_int]
+_lib.cta_l2cb_spi_write.argtypes = [c_uint8, c_uint8, c_uint16]
 _lib.cta_l2cb_spi_write.restype = c_int
 
-_lib.cta_l2cb_spi_wait.argtypes = [c_int]
+_lib.cta_l2cb_spi_wait.argtypes = []
 _lib.cta_l2cb_spi_wait.restype = c_int
+
+_lib.cta_l2cb_spi_set_ctdb_delays_export.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
+_lib.cta_l2cb_spi_set_ctdb_delays_export.restype = None
+
+_lib.cta_l2cb_spi_set_delay_delays_export.argtypes = [ctypes.c_int64, ctypes.c_int64, ctypes.c_int64]
+_lib.cta_l2cb_spi_set_delay_delays_export.restype = None
 
 # L2CB Functions
 _lib.cta_l2cb_getFirmwareRevision_export.argtypes = []
@@ -111,64 +117,64 @@ _lib.cta_l2cb_setL1TriggerChannelEnabled_export.restype = None
 _lib.cta_l2cb_getL1TriggerChannelEnabled_export.argtypes = [c_uint8, c_uint8]
 _lib.cta_l2cb_getL1TriggerChannelEnabled_export.restype = c_uint16
 
-_lib.cta_l2cb_setL1TriggerDelay_export.argtypes = [c_uint8, c_uint8, c_uint16, c_uint16]
+_lib.cta_l2cb_setL1TriggerDelay_export.argtypes = [c_uint8, c_uint8, c_uint16]
 _lib.cta_l2cb_setL1TriggerDelay_export.restype = c_int
 
 _lib.cta_l2cb_getL1TriggerDelay_export.argtypes = [c_uint8, c_uint8]
 _lib.cta_l2cb_getL1TriggerDelay_export.restype = c_uint16
 
 # CTDB Power Control
-_lib.cta_ctdb_setPowerEnabled_export.argtypes = [c_uint8, c_uint16, c_int]
+_lib.cta_ctdb_setPowerEnabled_export.argtypes = [c_uint8, c_uint16]
 _lib.cta_ctdb_setPowerEnabled_export.restype = c_int
 
-_lib.cta_ctdb_getPowerEnabled_export.argtypes = [c_uint8, POINTER(c_uint16), c_int]
+_lib.cta_ctdb_getPowerEnabled_export.argtypes = [c_uint8, POINTER(c_uint16)]
 _lib.cta_ctdb_getPowerEnabled_export.restype = c_int
 
-_lib.cta_ctdb_setPowerChannelEnabled_export.argtypes = [c_uint8, c_uint16, c_int, c_int]
+_lib.cta_ctdb_setPowerChannelEnabled_export.argtypes = [c_uint8, c_uint16, c_int]
 _lib.cta_ctdb_setPowerChannelEnabled_export.restype = c_int
 
-_lib.cta_ctdb_getPowerChannelEnabled_export.argtypes = [c_uint8, c_uint16, POINTER(c_int), c_int]
+_lib.cta_ctdb_getPowerChannelEnabled_export.argtypes = [c_uint8, c_uint16, POINTER(c_int)]
 _lib.cta_ctdb_getPowerChannelEnabled_export.restype = c_int
 
-_lib.cta_ctdb_setPowerEnabledToAll_export.argtypes = [c_uint16, c_int]
+_lib.cta_ctdb_setPowerEnabledToAll_export.argtypes = [c_uint16]
 _lib.cta_ctdb_setPowerEnabledToAll_export.restype = None
 
 # CTDB Current Monitoring
-_lib.cta_ctdb_setPowerCurrentMax_export.argtypes = [c_uint8, c_uint16, c_int]
+_lib.cta_ctdb_setPowerCurrentMax_export.argtypes = [c_uint8, c_uint16]
 _lib.cta_ctdb_setPowerCurrentMax_export.restype = c_int
 
-_lib.cta_ctdb_getPowerCurrentMax_export.argtypes = [c_uint8, POINTER(c_uint16), c_int]
+_lib.cta_ctdb_getPowerCurrentMax_export.argtypes = [c_uint8, POINTER(c_uint16)]
 _lib.cta_ctdb_getPowerCurrentMax_export.restype = c_int
 
-_lib.cta_ctdb_setPowerCurrentMin_export.argtypes = [c_uint8, c_uint16, c_int]
+_lib.cta_ctdb_setPowerCurrentMin_export.argtypes = [c_uint8, c_uint16]
 _lib.cta_ctdb_setPowerCurrentMin_export.restype = c_int
 
-_lib.cta_ctdb_getPowerCurrentMin_export.argtypes = [c_uint8, POINTER(c_uint16), c_int]
+_lib.cta_ctdb_getPowerCurrentMin_export.argtypes = [c_uint8, POINTER(c_uint16)]
 _lib.cta_ctdb_getPowerCurrentMin_export.restype = c_int
 
-_lib.cta_ctdb_getPowerCurrent_export.argtypes = [c_uint8, c_uint16, POINTER(c_uint16), c_int]
+_lib.cta_ctdb_getPowerCurrent_export.argtypes = [c_uint8, c_uint16, POINTER(c_uint16)]
 _lib.cta_ctdb_getPowerCurrent_export.restype = c_int
 
-_lib.cta_ctdb_getUnderCurrentErrors_export.argtypes = [c_uint8, POINTER(c_uint16), c_int]
+_lib.cta_ctdb_getUnderCurrentErrors_export.argtypes = [c_uint8, POINTER(c_uint16)]
 _lib.cta_ctdb_getUnderCurrentErrors_export.restype = c_int
 
-_lib.cta_ctdb_getOverCurrentErrors_export.argtypes = [c_uint8, POINTER(c_uint16), c_int]
+_lib.cta_ctdb_getOverCurrentErrors_export.argtypes = [c_uint8, POINTER(c_uint16)]
 _lib.cta_ctdb_getOverCurrentErrors_export.restype = c_int
 
 # CTDB Utility
-_lib.cta_ctdb_getFirmwareRevision_export.argtypes = [c_uint8, POINTER(c_uint16), c_int]
+_lib.cta_ctdb_getFirmwareRevision_export.argtypes = [c_uint8, POINTER(c_uint16)]
 _lib.cta_ctdb_getFirmwareRevision_export.restype = c_int
 
-_lib.cta_ctdb_setDebugPins_export.argtypes = [c_uint8, c_uint16, c_int]
+_lib.cta_ctdb_setDebugPins_export.argtypes = [c_uint8, c_uint16]
 _lib.cta_ctdb_setDebugPins_export.restype = c_int
 
-_lib.cta_ctdb_getDebugPins_export.argtypes = [c_uint8, POINTER(c_uint16), c_int]
+_lib.cta_ctdb_getDebugPins_export.argtypes = [c_uint8, POINTER(c_uint16)]
 _lib.cta_ctdb_getDebugPins_export.restype = c_int
 
-_lib.cta_ctdb_getSlaveRegister_export.argtypes = [c_uint8, c_uint8, POINTER(c_uint16), c_int]
+_lib.cta_ctdb_getSlaveRegister_export.argtypes = [c_uint8, c_uint8, POINTER(c_uint16)]
 _lib.cta_ctdb_getSlaveRegister_export.restype = c_int
 
-_lib.cta_ctdb_setSlaveRegister_export.argtypes = [c_uint8, c_uint8, c_uint16, c_int]
+_lib.cta_ctdb_setSlaveRegister_export.argtypes = [c_uint8, c_uint8, c_uint16]
 _lib.cta_ctdb_setSlaveRegister_export.restype = c_int
 
 _lib.cta_l2cb_isValidSlot_export.argtypes = [c_int]
@@ -178,7 +184,11 @@ _lib.cta_l2cb_isValidSlot_export.restype = c_int
 # Constants
 # ============================================================================
 
-DEFAULT_TIMEOUT_US = 10000
+# Default timing in nanoseconds
+DEFAULT_MIN_COMMAND_DELAY_NS = 0
+DEFAULT_MIN_READ_DELAY_NS = 0
+DEFAULT_TIMEOUT_NS = 10000000 # 10ms
+
 CURRENT_CONVERSION_FACTOR = 0.485  # mA per ADC count
 CURRENT_MAX = 0x0FFF * CURRENT_CONVERSION_FACTOR  # Max current corresponding to 12-bit ADC value
 
@@ -188,23 +198,37 @@ CURRENT_MAX = 0x0FFF * CURRENT_CONVERSION_FACTOR  # Max current corresponding to
 
 # --- SPI Functions ---
 
-def spi_read(slot: int, register: int, timeout_us: int = DEFAULT_TIMEOUT_US) -> int:
+def set_ctdb_flowcontrol_parameters(min_command_delay_ns: int = DEFAULT_MIN_COMMAND_DELAY_NS, 
+                        min_read_delay_ns: int = DEFAULT_MIN_READ_DELAY_NS, 
+                        timeout_ns: int = DEFAULT_TIMEOUT_NS) -> None:
+    """Configure flowcontrol delays and timeout for CTDB SPI operations"""
+    _lib.cta_l2cb_spi_set_ctdb_delays_export(min_command_delay_ns, min_read_delay_ns, timeout_ns)
+
+
+def set_delay_flowcontrol_parameters(min_command_delay_ns: int = DEFAULT_MIN_COMMAND_DELAY_NS, 
+                         min_read_delay_ns: int = DEFAULT_MIN_READ_DELAY_NS, 
+                         timeout_ns: int = DEFAULT_TIMEOUT_NS) -> None:
+    """Configure flowcontrol delays and timeout for L1 Delay SPI operations"""
+    _lib.cta_l2cb_spi_set_delay_delays_export(min_command_delay_ns, min_read_delay_ns, timeout_ns)
+
+
+def spi_read(slot: int, register: int) -> int:
     """Read a register via SPI from CTDB at given slot"""
     value = c_uint16()
-    err = _lib.cta_l2cb_spi_read(slot, register, ctypes.byref(value), timeout_us)
+    err = _lib.cta_l2cb_spi_read(slot, register, ctypes.byref(value))
     _check_error(err, f"spi_read(slot={slot}, reg=0x{register:02X})")
     return value.value
 
 
-def spi_write(slot: int, register: int, value: int, timeout_us: int = DEFAULT_TIMEOUT_US) -> None:
+def spi_write(slot: int, register: int, value: int) -> None:
     """Write a register via SPI to CTDB at given slot"""
-    err = _lib.cta_l2cb_spi_write(slot, register, value, timeout_us)
+    err = _lib.cta_l2cb_spi_write(slot, register, value)
     _check_error(err, f"spi_write(slot={slot}, reg=0x{register:02X}, val=0x{value:04X})")
 
 
-def spi_wait(timeout_us: int = DEFAULT_TIMEOUT_US) -> None:
+def spi_wait() -> None:
     """Wait for SPI transfer to complete"""
-    err = _lib.cta_l2cb_spi_wait(timeout_us)
+    err = _lib.cta_l2cb_spi_wait()
     _check_error(err, "spi_wait")
 
 
@@ -242,13 +266,12 @@ def get_l1_trigger_channel_enabled(slot: int, channel: int) -> bool:
     return bool(_lib.cta_l2cb_getL1TriggerChannelEnabled_export(slot, channel))
 
 
-def set_l1_trigger_delay(slot: int, channel: int, delay: int, 
-                         timeout_us: int = DEFAULT_TIMEOUT_US) -> None:
+def set_l1_trigger_delay(slot: int, channel: int, delay: int) -> None:
     """
     Set trigger delay for a channel
     delay: in 37 ps steps, 0-5ns range
     """
-    err = _lib.cta_l2cb_setL1TriggerDelay_export(slot, channel, delay, timeout_us)
+    err = _lib.cta_l2cb_setL1TriggerDelay_export(slot, channel, delay)
     _check_error(err, f"set_l1_trigger_delay(slot={slot}, ch={channel}, delay={delay})")
 
 
@@ -259,72 +282,70 @@ def get_l1_trigger_delay(slot: int, channel: int) -> int:
 
 # --- CTDB Power Control ---
 
-def set_power_enabled(slot: int, value: int, timeout_us: int = DEFAULT_TIMEOUT_US) -> None:
+def set_power_enabled(slot: int, value: int) -> None:
     """Set power enable register (bits 1-15 = channels 1-15)"""
-    err = _lib.cta_ctdb_setPowerEnabled_export(slot, value, timeout_us)
+    err = _lib.cta_ctdb_setPowerEnabled_export(slot, value)
     _check_error(err, f"set_power_enable(slot={slot}, val=0x{value:04X})")
 
 
-def get_power_enabled(slot: int, timeout_us: int = DEFAULT_TIMEOUT_US) -> int:
+def get_power_enabled(slot: int) -> int:
     """Get power enable register (bits 1-15 = channels 1-15)"""
     value = c_uint16()
-    err = _lib.cta_ctdb_getPowerEnabled_export(slot, ctypes.byref(value), timeout_us)
+    err = _lib.cta_ctdb_getPowerEnabled_export(slot, ctypes.byref(value))
     _check_error(err, f"get_power_enable(slot={slot})")
     return value.value
 
 
-def set_power_channel_enabled(slot: int, channel: int, enabled: bool, 
-                            timeout_us: int = DEFAULT_TIMEOUT_US) -> None:
+def set_power_channel_enabled(slot: int, channel: int, enabled: bool) -> None:
     """Enable or disable a specific power channel"""
-    err = _lib.cta_ctdb_setPowerChannelEnabled_export(slot, channel, 1 if enabled else 0, timeout_us)
+    err = _lib.cta_ctdb_setPowerChannelEnabled_export(slot, channel, 1 if enabled else 0)
     _check_error(err, f"set_power_channel_enable(slot={slot}, ch={channel}, en={enabled})")
 
 
-def get_power_channel_enabled(slot: int, channel: int, 
-                            timeout_us: int = DEFAULT_TIMEOUT_US) -> bool:
+def get_power_channel_enabled(slot: int, channel: int) -> bool:
     """Get enable status of a specific power channel"""
     is_on = c_int()
-    err = _lib.cta_ctdb_getPowerChannelEnabled_export(slot, channel, ctypes.byref(is_on), timeout_us)
+    err = _lib.cta_ctdb_getPowerChannelEnabled_export(slot, channel, ctypes.byref(is_on))
     _check_error(err, f"get_power_channel_enable(slot={slot}, ch={channel})")
     return bool(is_on.value)
 
 
-def set_power_enabled_all(enabled: bool, timeout_us: int = DEFAULT_TIMEOUT_US) -> None:
+def set_power_enabled_all(enabled: bool) -> None:
     """Enable or disable all power channels on all slots"""
-    _lib.cta_ctdb_setPowerEnabledToAll_export(1 if enabled else 0, timeout_us)
+    _lib.cta_ctdb_setPowerEnabledToAll_export(1 if enabled else 0)
 
 
 # --- CTDB Current Monitoring ---
 
-def set_power_current_max(slot: int, value_raw: int, timeout_us: int = DEFAULT_TIMEOUT_US) -> None:
+def set_power_current_max(slot: int, value_raw: int) -> None:
     """Set maximum current limit (raw ADC value, 0.485mA per count)"""
-    err = _lib.cta_ctdb_setPowerCurrentMax_export(slot, value_raw, timeout_us)
+    err = _lib.cta_ctdb_setPowerCurrentMax_export(slot, value_raw)
     _check_error(err, f"set_power_current_max(slot={slot}, val={value_raw})")
 
 
-def get_power_current_max(slot: int, timeout_us: int = DEFAULT_TIMEOUT_US) -> int:
+def get_power_current_max(slot: int) -> int:
     """Get maximum current limit (raw ADC value)"""
     value = c_uint16()
-    err = _lib.cta_ctdb_getPowerCurrentMax_export(slot, ctypes.byref(value), timeout_us)
+    err = _lib.cta_ctdb_getPowerCurrentMax_export(slot, ctypes.byref(value))
     _check_error(err, f"get_power_current_max(slot={slot})")
     return value.value
 
 
-def set_power_current_min(slot: int, value_raw: int, timeout_us: int = DEFAULT_TIMEOUT_US) -> None:
+def set_power_current_min(slot: int, value_raw: int) -> None:
     """Set minimum current limit (raw ADC value, 0.485mA per count)"""
-    err = _lib.cta_ctdb_setPowerCurrentMin_export(slot, value_raw, timeout_us)
+    err = _lib.cta_ctdb_setPowerCurrentMin_export(slot, value_raw)
     _check_error(err, f"set_power_current_min(slot={slot}, val={value_raw})")
 
 
-def get_power_current_min(slot: int, timeout_us: int = DEFAULT_TIMEOUT_US) -> int:
+def get_power_current_min(slot: int) -> int:
     """Get minimum current limit (raw ADC value)"""
     value = c_uint16()
-    err = _lib.cta_ctdb_getPowerCurrentMin_export(slot, ctypes.byref(value), timeout_us)
+    err = _lib.cta_ctdb_getPowerCurrentMin_export(slot, ctypes.byref(value))
     _check_error(err, f"get_power_current_min(slot={slot})")
     return value.value
 
 
-def get_power_current(slot: int, channel: int, timeout_us: int = DEFAULT_TIMEOUT_US) -> float:
+def get_power_current(slot: int, channel: int) -> float:
     """
     Get current reading for a channel
     channel 0: CTDB board itself
@@ -332,64 +353,63 @@ def get_power_current(slot: int, channel: int, timeout_us: int = DEFAULT_TIMEOUT
     Returns: current in mA
     """
     value = c_uint16()
-    err = _lib.cta_ctdb_getPowerCurrent_export(slot, channel, ctypes.byref(value), timeout_us)
+    err = _lib.cta_ctdb_getPowerCurrent_export(slot, channel, ctypes.byref(value))
     _check_error(err, f"get_power_current(slot={slot}, ch={channel})")
     # Convert to mA: 0.485mA per count, mask to 12 bits
     return (value.value & 0x0FFF) * CURRENT_CONVERSION_FACTOR
 
 
-def get_under_current_errors(slot: int, timeout_us: int = DEFAULT_TIMEOUT_US) -> int:
+def get_under_current_errors(slot: int) -> int:
     """Get under-current error vector (bits 1-15 = channels 1-15)"""
     value = c_uint16()
-    err = _lib.cta_ctdb_getUnderCurrentErrors_export(slot, ctypes.byref(value), timeout_us)
+    err = _lib.cta_ctdb_getUnderCurrentErrors_export(slot, ctypes.byref(value))
     _check_error(err, f"get_under_current_errors(slot={slot})")
     return value.value
 
 
-def get_over_current_errors(slot: int, timeout_us: int = DEFAULT_TIMEOUT_US) -> int:
+def get_over_current_errors(slot: int) -> int:
     """Get over-current error vector (bits 1-15 = channels 1-15)"""
     value = c_uint16()
-    err = _lib.cta_ctdb_getOverCurrentErrors_export(slot, ctypes.byref(value), timeout_us)
+    err = _lib.cta_ctdb_getOverCurrentErrors_export(slot, ctypes.byref(value))
     _check_error(err, f"get_over_current_errors(slot={slot})")
     return value.value
 
 
 # --- CTDB Utility ---
 
-def get_ctdb_firmware_revision(slot: int, timeout_us: int = DEFAULT_TIMEOUT_US) -> int:
+def get_ctdb_firmware_revision(slot: int) -> int:
     """Get CTDB firmware revision"""
     value = c_uint16()
-    err = _lib.cta_ctdb_getFirmwareRevision_export(slot, ctypes.byref(value), timeout_us)
+    err = _lib.cta_ctdb_getFirmwareRevision_export(slot, ctypes.byref(value))
     _check_error(err, f"get_ctdb_firmware_revision(slot={slot})")
     return value.value
 
 
-def set_debug_pins(slot: int, value: int, timeout_us: int = DEFAULT_TIMEOUT_US) -> None:
+def set_debug_pins(slot: int, value: int) -> None:
     """Set debug pins (bits 0-3 = SEL0-3)"""
-    err = _lib.cta_ctdb_setDebugPins_export(slot, value, timeout_us)
+    err = _lib.cta_ctdb_setDebugPins_export(slot, value)
     _check_error(err, f"set_debug_pins(slot={slot}, val={value})")
 
 
-def get_debug_pins(slot: int, timeout_us: int = DEFAULT_TIMEOUT_US) -> int:
+def get_debug_pins(slot: int) -> int:
     """Get debug pins (bits 0-3 = SEL0-3)"""
     value = c_uint16()
-    err = _lib.cta_ctdb_getDebugPins_export(slot, ctypes.byref(value), timeout_us)
+    err = _lib.cta_ctdb_getDebugPins_export(slot, ctypes.byref(value))
     _check_error(err, f"get_debug_pins(slot={slot})")
     return value.value
 
 
-def get_slave_register(slot: int, address: int, timeout_us: int = DEFAULT_TIMEOUT_US) -> int:
+def get_slave_register(slot: int, address: int) -> int:
     """Read arbitrary slave register"""
     value = c_uint16()
-    err = _lib.cta_ctdb_getSlaveRegister_export(slot, address, ctypes.byref(value), timeout_us)
+    err = _lib.cta_ctdb_getSlaveRegister_export(slot, address, ctypes.byref(value))
     _check_error(err, f"get_slave_register(slot={slot}, addr=0x{address:02X})")
     return value.value
 
 
-def set_slave_register(slot: int, address: int, value: int, 
-                      timeout_us: int = DEFAULT_TIMEOUT_US) -> None:
+def set_slave_register(slot: int, address: int, value: int) -> None:
     """Write arbitrary slave register"""
-    err = _lib.cta_ctdb_setSlaveRegister_export(slot, address, value, timeout_us)
+    err = _lib.cta_ctdb_setSlaveRegister_export(slot, address, value)
     _check_error(err, f"set_slave_register(slot={slot}, addr=0x{address:02X}, val=0x{value:04X})")
 
 

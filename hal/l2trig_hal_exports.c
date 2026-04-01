@@ -123,7 +123,7 @@ uint16_t cta_l2cb_getL1TriggerChannelEnabled_export(uint8_t slot, uint8_t channe
     return active;
 }
 
-int cta_l2cb_setL1TriggerDelay_export(uint8_t slot, uint8_t channel, uint16_t delay, uint16_t timeout_us)
+int cta_l2cb_setL1TriggerDelay_export(uint8_t slot, uint8_t channel, uint16_t delay)
 {
     init_dummy_state();
     if (slot < 32 && channel < 15) {
@@ -150,7 +150,7 @@ uint16_t cta_l2cb_getL1TriggerDelay_export(uint8_t slot, uint8_t channel)
     return delay;
 }
 
-int cta_ctdb_setPowerEnabled_export(uint8_t slot, uint16_t value, int timeout_us)
+int cta_ctdb_setPowerEnabled_export(uint8_t slot, uint16_t value)
 {
     init_dummy_state();
     if (slot < 32) {
@@ -163,7 +163,7 @@ int cta_ctdb_setPowerEnabled_export(uint8_t slot, uint16_t value, int timeout_us
     return CTA_L2CB_NO_ERROR;
 }
 
-int cta_ctdb_getPowerEnabled_export(uint8_t slot, uint16_t* value, int timeout_us)
+int cta_ctdb_getPowerEnabled_export(uint8_t slot, uint16_t* value)
 {
     init_dummy_state();
     if (value && slot < 32) {
@@ -176,7 +176,7 @@ int cta_ctdb_getPowerEnabled_export(uint8_t slot, uint16_t* value, int timeout_u
     return CTA_L2CB_NO_ERROR;
 }
 
-int cta_ctdb_setPowerChannelEnabled_export(uint8_t slot, uint16_t channel, int on, int timeout_us)
+int cta_ctdb_setPowerChannelEnabled_export(uint8_t slot, uint16_t channel, int on)
 {
     init_dummy_state();
     if (slot < 32 && channel >= 1 && channel <= 15) {
@@ -190,7 +190,7 @@ int cta_ctdb_setPowerChannelEnabled_export(uint8_t slot, uint16_t channel, int o
     return CTA_L2CB_NO_ERROR;
 }
 
-int cta_ctdb_getPowerChannelEnabled_export(uint8_t slot, uint16_t channel, int* isOn, int timeout_us)
+int cta_ctdb_getPowerChannelEnabled_export(uint8_t slot, uint16_t channel, int* isOn)
 {
     init_dummy_state();
     if (isOn && slot < 32 && channel >= 1 && channel <= 15) {
@@ -203,7 +203,7 @@ int cta_ctdb_getPowerChannelEnabled_export(uint8_t slot, uint16_t channel, int* 
     return CTA_L2CB_NO_ERROR;
 }
 
-void cta_ctdb_setPowerEnabledToAll_export(uint16_t on, int timeout_us)
+void cta_ctdb_setPowerEnabledToAll_export(uint16_t on)
 {
     init_dummy_state();
     uint16_t val = on ? 0xFFFE : 0x0000;
@@ -216,7 +216,7 @@ void cta_ctdb_setPowerEnabledToAll_export(uint16_t on, int timeout_us)
 #endif
 }
 
-int cta_ctdb_setPowerCurrentMax_export(uint8_t slot, uint16_t value, int timeout_us)
+int cta_ctdb_setPowerCurrentMax_export(uint8_t slot, uint16_t value)
 {
     init_dummy_state();
     if (slot < 32) dummy_slots[slot].current_max = value;
@@ -227,7 +227,7 @@ int cta_ctdb_setPowerCurrentMax_export(uint8_t slot, uint16_t value, int timeout
     return CTA_L2CB_NO_ERROR;
 }
 
-int cta_ctdb_getPowerCurrentMax_export(uint8_t slot, uint16_t* value, int timeout_us)
+int cta_ctdb_getPowerCurrentMax_export(uint8_t slot, uint16_t* value)
 {
     init_dummy_state();
     if (value && slot < 32) *value = dummy_slots[slot].current_max;
@@ -238,7 +238,7 @@ int cta_ctdb_getPowerCurrentMax_export(uint8_t slot, uint16_t* value, int timeou
     return CTA_L2CB_NO_ERROR;
 }
 
-int cta_ctdb_setPowerCurrentMin_export(uint8_t slot, uint16_t value, int timeout_us)
+int cta_ctdb_setPowerCurrentMin_export(uint8_t slot, uint16_t value)
 {
     init_dummy_state();
     if (slot < 32) dummy_slots[slot].current_min = value;
@@ -249,7 +249,7 @@ int cta_ctdb_setPowerCurrentMin_export(uint8_t slot, uint16_t value, int timeout
     return CTA_L2CB_NO_ERROR;
 }
 
-int cta_ctdb_getPowerCurrentMin_export(uint8_t slot, uint16_t* value, int timeout_us)
+int cta_ctdb_getPowerCurrentMin_export(uint8_t slot, uint16_t* value)
 {
     init_dummy_state();
     if (value && slot < 32) *value = dummy_slots[slot].current_min;
@@ -260,7 +260,7 @@ int cta_ctdb_getPowerCurrentMin_export(uint8_t slot, uint16_t* value, int timeou
     return CTA_L2CB_NO_ERROR;
 }
 
-int cta_ctdb_getPowerCurrent_export(uint8_t slot, uint16_t channel, uint16_t* value, int timeout_us)
+int cta_ctdb_getPowerCurrent_export(uint8_t slot, uint16_t channel, uint16_t* value)
 {
     init_dummy_state();
     if (!value || slot >= 32) return CTA_L2CB_NO_ERROR;
@@ -291,7 +291,7 @@ int cta_ctdb_getPowerCurrent_export(uint8_t slot, uint16_t channel, uint16_t* va
     return CTA_L2CB_NO_ERROR;
 }
 
-int cta_ctdb_getUnderCurrentErrors_export(uint8_t slot, uint16_t* value, int timeout_us)
+int cta_ctdb_getUnderCurrentErrors_export(uint8_t slot, uint16_t* value)
 {
     init_dummy_state();
     if (value && slot < 32) {
@@ -305,7 +305,7 @@ int cta_ctdb_getUnderCurrentErrors_export(uint8_t slot, uint16_t* value, int tim
     return CTA_L2CB_NO_ERROR;
 }
 
-int cta_ctdb_getOverCurrentErrors_export(uint8_t slot, uint16_t* value, int timeout_us)
+int cta_ctdb_getOverCurrentErrors_export(uint8_t slot, uint16_t* value)
 {
     init_dummy_state();
     if (value && slot < 32) {
@@ -318,7 +318,7 @@ int cta_ctdb_getOverCurrentErrors_export(uint8_t slot, uint16_t* value, int time
     return CTA_L2CB_NO_ERROR;
 }
 
-int cta_ctdb_getFirmwareRevision_export(uint8_t slot, uint16_t* value, int timeout_us)
+int cta_ctdb_getFirmwareRevision_export(uint8_t slot, uint16_t* value)
 {
     init_dummy_state();
     if (value && slot < 32) *value = dummy_slots[slot].firmware;
@@ -329,39 +329,39 @@ int cta_ctdb_getFirmwareRevision_export(uint8_t slot, uint16_t* value, int timeo
     return CTA_L2CB_NO_ERROR;
 }
 
-int cta_ctdb_setDebugPins_export(uint8_t slot, uint16_t value, int timeout_us)
+int cta_ctdb_setDebugPins_export(uint8_t slot, uint16_t value)
 {
 #ifdef DUMMY_DEBUG
-    printf("cta_ctdb_setDebugPins(slot=%u, value=0x%04x, timeout_us=%d)\n", slot, value, timeout_us);
+    printf("cta_ctdb_setDebugPins(slot=%u, value=0x%04x)\n", slot, value);
     fflush(stdout);
 #endif
     return CTA_L2CB_NO_ERROR;  // NOOP - return success
 }
 
-int cta_ctdb_getDebugPins_export(uint8_t slot, uint16_t* value, int timeout_us)
+int cta_ctdb_getDebugPins_export(uint8_t slot, uint16_t* value)
 {
 #ifdef DUMMY_DEBUG
-    printf("cta_ctdb_getDebugPins(slot=%u, timeout_us=%d)\n", slot, timeout_us);
+    printf("cta_ctdb_getDebugPins(slot=%u)\n", slot);
     fflush(stdout);
 #endif
     if (value) *value = 0x0000;  // Dummy debug pins
     return CTA_L2CB_NO_ERROR;
 }
 
-int cta_ctdb_getSlaveRegister_export(uint8_t slot, uint8_t address, uint16_t* value, int timeout_us)
+int cta_ctdb_getSlaveRegister_export(uint8_t slot, uint8_t address, uint16_t* value)
 {
 #ifdef DUMMY_DEBUG
-    printf("cta_ctdb_getSlaveRegister(slot=%u, address=0x%02x, timeout_us=%d)\n", slot, address, timeout_us);
+    printf("cta_ctdb_getSlaveRegister(slot=%u, address=0x%02x)\n", slot, address);
     fflush(stdout);
 #endif
     if (value) *value = 0xABCD;  // Dummy register value
     return CTA_L2CB_NO_ERROR;
 }
 
-int cta_ctdb_setSlaveRegister_export(uint8_t slot, uint8_t address, uint16_t value, int timeout_us)
+int cta_ctdb_setSlaveRegister_export(uint8_t slot, uint8_t address, uint16_t value)
 {
 #ifdef DUMMY_DEBUG
-    printf("cta_ctdb_setSlaveRegister(slot=%u, address=0x%02x, value=0x%04x, timeout_us=%d)\n", slot, address, value, timeout_us);
+    printf("cta_ctdb_setSlaveRegister(slot=%u, address=0x%02x, value=0x%04x)\n", slot, address, value);
     fflush(stdout);
 #endif
     return CTA_L2CB_NO_ERROR;  // NOOP - return success
@@ -412,9 +412,9 @@ uint16_t cta_l2cb_getL1TriggerChannelEnabled_export(uint8_t slot, uint8_t channe
     return cta_l2cb_getL1TriggerChannelEnabled(slot, channel);
 }
 
-int cta_l2cb_setL1TriggerDelay_export(uint8_t slot, uint8_t channel, uint16_t delay, uint16_t timeout_us)
+int cta_l2cb_setL1TriggerDelay_export(uint8_t slot, uint8_t channel, uint16_t delay)
 {
-    return cta_l2cb_setL1TriggerDelay(slot, channel, delay, timeout_us);
+    return cta_l2cb_setL1TriggerDelay(slot, channel, delay);
 }
 
 uint16_t cta_l2cb_getL1TriggerDelay_export(uint8_t slot, uint8_t channel)
@@ -426,97 +426,115 @@ uint16_t cta_l2cb_getL1TriggerDelay_export(uint8_t slot, uint8_t channel)
 // CTDB Power Control Functions
 // ============================================================================
 
-int cta_ctdb_setPowerEnabled_export(uint8_t slot, uint16_t value, int timeout_us)
+int cta_ctdb_setPowerEnabled_export(uint8_t slot, uint16_t value)
 {
-    return cta_ctdb_setPowerEnabled(slot, value, timeout_us);
+    return cta_ctdb_setPowerEnabled(slot, value);
 }
 
-int cta_ctdb_getPowerEnabled_export(uint8_t slot, uint16_t* value, int timeout_us)
+int cta_ctdb_getPowerEnabled_export(uint8_t slot, uint16_t* value)
 {
-    return cta_ctdb_getPowerEnabled(slot, value, timeout_us);
+    return cta_ctdb_getPowerEnabled(slot, value);
 }
 
-int cta_ctdb_setPowerChannelEnabled_export(uint8_t slot, uint16_t channel, int on, int timeout_us)
+int cta_ctdb_setPowerChannelEnabled_export(uint8_t slot, uint16_t channel, int on)
 {
-    return cta_ctdb_setPowerChannelEnabled(slot, channel, on, timeout_us);
+    return cta_ctdb_setPowerChannelEnabled(slot, channel, on);
 }
 
-int cta_ctdb_getPowerChannelEnabled_export(uint8_t slot, uint16_t channel, int* isOn, int timeout_us)
+int cta_ctdb_getPowerChannelEnabled_export(uint8_t slot, uint16_t channel, int* isOn)
 {
-    return cta_ctdb_getPowerChannelEnabled(slot, channel, isOn, timeout_us);
+    return cta_ctdb_getPowerChannelEnabled(slot, channel, isOn);
 }
 
-void cta_ctdb_setPowerEnabledToAll_export(uint16_t on, int timeout_us)
+void cta_ctdb_setPowerEnabledToAll_export(uint16_t on)
 {
-    cta_ctdb_setPowerEnabledToAll(on, timeout_us);
+    cta_ctdb_setPowerEnabledToAll(on);
 }
 
 // ============================================================================
 // CTDB Current Monitoring Functions
 // ============================================================================
 
-int cta_ctdb_setPowerCurrentMax_export(uint8_t slot, uint16_t value, int timeout_us)
+int cta_ctdb_setPowerCurrentMax_export(uint8_t slot, uint16_t value)
 {
-    return cta_ctdb_setPowerCurrentMax(slot, value, timeout_us);
+    return cta_ctdb_setPowerCurrentMax(slot, value);
 }
 
-int cta_ctdb_getPowerCurrentMax_export(uint8_t slot, uint16_t* value, int timeout_us)
+int cta_ctdb_getPowerCurrentMax_export(uint8_t slot, uint16_t* value)
 {
-    return cta_ctdb_getPowerCurrentMax(slot, value, timeout_us);
+    return cta_ctdb_getPowerCurrentMax(slot, value);
 }
 
-int cta_ctdb_setPowerCurrentMin_export(uint8_t slot, uint16_t value, int timeout_us)
+int cta_ctdb_setPowerCurrentMin_export(uint8_t slot, uint16_t value)
 {
-    return cta_ctdb_setPowerCurrentMin(slot, value, timeout_us);
+    return cta_ctdb_setPowerCurrentMin(slot, value);
 }
 
-int cta_ctdb_getPowerCurrentMin_export(uint8_t slot, uint16_t* value, int timeout_us)
+int cta_ctdb_getPowerCurrentMin_export(uint8_t slot, uint16_t* value)
 {
-    return cta_ctdb_getPowerCurrentMin(slot, value, timeout_us);
+    return cta_ctdb_getPowerCurrentMin(slot, value);
 }
 
-int cta_ctdb_getPowerCurrent_export(uint8_t slot, uint16_t channel, uint16_t* value, int timeout_us)
+int cta_ctdb_getPowerCurrent_export(uint8_t slot, uint16_t channel, uint16_t* value)
 {
-    return cta_ctdb_getPowerCurrent(slot, channel, value, timeout_us);
+    return cta_ctdb_getPowerCurrent(slot, channel, value);
 }
 
-int cta_ctdb_getUnderCurrentErrors_export(uint8_t slot, uint16_t* value, int timeout_us)
+int cta_ctdb_getUnderCurrentErrors_export(uint8_t slot, uint16_t* value)
 {
-    return cta_ctdb_getUnderCurrentErrors(slot, value, timeout_us);
+    return cta_ctdb_getUnderCurrentErrors(slot, value);
 }
 
-int cta_ctdb_getOverCurrentErrors_export(uint8_t slot, uint16_t* value, int timeout_us)
+int cta_ctdb_getOverCurrentErrors_export(uint8_t slot, uint16_t* value)
 {
-    return cta_ctdb_getOverCurrentErrors(slot, value, timeout_us);
+    return cta_ctdb_getOverCurrentErrors(slot, value);
 }
 
 // ============================================================================
 // CTDB Utility Functions
 // ============================================================================
 
-int cta_ctdb_getFirmwareRevision_export(uint8_t slot, uint16_t* value, int timeout_us)
+int cta_ctdb_getFirmwareRevision_export(uint8_t slot, uint16_t* value)
 {
-    return cta_ctdb_getFirmwareRevision(slot, value, timeout_us);
+    return cta_ctdb_getFirmwareRevision(slot, value);
 }
 
-int cta_ctdb_setDebugPins_export(uint8_t slot, uint16_t value, int timeout_us)
+int cta_ctdb_setDebugPins_export(uint8_t slot, uint16_t value)
 {
-    return cta_ctdb_setDebugPins(slot, value, timeout_us);
+    return cta_ctdb_setDebugPins(slot, value);
 }
 
-int cta_ctdb_getDebugPins_export(uint8_t slot, uint16_t* value, int timeout_us)
+int cta_ctdb_getDebugPins_export(uint8_t slot, uint16_t* value)
 {
-    return cta_ctdb_getDebugPins(slot, value, timeout_us);
+    return cta_ctdb_getDebugPins(slot, value);
 }
 
-int cta_ctdb_getSlaveRegister_export(uint8_t slot, uint8_t address, uint16_t* value, int timeout_us)
+int cta_ctdb_getSlaveRegister_export(uint8_t slot, uint8_t address, uint16_t* value)
 {
-    return cta_ctdb_getSlaveRegister(slot, address, value, timeout_us);
+    return cta_ctdb_getSlaveRegister(slot, address, value);
 }
 
-int cta_ctdb_setSlaveRegister_export(uint8_t slot, uint8_t address, uint16_t value, int timeout_us)
+int cta_ctdb_setSlaveRegister_export(uint8_t slot, uint8_t address, uint16_t value)
 {
-    return cta_ctdb_setSlaveRegister(slot, address, value, timeout_us);
+    return cta_ctdb_setSlaveRegister(slot, address, value);
+}
+
+// ============================================================================
+// SPI Configuration Functions
+// ============================================================================
+
+void cta_l2cb_spi_set_ctdb_delays_export(int64_t _min_command_delay_ns, int64_t _min_read_delay_ns, int64_t _timeout_ns)
+{
+#ifndef DUMMY
+    cta_l2cb_spi_set_delays(&cta_l2cb_spi_wait_config_ctdb, _min_command_delay_ns, _min_read_delay_ns, _timeout_ns);
+#endif
+}
+
+void cta_l2cb_spi_set_delay_delays_export(int64_t _min_command_delay_ns, int64_t _min_read_delay_ns, int64_t _timeout_ns)
+{
+#ifndef DUMMY
+    cta_l2cb_spi_set_delays(&cta_l2cb_spi_wait_config_delay, _min_command_delay_ns, _min_read_delay_ns, _timeout_ns);
+#endif
 }
 
 // ============================================================================

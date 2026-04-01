@@ -22,7 +22,6 @@ import l2trig_low_level as hal
 
 VALID_SLOTS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 13, 14, 15, 16, 17, 18, 19, 20, 21]
 CHANNELS_PER_SLOT = 15
-DEFAULT_TIMEOUT_US = 10000
 
 # ============================================================================
 # Logging
@@ -137,19 +136,18 @@ class L2CBStatus:
 class CTDBController:
     """High-level controller for a single CTDB board"""
     
-    def __init__(self, slot: int, timeout_us: int = DEFAULT_TIMEOUT_US):
+    def __init__(self, slot: int):
         """
         Initialize CTDB controller
         
         Args:
             slot: Slot number (1-9, 13-21)
-            timeout_us: Default timeout in microseconds
         """
         if slot not in VALID_SLOTS:
             raise ValueError(f"Invalid slot {slot}. Valid slots: {VALID_SLOTS}")
         
         self.slot = slot
-        self.timeout = timeout_us
+        
         self._last_status: Optional[CTDBStatus] = None
         
         # Cached configuration data
@@ -161,17 +159,17 @@ class CTDBController:
         Get high-frequency monitoring data (currents and errors)
         """
         # Get CTDB board current (channel 0)
-        ctdb_current = hal.get_power_current(self.slot, 0, self.timeout)
+        ctdb_current = hal.get_power_current(self.slot, 0)
         
         # Get all channel currents
         channel_currents = []
         for ch in range(1, CHANNELS_PER_SLOT + 1):
-            current = hal.get_power_current(self.slot, ch, self.timeout)
+            current = hal.get_power_current(self.slot, ch)
             channel_currents.append(current)
         
         # Get error vectors
-        over_current_errors = hal.get_over_current_errors(self.slot, self.timeout)
-        under_current_errors = hal.get_under_current_errors(self.slot, self.timeout)
+        over_current_errors = hal.get_over_current_errors(self.slot)
+        under_current_errors = hal.get_under_current_errors(self.slot)
         
         return CTDBMonitoringData(
             slot=self.slot,
@@ -186,14 +184,14 @@ class CTDBController:
         Get low-frequency configuration data (firmware, limits, enable status)
         """
         # Get firmware version
-        fw_version = hal.get_ctdb_firmware_revision(self.slot, self.timeout)
+        fw_version = hal.get_ctdb_firmware_revision(self.slot)
         
         # Get power enable register
-        power_reg = hal.get_power_enabled(self.slot, self.timeout)
+        power_reg = hal.get_power_enabled(self.slot)
         
         # Get current limits
-        limit_min_raw = hal.get_power_current_min(self.slot, self.timeout)
-        limit_max_raw = hal.get_power_current_max(self.slot, self.timeout)
+        limit_min_raw = hal.get_power_current_min(self.slot)
+        limit_max_raw = hal.get_power_current_max(self.slot)
         
         config = CTDBConfigData(
             slot=self.slot,
@@ -269,8 +267,8 @@ class CTDBController:
         if not 1 <= channel <= CHANNELS_PER_SLOT:
             raise ValueError(f"Channel must be 1-{CHANNELS_PER_SLOT}")
         
-        hal.set_power_channel_enable( 
-            self.slot, channel, enabled, self.timeout
+        hal.set_power_channel_enabled( 
+            self.slot, channel, enabled
         )
             
         logger.debug(f"Slot {self.slot} Ch{channel}: Power {'enabled' if enabled else 'disabled'}")
@@ -284,7 +282,7 @@ class CTDBController:
         """
         value = 0xFFFE if enabled else 0x0000  # bits 1-15
         
-        hal.set_power_enabled(self.slot, value, self.timeout)
+        hal.set_power_enabled(self.slot, value)
         
         logger.debug(f"Slot {self.slot}: All channels {'enabled' if enabled else 'disabled'}")
     
@@ -296,7 +294,7 @@ class CTDBController:
             channel_states: Dict mapping channel number to enable state
         """
         # Read current state
-        power_reg = hal.get_power_enabled(self.slot, self.timeout)
+        power_reg = hal.get_power_enabled(self.slot)
         
         # Modify bits
         for channel, enabled in channel_states.items():
@@ -309,7 +307,7 @@ class CTDBController:
                 power_reg &= ~(1 << channel)
         
         # Write back
-        hal.set_power_enabled(self.slot, power_reg, self.timeout)
+        hal.set_power_enabled(self.slot, power_reg)
         
         logger.debug(f"Slot {self.slot}: Set channels {channel_states}")
     
@@ -338,8 +336,8 @@ class CTDBController:
         min_raw = hal.current_ma_to_raw(min_ma)
         max_raw = hal.current_ma_to_raw(max_ma)
         
-        hal.set_power_current_min(self.slot, min_raw, self.timeout)
-        hal.set_power_current_max(self.slot, max_raw, self.timeout)
+        hal.set_power_current_min(self.slot, min_raw)
+        hal.set_power_current_max(self.slot, max_raw)
         
         logger.debug(f"Slot {self.slot}: Current limits set to {min_ma:.1f}-{max_ma:.1f} mA (raw: {min_raw}-{max_raw})")
     
@@ -388,7 +386,7 @@ class CTDBController:
         delay_raw = hal.delay_ns_to_raw(delay_ns)
         
         hal.set_l1_trigger_delay( 
-            self.slot, channel, delay_raw, self.timeout
+            self.slot, channel, delay_raw
         )
         
         logger.debug(f"Slot {self.slot} Trigger Ch{channel}: Delay set to {delay_ns:.3f} ns")
@@ -401,13 +399,11 @@ class CTDBController:
 class L2TriggerSystem:
     """High-level controller for entire L2 trigger system"""
     
-    def __init__(self, timeout_us: int = DEFAULT_TIMEOUT_US, 
-                 enabled_slots: Optional[List[int]] = None):
+    def __init__(self, enabled_slots: Optional[List[int]] = None):
         """
         Initialize L2 trigger system
         
         Args:
-            timeout_us: Default timeout in microseconds
             enabled_slots: List of slots to control (default: all valid slots)
         """
         if enabled_slots is None:
@@ -418,12 +414,11 @@ class L2TriggerSystem:
         if invalid_slots:
             raise ValueError(f"Invalid slots: {invalid_slots}")
         
-        self.timeout = timeout_us
         self.ctdbs = {
-            slot: CTDBController(slot, timeout_us) 
+            slot: CTDBController(slot) 
             for slot in enabled_slots
         }
-    
+
     def get_l2cb_status(self) -> L2CBStatus:
         """Get status of the L2CB controller board"""
         fw_version = hal.get_l2cb_firmware_revision()
@@ -549,7 +544,7 @@ class L2TriggerSystem:
         logger.warning("EMERGENCY SHUTDOWN initiated")
         
         # Use low-level call for speed
-        hal.set_power_enabled_all(False, self.timeout)
+        hal.set_power_enabled_all(False)
         
         logger.warning("EMERGENCY SHUTDOWN complete")
     

@@ -31,16 +31,16 @@ def mock_hal():
     """Mock the low-level HAL module"""
     with patch.multiple(
         'l2trig_low_level',
-        get_power_enable=DEFAULT,
-        set_power_enable=DEFAULT,
+        get_power_enabled=DEFAULT,
+        set_power_enabled=DEFAULT,
         get_power_current=DEFAULT,
         get_ctdb_firmware_revision=DEFAULT,
         get_over_current_errors=DEFAULT,
         get_under_current_errors=DEFAULT,
         get_power_current_min=DEFAULT,
         get_power_current_max=DEFAULT,
-        set_power_channel_enable=DEFAULT,
-        set_power_enable_all=DEFAULT,
+        set_power_channel_enabled=DEFAULT,
+        set_power_enabled_all=DEFAULT,
         get_l1_trigger_enabled=DEFAULT,
         get_l1_trigger_delay=DEFAULT,
         set_l1_trigger_channel_enabled=DEFAULT,
@@ -48,7 +48,7 @@ def mock_hal():
         get_l2cb_firmware_revision=DEFAULT,
         read_timestamp=DEFAULT,
     ) as mocks:
-        mocks['get_power_enable'].return_value = 0xFFFE
+        mocks['get_power_enabled'].return_value = 0xFFFE
         mocks['get_power_current'].return_value = 100.0
         mocks['get_ctdb_firmware_revision'].return_value = 0x0123
         mocks['get_over_current_errors'].return_value = 0x0000
@@ -65,13 +65,13 @@ def mock_hal():
 @pytest.fixture
 def ctdb_controller(mock_hal):
     """Create a CTDB controller with mocked hardware"""
-    return CTDBController(slot=1, timeout_us=1000)
+    return CTDBController(slot=1)
 
 
 @pytest.fixture
 def l2_system(mock_hal):
     """Create L2 system with mocked hardware"""
-    return L2TriggerSystem(timeout_us=1000, enabled_slots=[1, 2, 3])
+    return L2TriggerSystem(enabled_slots=[1, 2, 3])
 
 
 # ============================================================================
@@ -139,7 +139,6 @@ class TestCTDBController:
         """Test CTDB controller initialization"""
         controller = CTDBController(slot=1)
         assert controller.slot == 1
-        assert controller.timeout > 0
     
     def test_invalid_slot(self):
         """Test that invalid slots raise error"""
@@ -159,7 +158,7 @@ class TestCTDBController:
     def test_set_channel_power(self, ctdb_controller, mock_hal):
         """Test enabling/disabling a channel"""
         ctdb_controller.set_channel_power(5, True)
-        mock_hal['set_power_channel_enable'].assert_called()
+        mock_hal['set_power_channel_enabled'].assert_called()
         
         # Test invalid channel
         with pytest.raises(ValueError):
@@ -168,17 +167,17 @@ class TestCTDBController:
     def test_set_all_channels(self, ctdb_controller, mock_hal):
         """Test enabling/disabling all channels"""
         ctdb_controller.set_all_channels(True)
-        mock_hal['set_power_enable'].assert_called_with(1, 0xFFFE, 1000)
+        mock_hal['set_power_enabled'].assert_called_with(1, 0xFFFE)
         
         ctdb_controller.set_all_channels(False)
-        mock_hal['set_power_enable'].assert_called_with(1, 0x0000, 1000)
+        mock_hal['set_power_enabled'].assert_called_with(1, 0x0000)
     
     def test_set_channels_multiple(self, ctdb_controller, mock_hal):
         """Test setting multiple channels at once"""
         channel_states = {1: True, 3: False, 5: True}
         ctdb_controller.set_channels(channel_states)
         
-        mock_hal['set_power_enable'].assert_called()
+        mock_hal['set_power_enabled'].assert_called()
     
     def test_set_current_limits(self, ctdb_controller, mock_hal):
         """Test setting current limits"""
@@ -231,7 +230,7 @@ class TestL2TriggerSystem:
     def test_emergency_shutdown(self, l2_system, mock_hal):
         """Test emergency shutdown"""
         l2_system.emergency_shutdown()
-        mock_hal['set_power_enable_all'].assert_called_with(False, 1000)
+        mock_hal['set_power_enabled_all'].assert_called_with(False)
     
     def test_health_check(self, l2_system, mock_hal):
         """Test system health check"""
