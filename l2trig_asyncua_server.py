@@ -440,7 +440,7 @@ class L2TriggerOPCUAServer:
                     curr = float(m_data.channel_currents_ma[i])
                     ch_curr.append(curr)
                     
-                    enabled = bool(c_data.power_enable_mask & (1 << ch))
+                    enabled = bool(c_data.power_enabled_mask & (1 << ch))
                     if enabled:
                         total_ch_curr += curr
                     
@@ -495,7 +495,7 @@ class L2TriggerOPCUAServer:
                 ctdb_min.append(float(c_data.current_limit_min_ma))
                 ctdb_max.append(float(c_data.current_limit_max_ma))
                 for i in range(CHANNELS_PER_SLOT):
-                    enabled = bool(c_data.power_enable_mask & (1 << (i+1)))
+                    enabled = bool(c_data.power_enabled_mask & (1 << (i+1)))
                     ch_enabled.append(enabled)
                     if enabled:
                         powered_count += 1

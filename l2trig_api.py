@@ -87,7 +87,7 @@ class CTDBConfigData:
     """Low-frequency configuration data for one CTDB board"""
     slot: int
     firmware_version: int
-    power_enable_mask: int
+    power_enabled_mask: int
     current_limit_min_ma: float
     current_limit_max_ma: float
     timestamp: datetime = field(default_factory=datetime.now)
@@ -189,7 +189,7 @@ class CTDBController:
         fw_version = hal.get_ctdb_firmware_revision(self.slot, self.timeout)
         
         # Get power enable register
-        power_reg = hal.get_power_enable(self.slot, self.timeout)
+        power_reg = hal.get_power_enabled(self.slot, self.timeout)
         
         # Get current limits
         limit_min_raw = hal.get_power_current_min(self.slot, self.timeout)
@@ -198,7 +198,7 @@ class CTDBController:
         config = CTDBConfigData(
             slot=self.slot,
             firmware_version=fw_version,
-            power_enable_mask=power_reg,
+            power_enabled_mask=power_reg,
             current_limit_min_ma=hal.current_raw_to_ma(limit_min_raw),
             current_limit_max_ma=hal.current_raw_to_ma(limit_max_raw)
         )
@@ -218,7 +218,7 @@ class CTDBController:
         channels = []
         for i in range(CHANNELS_PER_SLOT):
             ch = i + 1
-            enabled = bool(config.power_enable_mask & (1 << ch))
+            enabled = bool(config.power_enabled_mask & (1 << ch))
             current = monitoring.channel_currents_ma[i]
             
             # Determine state
@@ -284,7 +284,7 @@ class CTDBController:
         """
         value = 0xFFFE if enabled else 0x0000  # bits 1-15
         
-        hal.set_power_enable(self.slot, value, self.timeout)
+        hal.set_power_enabled(self.slot, value, self.timeout)
         
         logger.debug(f"Slot {self.slot}: All channels {'enabled' if enabled else 'disabled'}")
     
@@ -296,7 +296,7 @@ class CTDBController:
             channel_states: Dict mapping channel number to enable state
         """
         # Read current state
-        power_reg = hal.get_power_enable(self.slot, self.timeout)
+        power_reg = hal.get_power_enabled(self.slot, self.timeout)
         
         # Modify bits
         for channel, enabled in channel_states.items():
@@ -309,7 +309,7 @@ class CTDBController:
                 power_reg &= ~(1 << channel)
         
         # Write back
-        hal.set_power_enable(self.slot, power_reg, self.timeout)
+        hal.set_power_enabled(self.slot, power_reg, self.timeout)
         
         logger.debug(f"Slot {self.slot}: Set channels {channel_states}")
     
@@ -549,7 +549,7 @@ class L2TriggerSystem:
         logger.warning("EMERGENCY SHUTDOWN initiated")
         
         # Use low-level call for speed
-        hal.set_power_enable_all(False, self.timeout)
+        hal.set_power_enabled_all(False, self.timeout)
         
         logger.warning("EMERGENCY SHUTDOWN complete")
     

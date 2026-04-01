@@ -118,20 +118,20 @@ _lib.cta_l2cb_getL1TriggerDelay_export.argtypes = [c_uint8, c_uint8]
 _lib.cta_l2cb_getL1TriggerDelay_export.restype = c_uint16
 
 # CTDB Power Control
-_lib.cta_ctdb_setPowerEnable_export.argtypes = [c_uint8, c_uint16, c_int]
-_lib.cta_ctdb_setPowerEnable_export.restype = c_int
+_lib.cta_ctdb_setPowerEnabled_export.argtypes = [c_uint8, c_uint16, c_int]
+_lib.cta_ctdb_setPowerEnabled_export.restype = c_int
 
-_lib.cta_ctdb_getPowerEnable_export.argtypes = [c_uint8, POINTER(c_uint16), c_int]
-_lib.cta_ctdb_getPowerEnable_export.restype = c_int
+_lib.cta_ctdb_getPowerEnabled_export.argtypes = [c_uint8, POINTER(c_uint16), c_int]
+_lib.cta_ctdb_getPowerEnabled_export.restype = c_int
 
-_lib.cta_ctdb_setPowerChannelEnable_export.argtypes = [c_uint8, c_uint16, c_int, c_int]
-_lib.cta_ctdb_setPowerChannelEnable_export.restype = c_int
+_lib.cta_ctdb_setPowerChannelEnabled_export.argtypes = [c_uint8, c_uint16, c_int, c_int]
+_lib.cta_ctdb_setPowerChannelEnabled_export.restype = c_int
 
-_lib.cta_ctdb_getPowerChannelEnable_export.argtypes = [c_uint8, c_uint16, POINTER(c_int), c_int]
-_lib.cta_ctdb_getPowerChannelEnable_export.restype = c_int
+_lib.cta_ctdb_getPowerChannelEnabled_export.argtypes = [c_uint8, c_uint16, POINTER(c_int), c_int]
+_lib.cta_ctdb_getPowerChannelEnabled_export.restype = c_int
 
-_lib.cta_ctdb_setPowerEnableToAll_export.argtypes = [c_uint16, c_int]
-_lib.cta_ctdb_setPowerEnableToAll_export.restype = None
+_lib.cta_ctdb_setPowerEnabledToAll_export.argtypes = [c_uint16, c_int]
+_lib.cta_ctdb_setPowerEnabledToAll_export.restype = None
 
 # CTDB Current Monitoring
 _lib.cta_ctdb_setPowerCurrentMax_export.argtypes = [c_uint8, c_uint16, c_int]
@@ -259,39 +259,39 @@ def get_l1_trigger_delay(slot: int, channel: int) -> int:
 
 # --- CTDB Power Control ---
 
-def set_power_enable(slot: int, value: int, timeout_us: int = DEFAULT_TIMEOUT_US) -> None:
+def set_power_enabled(slot: int, value: int, timeout_us: int = DEFAULT_TIMEOUT_US) -> None:
     """Set power enable register (bits 1-15 = channels 1-15)"""
-    err = _lib.cta_ctdb_setPowerEnable_export(slot, value, timeout_us)
+    err = _lib.cta_ctdb_setPowerEnabled_export(slot, value, timeout_us)
     _check_error(err, f"set_power_enable(slot={slot}, val=0x{value:04X})")
 
 
-def get_power_enable(slot: int, timeout_us: int = DEFAULT_TIMEOUT_US) -> int:
+def get_power_enabled(slot: int, timeout_us: int = DEFAULT_TIMEOUT_US) -> int:
     """Get power enable register (bits 1-15 = channels 1-15)"""
     value = c_uint16()
-    err = _lib.cta_ctdb_getPowerEnable_export(slot, ctypes.byref(value), timeout_us)
+    err = _lib.cta_ctdb_getPowerEnabled_export(slot, ctypes.byref(value), timeout_us)
     _check_error(err, f"get_power_enable(slot={slot})")
     return value.value
 
 
-def set_power_channel_enable(slot: int, channel: int, enabled: bool, 
+def set_power_channel_enabled(slot: int, channel: int, enabled: bool, 
                             timeout_us: int = DEFAULT_TIMEOUT_US) -> None:
     """Enable or disable a specific power channel"""
-    err = _lib.cta_ctdb_setPowerChannelEnable_export(slot, channel, 1 if enabled else 0, timeout_us)
+    err = _lib.cta_ctdb_setPowerChannelEnabled_export(slot, channel, 1 if enabled else 0, timeout_us)
     _check_error(err, f"set_power_channel_enable(slot={slot}, ch={channel}, en={enabled})")
 
 
-def get_power_channel_enable(slot: int, channel: int, 
+def get_power_channel_enabled(slot: int, channel: int, 
                             timeout_us: int = DEFAULT_TIMEOUT_US) -> bool:
     """Get enable status of a specific power channel"""
     is_on = c_int()
-    err = _lib.cta_ctdb_getPowerChannelEnable_export(slot, channel, ctypes.byref(is_on), timeout_us)
+    err = _lib.cta_ctdb_getPowerChannelEnabled_export(slot, channel, ctypes.byref(is_on), timeout_us)
     _check_error(err, f"get_power_channel_enable(slot={slot}, ch={channel})")
     return bool(is_on.value)
 
 
-def set_power_enable_all(enabled: bool, timeout_us: int = DEFAULT_TIMEOUT_US) -> None:
+def set_power_enabled_all(enabled: bool, timeout_us: int = DEFAULT_TIMEOUT_US) -> None:
     """Enable or disable all power channels on all slots"""
-    _lib.cta_ctdb_setPowerEnableToAll_export(1 if enabled else 0, timeout_us)
+    _lib.cta_ctdb_setPowerEnabledToAll_export(1 if enabled else 0, timeout_us)
 
 
 # --- CTDB Current Monitoring ---

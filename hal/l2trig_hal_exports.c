@@ -150,60 +150,60 @@ uint16_t cta_l2cb_getL1TriggerDelay_export(uint8_t slot, uint8_t channel)
     return delay;
 }
 
-int cta_ctdb_setPowerEnable_export(uint8_t slot, uint16_t value, int timeout_us)
+int cta_ctdb_setPowerEnabled_export(uint8_t slot, uint16_t value, int timeout_us)
 {
     init_dummy_state();
     if (slot < 32) {
         dummy_slots[slot].power_enable = value;
 #ifdef DUMMY_DEBUG
-        printf("cta_ctdb_setPowerEnable(slot=%u, value=0x%04x)\n", slot, value);
+        printf("cta_ctdb_setPowerEnabled(slot=%u, value=0x%04x)\n", slot, value);
         fflush(stdout);
 #endif
     }
     return CTA_L2CB_NO_ERROR;
 }
 
-int cta_ctdb_getPowerEnable_export(uint8_t slot, uint16_t* value, int timeout_us)
+int cta_ctdb_getPowerEnabled_export(uint8_t slot, uint16_t* value, int timeout_us)
 {
     init_dummy_state();
     if (value && slot < 32) {
         *value = dummy_slots[slot].power_enable;
 #ifdef DUMMY_DEBUG
-        printf("cta_ctdb_getPowerEnable(slot=%u) -> 0x%04x\n", slot, *value);
+        printf("cta_ctdb_getPowerEnabled(slot=%u) -> 0x%04x\n", slot, *value);
         fflush(stdout);
 #endif
     }
     return CTA_L2CB_NO_ERROR;
 }
 
-int cta_ctdb_setPowerChannelEnable_export(uint8_t slot, uint16_t channel, int on, int timeout_us)
+int cta_ctdb_setPowerChannelEnabled_export(uint8_t slot, uint16_t channel, int on, int timeout_us)
 {
     init_dummy_state();
     if (slot < 32 && channel >= 1 && channel <= 15) {
         if (on) dummy_slots[slot].power_enable |= (1 << channel);
         else dummy_slots[slot].power_enable &= ~(1 << channel);
 #ifdef DUMMY_DEBUG
-        printf("cta_ctdb_setPowerChannelEnable(slot=%u, channel=%u, on=%d)\n", slot, channel, on);
+        printf("cta_ctdb_setPowerChannelEnabled(slot=%u, channel=%u, on=%d)\n", slot, channel, on);
         fflush(stdout);
 #endif
     }
     return CTA_L2CB_NO_ERROR;
 }
 
-int cta_ctdb_getPowerChannelEnable_export(uint8_t slot, uint16_t channel, int* isOn, int timeout_us)
+int cta_ctdb_getPowerChannelEnabled_export(uint8_t slot, uint16_t channel, int* isOn, int timeout_us)
 {
     init_dummy_state();
     if (isOn && slot < 32 && channel >= 1 && channel <= 15) {
         *isOn = (dummy_slots[slot].power_enable & (1 << channel)) ? 1 : 0;
 #ifdef DUMMY_DEBUG
-        printf("cta_ctdb_getPowerChannelEnable(slot=%u, channel=%u) -> %d\n", slot, channel, *isOn);
+        printf("cta_ctdb_getPowerChannelEnabled(slot=%u, channel=%u) -> %d\n", slot, channel, *isOn);
         fflush(stdout);
 #endif
     }
     return CTA_L2CB_NO_ERROR;
 }
 
-void cta_ctdb_setPowerEnableToAll_export(uint16_t on, int timeout_us)
+void cta_ctdb_setPowerEnabledToAll_export(uint16_t on, int timeout_us)
 {
     init_dummy_state();
     uint16_t val = on ? 0xFFFE : 0x0000;
@@ -211,7 +211,7 @@ void cta_ctdb_setPowerEnableToAll_export(uint16_t on, int timeout_us)
         dummy_slots[i].power_enable = val;
     }
 #ifdef DUMMY_DEBUG
-    printf("cta_ctdb_setPowerEnableToAll(on=%u)\n", on);
+    printf("cta_ctdb_setPowerEnabledToAll(on=%u)\n", on);
     fflush(stdout);
 #endif
 }
@@ -426,29 +426,29 @@ uint16_t cta_l2cb_getL1TriggerDelay_export(uint8_t slot, uint8_t channel)
 // CTDB Power Control Functions
 // ============================================================================
 
-int cta_ctdb_setPowerEnable_export(uint8_t slot, uint16_t value, int timeout_us)
+int cta_ctdb_setPowerEnabled_export(uint8_t slot, uint16_t value, int timeout_us)
 {
-    return cta_ctdb_setPowerEnable(slot, value, timeout_us);
+    return cta_ctdb_setPowerEnabled(slot, value, timeout_us);
 }
 
-int cta_ctdb_getPowerEnable_export(uint8_t slot, uint16_t* value, int timeout_us)
+int cta_ctdb_getPowerEnabled_export(uint8_t slot, uint16_t* value, int timeout_us)
 {
-    return cta_ctdb_getPowerEnable(slot, value, timeout_us);
+    return cta_ctdb_getPowerEnabled(slot, value, timeout_us);
 }
 
-int cta_ctdb_setPowerChannelEnable_export(uint8_t slot, uint16_t channel, int on, int timeout_us)
+int cta_ctdb_setPowerChannelEnabled_export(uint8_t slot, uint16_t channel, int on, int timeout_us)
 {
-    return cta_ctdb_setPowerChannelEnable(slot, channel, on, timeout_us);
+    return cta_ctdb_setPowerChannelEnabled(slot, channel, on, timeout_us);
 }
 
-int cta_ctdb_getPowerChannelEnable_export(uint8_t slot, uint16_t channel, int* isOn, int timeout_us)
+int cta_ctdb_getPowerChannelEnabled_export(uint8_t slot, uint16_t channel, int* isOn, int timeout_us)
 {
-    return cta_ctdb_getPowerChannelEnable(slot, channel, isOn, timeout_us);
+    return cta_ctdb_getPowerChannelEnabled(slot, channel, isOn, timeout_us);
 }
 
-void cta_ctdb_setPowerEnableToAll_export(uint16_t on, int timeout_us)
+void cta_ctdb_setPowerEnabledToAll_export(uint16_t on, int timeout_us)
 {
-    cta_ctdb_setPowerEnableToAll(on, timeout_us);
+    cta_ctdb_setPowerEnabledToAll(on, timeout_us);
 }
 
 // ============================================================================

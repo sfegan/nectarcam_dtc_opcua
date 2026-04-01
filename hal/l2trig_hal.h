@@ -228,7 +228,7 @@ CEXTERN int cta_l2cb_spi_write(uint8_t _slot, uint8_t _register, uint16_t _value
 // bit 1..15 -> power channel 1..15
 // returns CTA_L2CB_NO_ERROR on success,
 // returns CTA_L2CB_ERROR_TIMEOUT on timeout error
-static inline int cta_ctdb_setPowerEnable(uint8_t _slot, uint16_t _value, int _timeout_us)
+static inline int cta_ctdb_setPowerEnabled(uint8_t _slot, uint16_t _value, int _timeout_us)
 {
 	return cta_l2cb_spi_write(_slot, ADDR_CTA_CTDB_PONF, _value, _timeout_us);
 }
@@ -237,7 +237,7 @@ static inline int cta_ctdb_setPowerEnable(uint8_t _slot, uint16_t _value, int _t
 // bit 1..15 -> power channel 1..15
 // returns CTA_L2CB_NO_ERROR on success,
 // returns CTA_L2CB_ERROR_TIMEOUT on timeout error
-static inline void cta_ctdb_setPowerEnableToAll(uint16_t _on, int _timeout_us)
+static inline void cta_ctdb_setPowerEnabledToAll(uint16_t _on, int _timeout_us)
 {
 	int s;
 	int value=(_on)?0xfffe:0x0;
@@ -252,7 +252,7 @@ static inline void cta_ctdb_setPowerEnableToAll(uint16_t _on, int _timeout_us)
 // returns readback value into *_value pointer
 // returns CTA_L2CB_NO_ERROR on success,
 // returns CTA_L2CB_ERROR_TIMEOUT on timeout error
-static inline int cta_ctdb_getPowerEnable(uint8_t _slot, uint16_t* _value, int _timeout_us)
+static inline int cta_ctdb_getPowerEnabled(uint8_t _slot, uint16_t* _value, int _timeout_us)
 {
 	return cta_l2cb_spi_read(_slot, ADDR_CTA_CTDB_PONF, _value , _timeout_us);
 }
@@ -261,14 +261,14 @@ static inline int cta_ctdb_getPowerEnable(uint8_t _slot, uint16_t* _value, int _
 // _on : 1 = power requested to switch on , 0 = power requested to switch off
 // returns CTA_L2CB_NO_ERROR on success
 // returns CTA_L2CB_ERROR_TIMEOUT on timeout error
-static inline int cta_ctdb_setPowerChannelEnable(uint8_t _slot, uint16_t _channel, int _on, int _timeout_us)
+static inline int cta_ctdb_setPowerChannelEnabled(uint8_t _slot, uint16_t _channel, int _on, int _timeout_us)
 {
 	uint16_t val=0;
 	int err;
-	err=cta_ctdb_getPowerEnable(_slot, &val , _timeout_us);
+	err=cta_ctdb_getPowerEnabled(_slot, &val , _timeout_us);
 	if (err!=CTA_L2CB_NO_ERROR) return err;
 	val=changeBitVal16(val,_channel, _on);
-	return cta_ctdb_setPowerEnable(_slot, val, _timeout_us);
+	return cta_ctdb_setPowerEnabled(_slot, val, _timeout_us);
 }
 
 // get the individual CTDB Power Channel On/Off status
@@ -276,12 +276,12 @@ static inline int cta_ctdb_setPowerChannelEnable(uint8_t _slot, uint16_t _channe
 // Note: it is possible, that a enabled power channel is not "on" because of an error condition (over/under current)
 // returns CTA_L2CB_NO_ERROR on success
 // returns CTA_L2CB_ERROR_TIMEOUT on timeout error
-static inline int cta_ctdb_getPowerChannelEnable(uint8_t _slot, uint16_t _channel, int* _isOn, int _timeout_us)
+static inline int cta_ctdb_getPowerChannelEnabled(uint8_t _slot, uint16_t _channel, int* _isOn, int _timeout_us)
 {
 	if (!_isOn) return CTA_L2CB_INVALID_PARAMETER;
 	uint16_t val;
 	int err;
-	err=cta_ctdb_getPowerEnable(_slot, &val , _timeout_us);
+	err=cta_ctdb_getPowerEnabled(_slot, &val , _timeout_us);
 	if (err!=CTA_L2CB_NO_ERROR) return err;
 	*_isOn=testBitVal16(val,_channel);
 	return CTA_L2CB_NO_ERROR;
