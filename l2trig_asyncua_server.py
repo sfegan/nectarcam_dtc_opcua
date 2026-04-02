@@ -478,6 +478,8 @@ class L2TriggerOPCUAServer:
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
             return f"MCF threshold set to {threshold}"
         
+        await add_described_method("SetMCFThreshold", set_mcf_threshold,
+                                   inputs=[a("threshold", ua.VariantType.Int16, "MCF threshold (0-512)")])
 
     async def _write_fast_data(self, l2cb_status, monitoring_results, now: datetime.datetime):
         """Update OPC UA variables with high-frequency data"""
