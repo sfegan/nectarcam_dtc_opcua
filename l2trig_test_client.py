@@ -134,10 +134,10 @@ class L2TrigTestClient:
         l2cb_uptime = await self.read_variable("CrateUpTime")
         l2cb_mcf = await self.read_variable("CrateMCFEnabled")
         l2cb_glitch = await self.read_variable("CrateBusyGlitchFilterEnabled")
-        l2cb_tib = await self.read_variable("CrateTIBTriggerBlockEnabled")
+        l2cb_tib = await self.read_variable("CrateTIBTriggerBusyBlockEnabled")
         
         print(f"L2CB Firmware: 0x{l2cb_fw:04X} | Uptime: {l2cb_uptime/1e9:.3f} s")
-        print(f"L2CB Status: MCF={'ON' if l2cb_mcf else 'OFF'}, BusyGlitchFilter={'ON' if l2cb_glitch else 'OFF'}, TIBTriggerBlock={'ON' if l2cb_tib else 'OFF'}")
+        print(f"L2CB Status: MCF={'ON' if l2cb_mcf else 'OFF'}, BusyGlitchFilter={'ON' if l2cb_glitch else 'OFF'}, TIBTriggerBusyBlock={'ON' if l2cb_tib else 'OFF'}")
         
         ctdb_fw = await self.read_variable("BoardFirmwareRevision")
         ctdb_curr = await self.read_variable("BoardCurrent")
@@ -308,7 +308,7 @@ async def interactive_loop(client: L2TrigTestClient):
                 else: await client.call_method("SetBusyGlitchFilterEnabled", args[0])
             elif cmd == "tibblock":
                 if len(args) != 1: print("Usage: tibblock <on|off>")
-                else: await client.call_method("SetTIBTriggerBlockEnabled", args[0])
+                else: await client.call_method("SetTIBTriggerBusyBlockEnabled", args[0])
             else:
                 print(f"Unknown command: {cmd}")
 

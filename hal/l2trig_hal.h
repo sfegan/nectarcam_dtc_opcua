@@ -57,7 +57,12 @@ CEXTERN void cta_l2cb_spi_set_ctdb_delays_export(int64_t _min_command_delay_ns, 
 CEXTERN void cta_l2cb_spi_set_delay_delays_export(int64_t _min_command_delay_ns, int64_t _min_read_delay_ns, int64_t _timeout_ns);
 
 #define BASE_CTA_L2CB			0x00
+
 #define ADDR_CTA_L2CB_CTRL		0x00
+#define BIT_CTA_L2CB_CTRL_TIB_TRIGGER_BLOCK_EN	 0
+#define BIT_CTA_L2CB_CTRL_BUSY_GLITCH_FILTER_EN	 12
+#define BIT_CTA_L2CB_CTRL_MCF_EN		         13
+
 #define ADDR_CTA_L2CB_STAT		0x02
 #define BIT_CTA_L2CB_STAT_SPIBUSY		0
 #define BIT_CTA_L2CB_STAT_DELAY_BUSY	1
@@ -154,33 +159,55 @@ static inline uint16_t cta_l2cb_getFirmwareRevision(void)
 }
 
 // get the configuration from the control register
-static inline void cta_l2cb_getControlState(uint16_t* mcf_enabled, uint16_t* busy_glitch_filter_enabled, uint16_t* tib_trigger_block_enabled)
+static inline void cta_l2cb_getControlState(uint16_t* mcf_enabled, uint16_t* busy_glitch_filter_enabled, uint16_t* tib_trigger_busy_block_enabled)
 {
 	uint16_t value = IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_CTRL);
-	if(mcf_enabled) *mcf_enabled = testBitVal16(value, 13);
-	if(busy_glitch_filter_enabled) *busy_glitch_filter_enabled = testBitVal16(value, 12);
-	if(tib_trigger_block_enabled) *tib_trigger_block_enabled = testBitVal16(value, 0);
+	if(mcf_enabled) *mcf_enabled = testBitVal16(value, BIT_CTA_L2CB_CTRL_MCF_EN);
+	if(busy_glitch_filter_enabled) *busy_glitch_filter_enabled = testBitVal16(value, BIT_CTA_L2CB_CTRL_BUSY_GLITCH_FILTER_EN);
+	if(tib_trigger_busy_block_enabled) *tib_trigger_busy_block_enabled = testBitVal16(value, BIT_CTA_L2CB_CTRL_TIB_TRIGGER_BLOCK_EN);
 }
 
 static inline void cta_l2cb_setMCFEnabled(uint16_t _enabled)
 {
 	uint16_t val = IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_CTRL);
-	val = changeBitVal16(val, 13, _enabled);
+	val = changeBitVal16(val, BIT_CTA_L2CB_CTRL_MCF_EN, _enabled);
 	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_CTRL, val);
 }
 
 static inline void cta_l2cb_setBusyGlitchFilterEnabled(uint16_t _enabled)
 {
 	uint16_t val = IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_CTRL);
-	val = changeBitVal16(val, 12, _enabled);
+	val = changeBitVal16(val, BIT_CTA_L2CB_CTRL_BUSY_GLITCH_FILTER_EN, _enabled);
 	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_CTRL, val);
 }
 
-static inline void cta_l2cb_setTIBTriggerBlockEnabled(uint16_t _enabled)
+static inline void cta_l2cb_setTIBTriggerBusyBlockEnabled(uint16_t _enabled)
 {
 	uint16_t val = IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_CTRL);
-	val = changeBitVal16(val, 0, _enabled);
+	val = changeBitVal16(val, BIT_CTA_L2CB_CTRL_TIB_TRIGGER_BLOCK_EN, _enabled);
 	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_CTRL, val);
+}
+
+// ***** Helper Functions to set and get muon candidate flag (MCF) parameters
+
+static inline uint16_t cta_l2cb_getMCFThreshold()
+{
+	return IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_MUTHR) & 0x01FF;
+}
+
+static inline void cta_l2cb_setMCFThreshold(uint16_t _threshold)
+{
+	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_MUTHR, _threshold & 0x01FF);
+}
+
+static inline uint16_t cta_l2cb_getMCFDelay()
+{
+	return IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_MUDEL) & 0x000F;
+}
+
+static inline void cta_l2cb_setMCFDelay(uint16_t _delay)
+{
+	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_MUDEL, _delay & 0x000F);
 }
 
 // ***** Helper Functions to set trigger enabled status and delays

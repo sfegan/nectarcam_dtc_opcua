@@ -113,8 +113,8 @@ _lib.cta_l2cb_setMCFEnabled_export.restype = None
 _lib.cta_l2cb_setBusyGlitchFilterEnabled_export.argtypes = [c_uint16]
 _lib.cta_l2cb_setBusyGlitchFilterEnabled_export.restype = None
 
-_lib.cta_l2cb_setTIBTriggerBlockEnabled_export.argtypes = [c_uint16]
-_lib.cta_l2cb_setTIBTriggerBlockEnabled_export.restype = None
+_lib.cta_l2cb_setTIBTriggerBusyBlockEnabled_export.argtypes = [c_uint16]
+_lib.cta_l2cb_setTIBTriggerBusyBlockEnabled_export.restype = None
 
 # L1 Trigger Control
 _lib.cta_l2cb_setL1TriggerEnabled_export.argtypes = [c_uint8, c_uint16]
@@ -206,8 +206,14 @@ CURRENT_CODE_MAX = 0x0FFF  # Max raw ADC code (12 bits)
 CURRENT_MAX = CURRENT_CODE_MAX * CURRENT_CONVERSION_FACTOR  # Max current corresponding to 12-bit ADC value
 
 L1DELAY_CONVERSION_FACTOR = 0.037  # ns per raw step (37 ps steps)
-L1DELAY_CODE = 0x7F # Max raw code for L1 delay (7 bits, 0-5ns range in 37 ps steps)
-L1DELAY_MAX = L1DELAY_CODE * L1DELAY_CONVERSION_FACTOR  # Max delay corresponding to raw code
+L1DELAY_CODE_MAX = 0x7F # Max raw code for L1 delay (7 bits, 0-5ns range in 37 ps steps)
+L1DELAY_MAX = L1DELAY_CODE_MAX * L1DELAY_CONVERSION_FACTOR  # Max delay corresponding to raw code
+
+MCFDELAY_CONVERSION_FACTOR = 5  # ns per raw step
+MCFDELAY_CODE_MAX = 0x0F # Max raw code for MCF delay (4 bits)
+MCFDELAY_MAX = MCFDELAY_CODE_MAX * MCFDELAY_CONVERSION_FACTOR  # Max MCF delay corresponding to raw code
+
+MCFTHRESHOLD_CODE_MAX = 0x7F # Max raw code for MCF threshold (7 bits)
 
 # ============================================================================
 # Low-Level Python Wrappers
@@ -264,14 +270,13 @@ def get_l2cb_control_state() -> dict:
     """Get the current control state (MCF enabled, busy glitch filter enabled, TIB trigger block enabled)"""
     mcf_enabled = c_uint16()
     busy_glitch_filter_enabled = c_uint16()
-    tib_trigger_block_enabled = c_uint16()
-    _lib.cta_l2cb_getControlState_export(ctypes.byref(mcf_enabled), ctypes.byref(busy_glitch_filter_enabled), ctypes.byref(tib_trigger_block_enabled))
+    tib_trigger_busy_block_enabled = c_uint16()
+    _lib.cta_l2cb_getControlState_export(ctypes.byref(mcf_enabled), ctypes.byref(busy_glitch_filter_enabled), ctypes.byref(tib_trigger_busy_block_enabled))
     return {
         "mcf_enabled": bool(mcf_enabled.value),
         "busy_glitch_filter_enabled": bool(busy_glitch_filter_enabled.value),
-        "tib_trigger_block_enabled": bool(tib_trigger_block_enabled.value)
+        "tib_trigger_busy_block_enabled": bool(tib_trigger_busy_block_enabled.value)
     }
-
 
 def set_l2cb_mcf_enabled(enabled: bool) -> None:
     """Set L2CB MCF enabled status"""
@@ -283,9 +288,25 @@ def set_l2cb_busy_glitch_filter_enabled(enabled: bool) -> None:
     _lib.cta_l2cb_setBusyGlitchFilterEnabled_export(1 if enabled else 0)
 
 
-def set_l2cb_tib_trigger_block_enabled(enabled: bool) -> None:
+def set_l2cb_tib_trigger_busy_block_enabled(enabled: bool) -> None:
     """Set L2CB TIB trigger block enabled status"""
-    _lib.cta_l2cb_setTIBTriggerBlockEnabled_export(1 if enabled else 0)
+    _lib.cta_l2cb_setTIBTriggerBusyBlockEnabled_export(1 if enabled else 0)
+
+def get_l2cb_mcf_threshold() -> int:
+    """Get L2CB MCF threshold (raw code, 0-127)"""
+    return _lib.cta_l2cb_getMCFThreshold_export()
+
+def set_l2cb_mcf_threshold(threshold: int) -> None:
+    """Set L2CB MCF threshold (raw code, 0-127)"""
+    _lib.cta_l2cb_setMCFThreshold_export(threshold)
+
+def get_l2cb_mcf_delay() -> float:
+    """Get L2CB MCF delay (raw code, 0-15)"""
+    return _lib.cta_l2cb_getMCFDelay_export()
+
+def set_l2cb_mcf_delay(delay: float) -> None:
+    """Set L2CB MCF delay (raw code, 0-15)"""
+    _lib.cta_l2cb_setMCFDelay_export(delay)
 
 # --- L1 Trigger Control ---
 
@@ -485,3 +506,11 @@ def delay_ns_to_raw(delay_ns: float) -> int:
 def delay_raw_to_ns(raw_value: int) -> float:
     """Convert raw delay value to nanoseconds"""
     return (raw_value & 0x7F) * 0.037
+
+def mcf_delay_ns_to_raw(delay_ns: float) -> int:
+    """Convert MCF delay in nanoseconds to raw value (5 ns steps)"""
+    return int(delay_ns / 5)
+
+def mcf_delay_raw_to_ns(raw_value: int) -> float:
+    """Convert raw MCF delay value to nanoseconds"""
+    return (raw_value & 0x0F) * 5

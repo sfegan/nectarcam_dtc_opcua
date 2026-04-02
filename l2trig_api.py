@@ -128,7 +128,9 @@ class L2CBStatus:
     uptime: int
     mcf_enabled: bool
     busy_glitch_filter_enabled: bool
-    tib_trigger_block_enabled: bool
+    tib_trigger_busy_block_enabled: bool
+    mcf_threshold: int
+    mcf_delay_ns: int
 
 
 # ============================================================================
@@ -435,15 +437,18 @@ class L2TriggerSystem:
         """Get status of the L2CB controller board"""
         fw_version = hal.get_l2cb_firmware_revision()
         uptime = hal.get_l2cb_timestamp()
-        
         control = hal.get_l2cb_control_state()
+        mcf_threshold = hal.get_l2cb_mcf_threshold()
+        mcf_delay = hal.get_l2cb_mcf_delay()
 
         return L2CBStatus(
             firmware_version=fw_version,
             uptime=uptime,
             mcf_enabled=control["mcf_enabled"],
             busy_glitch_filter_enabled=control["busy_glitch_filter_enabled"],
-            tib_trigger_block_enabled=control["tib_trigger_block_enabled"]
+            tib_trigger_busy_block_enabled=control["tib_trigger_busy_block_enabled"],
+            mcf_threshold=mcf_threshold,
+            mcf_delay_ns=hal.mcf_delay_raw_to_ns(mcf_delay)
         )
 
     def set_mcf_enabled(self, enabled: bool) -> None:
@@ -456,10 +461,34 @@ class L2TriggerSystem:
         hal.set_l2cb_busy_glitch_filter_enabled(enabled)
         logger.info(f"L2CB busy glitch filter {'enabled' if enabled else 'disabled'}")
 
-    def set_tib_trigger_block_enabled(self, enabled: bool) -> None:
+    def set_tib_trigger_busy_block_enabled(self, enabled: bool) -> None:
         """Enable or disable L2CB TIB trigger blocking"""
-        hal.set_l2cb_tib_trigger_block_enabled(enabled)
+        hal.set_l2cb_tib_trigger_busy_block_enabled(enabled)
         logger.info(f"L2CB TIB trigger blocking {'enabled' if enabled else 'disabled'}")
+
+    def set_mcf_threshold(self, threshold: int) -> None:
+        """Set L2CB MCF threshold"""
+        if threshold < 0:
+            logger.warning(f"Requested MCF threshold {threshold} is negative, setting to 0")
+            threshold = 0
+        elif threshold > hal.MCFTHRESHOLD_CODE_MAX:
+            logger.warning(f"Requested MCF threshold {threshold} exceeds max {hal.MCFTHRESHOLD_CODE_MAX}, setting to max")
+            threshold = hal.MCFTHRESHOLD_CODE_MAX
+
+        hal.set_l2cb_mcf_threshold(threshold)
+        logger.info(f"L2CB MCF threshold set to {threshold}")
+
+    def set_mcf_delay(self, delay_ns: float) -> None:
+        """Set L2CB MCF delay"""
+        if delay_ns < 0:
+            logger.warning(f"Requested MCF delay {delay_ns} ns is negative, setting to 0")
+            delay_ns = 0
+        elif delay_ns > hal.MCFDELAY_MAX:
+            logger.warning(f"Requested MCF delay {delay_ns} ns exceeds max {hal.MCFDELAY_MAX} ns, setting to max")
+            delay_ns = hal.MCFDELAY_MAX
+        
+        hal.set_l2cb_mcf_delay(hal.mcf_delay_ns_to_raw(delay_ns))
+        logger.info(f"L2CB MCF delay set to {delay_ns} ns")
     
     def get_all_monitoring_data(self) -> Dict[int, CTDBMonitoringData]:
         """Get monitoring data for all CTDB boards"""

@@ -88,7 +88,9 @@ class L2TriggerOPCUAServer:
         ("CrateUpTime", 0, ua.VariantType.UInt64, "L2CB uptime in nanoseconds, from crate timestamp"),
         ("CrateMCFEnabled", 0, ua.VariantType.Boolean, "L2CB MCF enabled status: \"true\" allows the MCF-trigger to be propagated to the TIB (signal TIB_SPARE1_P/N at J14-8/7), \"false\" blocks the MCF-trigger propagation"),
         ("CrateBusyGlitchFilterEnabled", 0, ua.VariantType.Boolean, "L2CB busy glitch filter enabled"),
-        ("CrateTIBTriggerBlockEnabled", 0, ua.VariantType.Boolean, "L2CB TIB trigger blocking enabled"),
+        ("CrateTIBTriggerBusyBlockEnabled", 0, ua.VariantType.Boolean, "L2CB TIB trigger blocking enabled"),
+        ("CrateMCFThreshold", 0, ua.VariantType.Int16, "L2CB MCF threshold (0-512)"),
+        ("CrateMCFDelay", 0, ua.VariantType.Double, "L2CB MCF delay in ns (0-75 ns with 5 ns resolution)"),
         ("BoardSlots", [], ua.VariantType.Int32, "List of crate slots enabled in this server"),
         ("BoardFirmwareRevision", [], ua.VariantType.UInt16, "CTDB firmware versions (one per active slot)"),
         ("BoardCurrent", [], ua.VariantType.Double, "CTDB board currents in mA (one per active slot)"),
@@ -223,7 +225,9 @@ class L2TriggerOPCUAServer:
         
         # Create monitoring variables with dotted NodeIds
         fast_vars = {
-            "CrateFirmwareRevision", "CrateUpTime", "CrateMCFEnabled", "CrateBusyGlitchFilterEnabled", "CrateTIBTriggerBlockEnabled",
+            "CrateFirmwareRevision", "CrateUpTime", 
+            "CrateMCFEnabled", "CrateBusyGlitchFilterEnabled", "CrateTIBTriggerBusyBlockEnabled",
+            "CrateMCFThreshold", "CrateMCFDelay",
             "BoardCurrent", "BoardCurrentSum", "BoardHasErrors",
             "ModuleCurrent", "ModuleState"
         }
@@ -440,16 +444,40 @@ class L2TriggerOPCUAServer:
 
         # Set TIB Trigger Block Enabled
         @uamethod
-        async def set_tib_trigger_block_enabled(parent_node, enabled: bool):
+        async def set_tib_trigger_busy_block_enabled(parent_node, enabled: bool):
             """Enable or disable L2CB TIB trigger blocking."""
             logger.info(f"Setting TIB trigger block enabled to {enabled}")
             async with self._lock:
-                await loop.run_in_executor(None, self.system.set_tib_trigger_block_enabled, enabled)
+                await loop.run_in_executor(None, self.system.set_tib_trigger_busy_block_enabled, enabled)
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
             return f"TIB trigger blocking {'enabled' if enabled else 'disabled'}"
 
-        await add_described_method("SetTIBTriggerBlockEnabled", set_tib_trigger_block_enabled,
+        await add_described_method("SetTIBTriggerBusyBlockEnabled", set_tib_trigger_busy_block_enabled,
                                    inputs=[a("enabled", ua.VariantType.Boolean, "True to enable, False to disable")])
+
+        # Set MCF Delay
+        @uamethod
+        async def set_mcf_delay(parent_node, delay: float):
+            """Set L2CB MCF delay in ns (0-75 ns with 5 ns resolution)"""
+            logger.info(f"Setting MCF delay to {delay}")
+            async with self._lock:
+                await loop.run_in_executor(None, self.system.set_mcf_delay, delay)
+            await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
+            return f"MCF delay set to {delay}"
+
+        await add_described_method("SetMCFDelay", set_mcf_delay,
+                                   inputs=[a("delay", ua.VariantType.Int16, "MCF delay in ns (0-75 ns with 5 ns resolution)")])
+        
+        # Set MCF Threshold
+        @uamethod
+        async def set_mcf_threshold(parent_node, threshold: int):
+            """Set L2CB MCF threshold (0-512)"""
+            logger.info(f"Setting MCF threshold to {threshold}")
+            async with self._lock:
+                await loop.run_in_executor(None, self.system.set_mcf_threshold, threshold)
+            await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
+            return f"MCF threshold set to {threshold}"
+        
 
     async def _write_fast_data(self, l2cb_status, monitoring_results, now: datetime.datetime):
         """Update OPC UA variables with high-frequency data"""
@@ -457,7 +485,9 @@ class L2TriggerOPCUAServer:
         await self._set_var("CrateUpTime", l2cb_status.uptime * 8, now)
         await self._set_var("CrateMCFEnabled", bool(l2cb_status.mcf_enabled), now)
         await self._set_var("CrateBusyGlitchFilterEnabled", bool(l2cb_status.busy_glitch_filter_enabled), now)
-        await self._set_var("CrateTIBTriggerBlockEnabled", bool(l2cb_status.tib_trigger_block_enabled), now)
+        await self._set_var("CrateTIBTriggerBusyBlockEnabled", bool(l2cb_status.tib_trigger_busy_block_enabled), now)
+        await self._set_var("CrateMCFThreshold", l2cb_status.mcf_threshold, now)
+        await self._set_var("CrateMCFDelay", l2cb_status.mcf_delay_ns, now)
         await self._set_var("BoardSlots", self.active_slots, now)
 
         ctdb_curr = []

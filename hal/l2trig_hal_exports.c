@@ -36,11 +36,18 @@ typedef struct {
     struct timespec start_time;
     uint16_t mcf_enabled;
     uint16_t busy_glitch_filter_enabled;
-    uint16_t tib_trigger_block_enabled;
+    uint16_t tib_trigger_busy_block_enabled;
+    uint16_t mcf_threshold;
+    uint16_t mcf_delay;
     uint16_t initialized;
 } DummyState;
 
 static DummyState dummy_state = {
+    .mcf_enabled = 1,
+    .busy_glitch_filter_enabled = 1,
+    .tib_trigger_busy_block_enabled = 1,
+    .mcf_threshold = 20,
+    .mcf_delay = 10,
     .initialized = 0
 };
 
@@ -55,10 +62,8 @@ static void init_dummy_state() {
         dummy_state.slots[i].current_max = 2000;      // ~1000mA
         dummy_state.slots[i].firmware = 0x0100;
     }
-    dummy_state.mcf_enabled = 0;
-    dummy_state.busy_glitch_filter_enabled = 0;
-    dummy_state.tib_trigger_block_enabled = 0;
     dummy_state.initialized = 1;
+
 }
 
 // ============================================================================
@@ -87,12 +92,16 @@ uint64_t cta_l2cb_readTimestamp_export(void)
     return timestamp;
 }
 
-void cta_l2cb_getControlState_export(uint16_t* mcf_enabled, uint16_t* busy_glitch_filter_enabled, uint16_t* tib_trigger_block_enabled)
+void cta_l2cb_getControlState_export(uint16_t* mcf_enabled, uint16_t* busy_glitch_filter_enabled, uint16_t* tib_trigger_busy_block_enabled)
 {
     init_dummy_state();
     if (mcf_enabled) *mcf_enabled = dummy_state.mcf_enabled;
     if (busy_glitch_filter_enabled) *busy_glitch_filter_enabled = dummy_state.busy_glitch_filter_enabled;
-    if (tib_trigger_block_enabled) *tib_trigger_block_enabled = dummy_state.tib_trigger_block_enabled;
+    if (tib_trigger_busy_block_enabled) *tib_trigger_busy_block_enabled = dummy_state.tib_trigger_busy_block_enabled;
+#ifdef DUMMY_DEBUG
+    printf("cta_l2cb_getControlState() -> mcf_enabled=%u, busy_glitch_filter_enabled=%u, tib_trigger_busy_block_enabled=%u\n", dummy_state.mcf_enabled, dummy_state.busy_glitch_filter_enabled, dummy_state.tib_trigger_busy_block_enabled);
+    fflush(stdout);
+#endif
 }
 
 void cta_l2cb_setMCFEnabled_export(uint16_t enabled)
@@ -115,12 +124,52 @@ void cta_l2cb_setBusyGlitchFilterEnabled_export(uint16_t enabled)
 #endif
 }
 
-void cta_l2cb_setTIBTriggerBlockEnabled_export(uint16_t enabled)
+void cta_l2cb_setTIBTriggerBusyBlockEnabled_export(uint16_t enabled)
 {
     init_dummy_state();
-    dummy_state.tib_trigger_block_enabled = enabled;
+    dummy_state.tib_trigger_busy_block_enabled = enabled;
 #ifdef DUMMY_DEBUG
-    printf("cta_l2cb_setTIBTriggerBlockEnabled(enabled=%u)\n", enabled);
+    printf("cta_l2cb_setTIBTriggerBusyBlockEnabled(enabled=%u)\n", enabled);
+    fflush(stdout);
+#endif
+}
+
+uint16_t cta_l2cb_getMCFThreshold_export()
+{
+    init_dummy_state();
+#ifdef DUMMY_DEBUG
+    printf("cta_l2cb_getMCFThreshold() -> %u\n", dummy_state.mcf_threshold);
+    fflush(stdout);
+#endif
+    return dummy_state.mcf_threshold;
+}
+
+void cta_l2cb_setMCFThreshold_export(uint16_t _threshold)
+{
+    init_dummy_state();
+    dummy_state.mcf_threshold = _threshold & 0x01FF;
+#ifdef DUMMY_DEBUG
+    printf("cta_l2cb_setMCFThreshold(threshold=%u)\n", dummy_state.mcf_threshold);
+    fflush(stdout);
+#endif    
+}
+
+uint16_t cta_l2cb_getMCFDelay_export()
+{
+    init_dummy_state();
+#ifdef DUMMY_DEBUG
+    printf("cta_l2cb_getMCFDelay() -> %u\n", dummy_state.mcf_delay);
+    fflush(stdout);
+#endif
+    return dummy_state.mcf_delay;    
+}
+
+void cta_l2cb_setMCFDelay_export(uint16_t _delay)
+{
+    init_dummy_state();
+    dummy_state.mcf_delay = _delay & 0x000F;
+#ifdef DUMMY_DEBUG
+    printf("cta_l2cb_setMCFDelay(delay=%u)\n", dummy_state.mcf_delay);
     fflush(stdout);
 #endif
 }
@@ -440,9 +489,9 @@ uint64_t cta_l2cb_readTimestamp_export(void)
     return cta_l2cb_readTimestamp();
 }
 
-void cta_l2cb_getControlState_export(uint16_t* mcf_enabled, uint16_t* busy_glitch_filter_enabled, uint16_t* tib_trigger_block_enabled)
+void cta_l2cb_getControlState_export(uint16_t* mcf_enabled, uint16_t* busy_glitch_filter_enabled, uint16_t* tib_trigger_busy_block_enabled)
 {
-    cta_l2cb_getControlState(mcf_enabled, busy_glitch_filter_enabled, tib_trigger_block_enabled);
+    cta_l2cb_getControlState(mcf_enabled, busy_glitch_filter_enabled, tib_trigger_busy_block_enabled);
 }
 
 void cta_l2cb_setMCFEnabled_export(uint16_t enabled)
@@ -455,9 +504,29 @@ void cta_l2cb_setBusyGlitchFilterEnabled_export(uint16_t enabled)
     cta_l2cb_setBusyGlitchFilterEnabled(enabled);
 }
 
-void cta_l2cb_setTIBTriggerBlockEnabled_export(uint16_t enabled)
+void cta_l2cb_setTIBTriggerBusyBlockEnabled_export(uint16_t enabled)
 {
-    cta_l2cb_setTIBTriggerBlockEnabled(enabled);
+    cta_l2cb_setTIBTriggerBusyBlockEnabled(enabled);
+}
+
+uint16_t cta_l2cb_getMCFThreshold_export()
+{
+    return cta_l2cb_getMCFThreshold();
+}
+
+void cta_l2cb_setMCFThreshold_export(uint16_t _threshold)
+{
+    cta_l2cb_setMCFThreshold(_threshold);
+}
+
+uint16_t cta_l2cb_getMCFDelay()
+{
+	return cta_l2cb_getMCFDelay();
+}
+
+void cta_l2cb_setMCFDelay_export(uint16_t _delay)
+{
+    cta_l2cb_setMCFDelay(_delay);
 }
 
 // ============================================================================
