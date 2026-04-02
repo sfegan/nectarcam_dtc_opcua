@@ -11,11 +11,30 @@ Laboratoire Leprince-Ringuet, CNRS/IN2P3, Ecole Polytechnique, Institut Polytech
 import argparse
 import asyncio
 import logging
+import os
 import sys
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Dict, Set
 
 from asyncua import Client, ua
 from asyncua.common.node import Node
+
+# ============================================================================
+# Subscription Handler
+# ============================================================================
+
+class SubscriptionHandler:
+    """
+    Handler for OPC UA data change notifications.
+    """
+    async def datachange_notification(self, node: Node, val: Any, data):
+        try:
+            name = (await node.read_browse_name()).Name
+            # Use carriage return and print the prompt again to keep it looking clean
+            sys.stdout.write(f"\r[MONITOR] {name} = {val}\nl2trig> ")
+            sys.stdout.flush()
+        except Exception:
+            sys.stdout.write(f"\r[MONITOR] {node} = {val}\nl2trig> ")
+            sys.stdout.flush()
 
 # ============================================================================
 # Logging
@@ -37,6 +56,9 @@ class L2TrigTestClient:
         self.ns_idx: int = 0
         self.root_node: Optional[Node] = None
         self.monitoring_node: Optional[Node] = None
+        self.subscription = None
+        self.sub_handles: Dict[Node, Any] = {}
+        self.subscribed_names: Set[str] = set()
 
     async def connect(self):
         """Connect to server and find the L2Trigger root nodes"""
@@ -79,23 +101,99 @@ class L2TrigTestClient:
             pass
 
         print("Connection lost. Reconnecting...")
+        await self.reconnect()
+
+    async def reconnect(self):
+        """Force a reconnection and restore subscriptions"""
+        old_subs = list(self.subscribed_names)
         try:
-            await self.client.disconnect()
+            await self.disconnect()
         except:
             pass
         
         # Reset nodes as they are session-specific
         self.root_node = None
         self.monitoring_node = None
+        self.subscription = None
+        self.sub_handles.clear()
+        self.subscribed_names.clear()
         
         # Try to reconnect
         await self.connect()
 
+        # Restore subscriptions
+        for name in old_subs:
+            await self.subscribe(name)
+
     async def disconnect(self):
+        """Disconnect and cleanup subscriptions"""
         try:
+            if self.subscription is not None:
+                await self.subscription.delete()
+                self.subscription = None
+            self.sub_handles.clear()
+            self.subscribed_names.clear()
             await self.client.disconnect()
         except:
             pass
+
+    async def subscribe(self, name: str):
+        """Subscribe to a specific variable or 'all' variables"""
+        if self.subscription is None:
+            self.subscription = await self.client.create_subscription(500, SubscriptionHandler())
+        
+        if name.lower() == "all":
+            self.subscribed_names.add("all")
+            children = await self.monitoring_node.get_children()
+            count = 0
+            for child in children:
+                c_class = await child.read_node_class()
+                if c_class == ua.NodeClass.Variable:
+                    if await self._subscribe_node(child):
+                        count += 1
+            print(f"Subscribed to {count} variables")
+        else:
+            try:
+                var_node = await self.monitoring_node.get_child(f"{self.ns_idx}:{name}")
+                if await self._subscribe_node(var_node):
+                    self.subscribed_names.add(name)
+                    print(f"Subscribed to {name}")
+            except Exception as e:
+                print(f"Error subscribing to {name}: {e}")
+
+    async def _subscribe_node(self, node: Node) -> bool:
+        """Internal method to subscribe to a node"""
+        if node in self.sub_handles:
+            return False
+        
+        handle = await self.subscription.subscribe_data_change(node)
+        self.sub_handles[node] = handle
+        return True
+
+    async def unsubscribe(self, name: str):
+        """Unsubscribe from a specific variable or 'all' variables"""
+        if self.subscription is None:
+            print("No active subscriptions.")
+            return
+        
+        if name.lower() == "all":
+            await self.subscription.delete()
+            self.subscription = None
+            self.sub_handles.clear()
+            self.subscribed_names.clear()
+            print("Unsubscribed from all variables")
+        else:
+            try:
+                var_node = await self.monitoring_node.get_child(f"{self.ns_idx}:{name}")
+                if var_node in self.sub_handles:
+                    await self.subscription.unsubscribe(self.sub_handles[var_node])
+                    del self.sub_handles[var_node]
+                    self.subscribed_names.discard(name)
+                    print(f"Unsubscribed from {name}")
+                else:
+                    print(f"Not subscribed to {name}")
+            except Exception as e:
+                print(f"Error unsubscribing from {name}: {e}")
 
     async def list_variables(self):
         """List all variables in the Monitoring folder"""
@@ -229,12 +327,14 @@ async def interactive_loop(client: L2TrigTestClient):
 
             if cmd in ["exit", "quit"]:
                 break
-            elif cmd == "help":
+            elif cmd in ["help", "?"]:
                 print("\nInquiry Commands:")
                 print("  summary             Show full system status summary")
                 print("  list                List all raw monitoring variables")
                 print("  read <var>          Read a specific variable")
                 print("  methods             List available methods")
+                print("  subscribe <var|all> Subscribe to variable(s) change notifications")
+                print("  unsubscribe <var|all> Unsubscribe from notifications")
                 
                 print("\nControl Commands:")
                 print("  power <mod> <on|off> Set module power (1-270)")
@@ -245,6 +345,8 @@ async def interactive_loop(client: L2TrigTestClient):
                 print("  alldelay <ns>        Set all trigger delays")
                 print("  limits <board> <min> <max> Set current limits for a board (1-based index)")
                 print("  mcf <on|off>         Set L2CB MCF enabled status")
+                print("  mcfdelay <ns>        Set L2CB MCF delay (0-75 ns)")
+                print("  mcfthreshold <val>   Set L2CB MCF threshold (0-512)")
                 print("  glitch <on|off>      Set L2CB busy glitch filter enabled status")
                 print("  tibblock <on|off>    Set L2CB TIB trigger block enabled status")
                 print("  health               Perform health check")
@@ -252,8 +354,10 @@ async def interactive_loop(client: L2TrigTestClient):
                 print("  call <name> [args]   Generic method call")
                 
                 print("\nGeneral:")
-                print("  help                Show this help")
-                print("  exit/quit           Close client")
+                print("  reconnect           Reconnect to the server")
+                print("  cls                 Clear screen")
+                print("  help / ?            Show this help")
+                print("  exit/quit           Close client (or Ctrl-D)")
 
             elif cmd == "summary":
                 await client.print_summary()
@@ -268,6 +372,16 @@ async def interactive_loop(client: L2TrigTestClient):
                         print(f"{args[0]} = {val}")
             elif cmd == "methods":
                 await client.list_methods()
+            elif cmd == "subscribe":
+                if not args: print("Usage: subscribe <variable_name|all>")
+                else: await client.subscribe(args[0])
+            elif cmd == "unsubscribe":
+                if not args: print("Usage: unsubscribe <variable_name|all>")
+                else: await client.unsubscribe(args[0])
+            elif cmd == "reconnect":
+                await client.reconnect()
+            elif cmd == "cls":
+                os.system('cls' if os.name == 'nt' else 'clear')
             elif cmd == "call":
                 if not args:
                     print("Usage: call <method_name> [args...]")
@@ -303,6 +417,12 @@ async def interactive_loop(client: L2TrigTestClient):
             elif cmd == "mcf":
                 if len(args) != 1: print("Usage: mcf <on|off>")
                 else: await client.call_method("SetMCFEnabled", args[0])
+            elif cmd == "mcfdelay":
+                if len(args) != 1: print("Usage: mcfdelay <ns>")
+                else: await client.call_method("SetMCFDelay", args[0])
+            elif cmd == "mcfthreshold":
+                if len(args) != 1: print("Usage: mcfthreshold <val>")
+                else: await client.call_method("SetMCFThreshold", args[0])
             elif cmd == "glitch":
                 if len(args) != 1: print("Usage: glitch <on|off>")
                 else: await client.call_method("SetBusyGlitchFilterEnabled", args[0])
@@ -312,7 +432,7 @@ async def interactive_loop(client: L2TrigTestClient):
             else:
                 print(f"Unknown command: {cmd}")
 
-        except KeyboardInterrupt:
+        except (KeyboardInterrupt, EOFError):
             break
         except Exception as e:
             print(f"Unexpected error: {e}")
