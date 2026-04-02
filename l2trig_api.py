@@ -78,6 +78,7 @@ class CTDBMonitoringData:
     channel_currents_ma: List[float]
     over_current_errors: int
     under_current_errors: int
+    power_enabled_mask: int
     timestamp: datetime = field(default_factory=datetime.now)
 
 
@@ -175,13 +176,17 @@ class CTDBController:
         # Get error vectors
         over_current_errors = hal.get_over_current_errors(self.slot)
         under_current_errors = hal.get_under_current_errors(self.slot)
+
+        # Get power enable register
+        power_enabled_mask = hal.get_power_enabled(self.slot)
         
         return CTDBMonitoringData(
             slot=self.slot,
             ctdb_current_ma=ctdb_current,
             channel_currents_ma=channel_currents,
             over_current_errors=over_current_errors,
-            under_current_errors=under_current_errors
+            under_current_errors=under_current_errors,
+            power_enabled_mask=power_enabled_mask
         )
 
     def get_configuration_data(self) -> CTDBConfigData:

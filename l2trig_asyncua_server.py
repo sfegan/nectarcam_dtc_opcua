@@ -92,6 +92,8 @@ class L2TriggerOPCUAServer:
         ("CrateMCFThreshold", 0, ua.VariantType.Int16, "L2CB MCF threshold (0-512)"),
         ("CrateMCFDelay", 0, ua.VariantType.Double, "L2CB MCF delay in ns (0-75.0 ns with 5 ns resolution)"),
         ("CrateL1Deadtime", 0, ua.VariantType.Double, "L2CB L1 deadtime in ns (0-1275.0 ns with 5 ns resolution)"),
+        ("CrateNumPoweredModules", 0, ua.VariantType.UInt16, "Total number of modules currently in 'on' state (enabled and no errors)"),
+        ("CrateNumTriggerEnabledModules", 0, ua.VariantType.UInt16, "Total number of modules with trigger enabled"),
         ("BoardSlots", [], ua.VariantType.Int32, "List of crate slots enabled in this server"),
         ("BoardFirmwareRevision", [], ua.VariantType.UInt16, "CTDB firmware versions (one per active slot)"),
         ("BoardCurrent", [], ua.VariantType.Double, "CTDB board currents in mA (one per active slot)"),
@@ -113,7 +115,8 @@ class L2TriggerOPCUAServer:
                  opcua_users: dict = None,
                  poll_interval: float = 1.0,
                  poll_ratio: int = 10,
-                 enabled_slots: Optional[List[int]] = None):
+                 enabled_slots: Optional[List[int]] = None,
+                 power_delay: float = 0.0001):
         """
         Initialize OPC UA server
         """
@@ -123,6 +126,7 @@ class L2TriggerOPCUAServer:
         self.opcua_users = opcua_users or {}
         self.poll_interval = poll_interval
         self.poll_ratio = poll_ratio
+        self.power_delay = power_delay
         
         # Hardware interface
         self.system = L2TriggerSystem(
@@ -138,6 +142,7 @@ class L2TriggerOPCUAServer:
         # Update tasks
         self._update_task: Optional[asyncio.Task] = None
         self._watchdog_task: Optional[asyncio.Task] = None
+        self._power_ramp_task: Optional[asyncio.Task] = None
         self._running = False
         self._lock = asyncio.Lock()
         
@@ -229,8 +234,9 @@ class L2TriggerOPCUAServer:
             "CrateFirmwareRevision", "CrateUpTime", 
             "CrateMCFEnabled", "CrateBusyGlitchFilterEnabled", "CrateTIBTriggerBusyBlockEnabled",
             "CrateMCFThreshold", "CrateMCFDelay", "CrateL1Deadtime",
+            "CrateNumPoweredModules",
             "BoardCurrent", "BoardCurrentSum", "BoardHasErrors",
-            "ModuleCurrent", "ModuleState"
+            "ModuleCurrent", "ModuleState", "ModulePowerEnabled"
         }
         fast_interval = float(self.poll_interval * 1000)
         slow_interval = float(self.poll_interval * self.poll_ratio * 1000)
@@ -289,6 +295,7 @@ class L2TriggerOPCUAServer:
         async def emergency_shutdown(parent_node):
             """Immediately disable all power channels on all CTDB boards for safety."""
             logger.warning("Emergency shutdown called via OPC UA")
+            await self._cancel_power_ramp()
             async with self._lock:
                 await loop.run_in_executor(None, self.system.emergency_shutdown)
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
@@ -300,12 +307,11 @@ class L2TriggerOPCUAServer:
         # Set All Power
         @uamethod
         async def set_all_power_enabled(parent_node, enabled: bool):
-            """Global control to enable or disable power for all modules in the system."""
-            logger.info(f"Setting all power to {'enabled' if enabled else 'disabled'}")
-            async with self._lock:
-                await loop.run_in_executor(None, self.system.set_all_power_enabled, enabled)
-            await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
-            return f"All power {'enabled' if enabled else 'disabled'}"
+            """Global control to enable or disable power for all modules in the system using a gradual ramp."""
+            logger.info(f"Setting all power to {'enabled' if enabled else 'disabled'} (gradual ramp)")
+            await self._cancel_power_ramp()
+            self._power_ramp_task = asyncio.create_task(self._ramp_power(enabled))
+            return f"All power {'enable' if enabled else 'disable'} ramping started"
         
         await add_described_method("SetAllPower", set_all_power_enabled,
                                    inputs=[a("enabled", ua.VariantType.Boolean, "True to enable all modules, False to disable all")])
@@ -313,15 +319,16 @@ class L2TriggerOPCUAServer:
         # Set Module Power
         @uamethod
         async def set_module_power(parent_node, module: int, enabled: bool):
-            """Enable or disable power for a specific module identified by its 1-based index."""
+            """Enable or disable power for a specific module. Cancels any ongoing global power ramp."""
             slot, channel = self._module_to_slot_channel(module)
             if slot not in self.system.ctdbs:
                 raise ValueError(f"Slot {slot} (module {module}) not enabled in this server")
             logger.info(f"Setting power for module {module} (Slot {slot} Ch {channel}) to {'enabled' if enabled else 'disabled'}")
+            await self._cancel_power_ramp()
             async with self._lock:
                 await loop.run_in_executor(None, self.system.set_channel_power_enabled, slot, channel, enabled)
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
-            return f"Module {module} (Slot {slot} Ch {channel+1}) {'enabled' if enabled else 'disabled'}"
+            return f"Module {module} (Slot {slot} Ch {channel}) {'enabled' if enabled else 'disabled'}"
         
         await add_described_method("SetModulePower", set_module_power,
                                    inputs=[a("module", ua.VariantType.Int32, "Module number (1-270)"),
@@ -512,13 +519,14 @@ class L2TriggerOPCUAServer:
         ctdb_err = []
         ch_curr = []
         ch_state = []
+        ch_enabled = []
+        
+        powered_count = 0
 
         for slot in self.active_slots:
             m_data = monitoring_results.get(slot)
-            ctdb = self.system.ctdbs[slot]
-            c_data = ctdb._cached_config 
             
-            if m_data and c_data:
+            if m_data:
                 ctdb_curr.append(float(m_data.ctdb_current_ma))
                 ctdb_err.append(bool(m_data.over_current_errors or m_data.under_current_errors))
                 
@@ -528,7 +536,8 @@ class L2TriggerOPCUAServer:
                     curr = float(m_data.channel_currents_ma[i])
                     ch_curr.append(curr)
                     
-                    enabled = bool(c_data.power_enabled_mask & (1 << ch))
+                    enabled = bool(m_data.power_enabled_mask & (1 << ch))
+                    ch_enabled.append(enabled)
                     if enabled:
                         total_ch_curr += curr
                     
@@ -544,6 +553,7 @@ class L2TriggerOPCUAServer:
                         state = "error_under_current"
                     elif enabled:
                         state = "on"
+                        powered_count += 1
                     else:
                         state = "off"
                     ch_state.append(state)
@@ -557,23 +567,26 @@ class L2TriggerOPCUAServer:
                 for _ in range(CHANNELS_PER_SLOT):
                     ch_curr.append(0.0)
                     ch_state.append("offline")
+                    ch_enabled.append(False)
 
+        self._powered_count = powered_count
+
+        await self._set_var("CrateNumPoweredModules", powered_count, now)
         await self._set_var("BoardCurrent", ctdb_curr, now)
         await self._set_var("BoardCurrentSum", ctdb_total, now)
         await self._set_var("BoardHasErrors", ctdb_err, now)
         await self._set_var("ModuleCurrent", ch_curr, now)
         await self._set_var("ModuleState", ch_state, now)
+        await self._set_var("ModulePowerEnabled", ch_enabled, now)
 
     async def _write_slow_data(self, config_results, trigger_results, now: datetime.datetime):
         """Update OPC UA variables with low-frequency data"""
         ctdb_fw = []
         ctdb_min = []
         ctdb_max = []
-        ch_enabled = []
         trig_enabled = []
         trig_delay = []
 
-        powered_count = 0
         enabled_count = 0
 
         for slot in self.active_slots:
@@ -582,17 +595,10 @@ class L2TriggerOPCUAServer:
                 ctdb_fw.append(c_data.firmware_version)
                 ctdb_min.append(float(c_data.current_limit_min_ma))
                 ctdb_max.append(float(c_data.current_limit_max_ma))
-                for i in range(CHANNELS_PER_SLOT):
-                    enabled = bool(c_data.power_enabled_mask & (1 << (i+1)))
-                    ch_enabled.append(enabled)
-                    if enabled:
-                        powered_count += 1
             else:
                 ctdb_fw.append(0)
                 ctdb_min.append(0.0)
                 ctdb_max.append(0.0)
-                for _ in range(CHANNELS_PER_SLOT):
-                    ch_enabled.append(False)
             
             t_data = trigger_results.get(slot)
             if t_data:
@@ -606,13 +612,12 @@ class L2TriggerOPCUAServer:
                     trig_enabled.append(False)
                     trig_delay.append(0.0)
 
-        self._powered_count = powered_count
         self._enabled_count = enabled_count
 
+        await self._set_var("CrateNumTriggerEnabledModules", enabled_count, now)
         await self._set_var("BoardFirmwareRevision", ctdb_fw, now)
         await self._set_var("BoardCurrentLimitMin", ctdb_min, now)
         await self._set_var("BoardCurrentLimitMax", ctdb_max, now)
-        await self._set_var("ModulePowerEnabled", ch_enabled, now)
         await self._set_var("ModuleTriggerEnabled", trig_enabled, now)
         await self._set_var("ModuleTriggerDelay", trig_delay, now)
 
@@ -705,6 +710,48 @@ class L2TriggerOPCUAServer:
         except Exception as e:
             logger.error(f"Failed to update {name}: {e}")
 
+    async def _cancel_power_ramp(self):
+        """Cancel any ongoing power ramp task."""
+        if self._power_ramp_task and not self._power_ramp_task.done():
+            logger.info("Cancelling existing power ramp")
+            self._power_ramp_task.cancel()
+            try:
+                await self._power_ramp_task
+            except asyncio.CancelledError:
+                pass
+        self._power_ramp_task = None
+
+    async def _ramp_power(self, enabled: bool):
+        """Gradually turn power on/off for all modules with interleaving across slots."""
+        logger.info(f"Starting power ramp: {'enabled' if enabled else 'disabled'}")
+        try:
+            loop = asyncio.get_running_loop()
+            # Order: cycle between slots for each channel to minimize inrush into each slot
+            for ch in range(1, CHANNELS_PER_SLOT + 1):
+                for slot in self.active_slots:
+                    logger.debug(f"Ramp: Slot {slot} Ch {ch} -> {enabled}")
+                    async with self._lock:
+                        await loop.run_in_executor(
+                            None, self.system.set_channel_power_enabled, slot, ch, enabled
+                        )
+                    
+                    if self.power_delay > 0:
+                        await asyncio.sleep(self.power_delay)
+                    
+                    # Perform fast polling update after each channel is enabled
+                    await self._do_poll_fast(datetime.datetime.now(datetime.timezone.utc))
+            
+            logger.info(f"Power ramp complete: {'enabled' if enabled else 'disabled'}")
+            # Finally do a full poll to make sure slow variables are updated
+            await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
+            
+        except asyncio.CancelledError:
+            logger.warning("Power ramp cancelled")
+        except Exception as e:
+            logger.error(f"Error during power ramp: {e}", exc_info=True)
+        finally:
+            self._power_ramp_task = None
+
     async def start(self):
         """Start the OPC UA server"""
         await self.init()
@@ -746,6 +793,14 @@ class L2TriggerOPCUAServer:
                 await self._update_task
             except asyncio.CancelledError:
                 pass
+
+        if self._power_ramp_task:
+            self._power_ramp_task.cancel()
+            try:
+                await self._power_ramp_task
+            except asyncio.CancelledError:
+                pass
+
         logger.info("OPC UA server stopped")
 
 
@@ -764,6 +819,7 @@ def _parse_args():
     p.add_argument("--poll-interval", type=float, default=1.0, help="Polling interval in seconds")
     p.add_argument("--poll-ratio", type=int, default=10, 
                    help="Number of polling cycles between full status reads")
+    p.add_argument("--power-ramp-delay-ms", type=int, default=10, help="Delay between enabling power channels in ramp in milliseconds")
     p.add_argument("--timeout-us", type=int, default=10000, help="Hardware timeout in microseconds")
     p.add_argument("--slots", help="Comma-separated list of slots to enable (default: all)")
     p.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
@@ -798,7 +854,8 @@ async def main():
         opcua_users=opcua_users,
         poll_interval=args.poll_interval,
         poll_ratio=args.poll_ratio,
-        enabled_slots=enabled_slots
+        enabled_slots=enabled_slots,
+        power_delay=args.power_ramp_delay_ms / 1_000.0
     )
     
     try:
