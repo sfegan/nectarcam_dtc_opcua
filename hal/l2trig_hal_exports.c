@@ -23,19 +23,21 @@
 // ============================================================================
 
 typedef struct {
-    uint16_t power_enable;      // bits 1-15
-    uint16_t trigger_enabled;   // bits 0-14
-    uint16_t trigger_delays[15];
+    uint16_t power_enable;       // bits 1-15
+    uint16_t trigger_enabled;    // bits 1-15
+    uint16_t trigger_delays[16]; // index 1-15 used
     uint16_t current_min;
     uint16_t current_max;
     uint16_t firmware;
 } DummySlot;
 
 static DummySlot dummy_slots[32]; // Max slot index used is 21
+static struct timespec dummy_start_time;
 static int dummy_initialized = 0;
 
 static void init_dummy_state() {
     if (dummy_initialized) return;
+    clock_gettime(CLOCK_MONOTONIC, &dummy_start_time);
     for (int i = 0; i < 32; i++) {
         dummy_slots[i].power_enable = 0x0000;    // All off
         dummy_slots[i].trigger_enabled = 0x0000; // All disabled (assuming 1=active, 0=disabled)
@@ -65,7 +67,7 @@ uint64_t cta_l2cb_readTimestamp_export(void)
     // Return a monotonic-ish timestamp based on real time
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
-    uint64_t timestamp = (uint64_t)ts.tv_sec * 1000000000ULL + ts.tv_nsec;
+    uint64_t timestamp = (uint64_t)(ts.tv_sec - dummy_start_time.tv_sec) * 1000000000ULL + (ts.tv_nsec - dummy_start_time.tv_nsec)/8; // Convert to 8ns units;
 #ifdef DUMMY_DEBUG
     printf("cta_l2cb_readTimestamp() -> %llu\n", (unsigned long long)timestamp);
     fflush(stdout);

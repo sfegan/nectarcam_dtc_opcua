@@ -125,8 +125,7 @@ class CTDBStatus:
 class L2CBStatus:
     """Status of the L2CB controller board"""
     firmware_version: int
-    timestamp: int
-    timestamp_datetime: datetime
+    uptime: int
 
 
 # ============================================================================
@@ -349,7 +348,7 @@ class CTDBController:
         mask = hal.get_l1_trigger_enabled(self.slot)
         
         channels = []
-        for ch in range(CHANNELS_PER_SLOT):
+        for ch in range(1,CHANNELS_PER_SLOT+1):
             enabled = bool(mask & (1 << ch))
             
             # Get delay
@@ -366,8 +365,8 @@ class CTDBController:
     
     def set_channel_trigger_enabled(self, channel: int, enabled: bool) -> None:
         """Set trigger enabled status for a channel"""
-        if not 0 <= channel < CHANNELS_PER_SLOT:
-            raise ValueError(f"Channel must be 0-{CHANNELS_PER_SLOT-1}")
+        if not 1 <= channel <= CHANNELS_PER_SLOT:
+            raise ValueError(f"Channel must be 1-{CHANNELS_PER_SLOT}")
         
         hal.set_l1_trigger_channel_enabled( 
             self.slot, channel, enabled
@@ -383,11 +382,15 @@ class CTDBController:
     
     def set_channel_trigger_delay(self, channel: int, delay_ns: float) -> None:
         """Set trigger delay for a channel"""
-        if not 0 <= channel < CHANNELS_PER_SLOT:
-            raise ValueError(f"Channel must be 0-{CHANNELS_PER_SLOT-1}")
-        
-        if not 0 <= delay_ns <= 5.0:
-            raise ValueError("Delay must be 0-5 ns")
+        if not 1 <= channel <= CHANNELS_PER_SLOT:
+            raise ValueError(f"Channel must be 1-{CHANNELS_PER_SLOT}")
+    
+        if delay_ns < 0:
+            logger.warning(f"Requested delay {delay_ns} ns is negative, setting to 0")
+            delay_ns = 0.0
+        elif delay_ns > hal.L1DELAY_MAX:
+            logger.warning(f"Requested delay {delay_ns} ns exceeds max {hal.L1DELAY_MAX:.1f} ns, setting to max")
+            delay_ns = hal.L1DELAY_MAX
         
         delay_raw = hal.delay_ns_to_raw(delay_ns)
         
@@ -428,12 +431,11 @@ class L2TriggerSystem:
     def get_l2cb_status(self) -> L2CBStatus:
         """Get status of the L2CB controller board"""
         fw_version = hal.get_l2cb_firmware_revision()
-        timestamp = hal.read_timestamp()
+        uptime = hal.read_timestamp()
         
         return L2CBStatus(
             firmware_version=fw_version,
-            timestamp=timestamp,
-            timestamp_datetime=datetime.now()
+            uptime=uptime,
         )
     
     def get_all_monitoring_data(self) -> Dict[int, CTDBMonitoringData]:

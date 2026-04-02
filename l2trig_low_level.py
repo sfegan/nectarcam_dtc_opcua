@@ -187,10 +187,15 @@ _lib.cta_l2cb_isValidSlot_export.restype = c_int
 # Default timing in nanoseconds
 DEFAULT_MIN_COMMAND_DELAY_NS = 0
 DEFAULT_MIN_READ_DELAY_NS = 0
-DEFAULT_TIMEOUT_NS = 10000000 # 10ms
+DEFAULT_TIMEOUT_NS = 100000  # 100 microseconds
 
 CURRENT_CONVERSION_FACTOR = 0.485  # mA per ADC count
-CURRENT_MAX = 0x0FFF * CURRENT_CONVERSION_FACTOR  # Max current corresponding to 12-bit ADC value
+CURRENT_CODE_MAX = 0x0FFF  # Max raw ADC code (12 bits)
+CURRENT_MAX = CURRENT_CODE_MAX * CURRENT_CONVERSION_FACTOR  # Max current corresponding to 12-bit ADC value
+
+L1DELAY_CONVERSION_FACTOR = 0.037  # ns per raw step (37 ps steps)
+L1DELAY_CODE = 0x7F # Max raw code for L1 delay (7 bits, 0-5ns range in 37 ps steps)
+L1DELAY_MAX = L1DELAY_CODE * L1DELAY_CONVERSION_FACTOR  # Max delay corresponding to raw code
 
 # ============================================================================
 # Low-Level Python Wrappers
@@ -269,7 +274,7 @@ def get_l1_trigger_channel_enabled(slot: int, channel: int) -> bool:
 def set_l1_trigger_delay(slot: int, channel: int, delay: int) -> None:
     """
     Set trigger delay for a channel
-    delay: in 37 ps steps, 0-5ns range
+    delay: in 37 ps steps, 0-5ns range (0x00 to 0x7f)
     """
     err = _lib.cta_l2cb_setL1TriggerDelay_export(slot, channel, delay)
     _check_error(err, f"set_l1_trigger_delay(slot={slot}, ch={channel}, delay={delay})")
@@ -441,4 +446,4 @@ def delay_ns_to_raw(delay_ns: float) -> int:
 
 def delay_raw_to_ns(raw_value: int) -> float:
     """Convert raw delay value to nanoseconds"""
-    return raw_value * 0.037
+    return (raw_value & 0x7F) * 0.037

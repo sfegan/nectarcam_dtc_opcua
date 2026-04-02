@@ -85,8 +85,7 @@ class L2TriggerOPCUAServer:
     # (name, initial value, OPC UA variant type, description)
     _MONITORING_VARS = [
         ("CrateFirmwareRevision", 0, ua.VariantType.UInt16, "L2CB board firmware version"),
-        ("CrateTimestamp", datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc), ua.VariantType.DateTime, "L2CB hardware timestamp"),
-        ("CrateRawTimestamp", 0, ua.VariantType.UInt64, "L2CB raw hardware timestamp counter"),
+        ("CrateUpTime", 0, ua.VariantType.UInt64, "L2CB uptime in nanoseconds, from crate timestamp"),
         ("BoardSlots", [], ua.VariantType.Int32, "List of crate slots enabled in this server"),
         ("BoardFirmwareRevision", [], ua.VariantType.UInt16, "CTDB firmware versions (one per active slot)"),
         ("BoardCurrent", [], ua.VariantType.Double, "CTDB board currents in mA (one per active slot)"),
@@ -148,7 +147,7 @@ class L2TriggerOPCUAServer:
         slot_idx = (module - 1) // CHANNELS_PER_SLOT
         slot = VALID_SLOTS[slot_idx]
         channel = (module - 1) % CHANNELS_PER_SLOT
-        return slot, channel
+        return slot, channel+1
 
     async def init(self):
         """Initialize the OPC UA server"""
@@ -221,7 +220,7 @@ class L2TriggerOPCUAServer:
         
         # Create monitoring variables with dotted NodeIds
         fast_vars = {
-            "CrateFirmwareRevision", "CrateTimestamp", "CrateRawTimestamp",
+            "CrateFirmwareRevision", "CrateUpTime",
             "BoardCurrent", "BoardCurrentSum", "BoardHasErrors",
             "ModuleCurrent", "ModuleState"
         }
@@ -310,7 +309,7 @@ class L2TriggerOPCUAServer:
             slot, channel = self._module_to_slot_channel(module)
             if slot not in self.system.ctdbs:
                 raise ValueError(f"Slot {slot} (module {module}) not enabled in this server")
-            logger.info(f"Setting power for module {module} (Slot {slot} Ch {channel+1}) to {'enabled' if enabled else 'disabled'}")
+            logger.info(f"Setting power for module {module} (Slot {slot} Ch {channel}) to {'enabled' if enabled else 'disabled'}")
             async with self._lock:
                 await loop.run_in_executor(None, self.system.set_channel_power_enabled, slot, channel + 1, enabled)
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
@@ -345,7 +344,7 @@ class L2TriggerOPCUAServer:
             slot, channel = self._module_to_slot_channel(module)
             if slot not in self.system.ctdbs:
                 raise ValueError(f"Slot {slot} (module {module}) not enabled in this server")
-            logger.info(f"Setting trigger enabled for module {module} (Slot {slot} Ch {channel+1}) to {'enabled' if enabled else 'disabled'}")
+            logger.info(f"Setting trigger enabled for module {module} (Slot {slot} Ch {channel}) to {'enabled' if enabled else 'disabled'}")
             async with self._lock:
                 await loop.run_in_executor(None, self.system.ctdbs[slot].set_channel_trigger_enabled, channel, enabled)
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
@@ -362,7 +361,7 @@ class L2TriggerOPCUAServer:
             slot, channel = self._module_to_slot_channel(module)
             if slot not in self.system.ctdbs:
                 raise ValueError(f"Slot {slot} (module {module}) not enabled in this server")
-            logger.info(f"Setting trigger delay for module {module} (Slot {slot} Ch {channel+1}) to {delay_ns} ns")
+            logger.info(f"Setting trigger delay for module {module} (Slot {slot} Ch {channel}) to {delay_ns} ns")
             async with self._lock:
                 await loop.run_in_executor(None, self.system.ctdbs[slot].set_channel_trigger_delay, channel, delay_ns)
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
@@ -413,8 +412,7 @@ class L2TriggerOPCUAServer:
     async def _write_fast_data(self, l2cb_status, monitoring_results, now: datetime.datetime):
         """Update OPC UA variables with high-frequency data"""
         await self._set_var("CrateFirmwareRevision", l2cb_status.firmware_version, now)
-        await self._set_var("CrateTimestamp", l2cb_status.timestamp_datetime, now)
-        await self._set_var("CrateRawTimestamp", l2cb_status.timestamp, now)
+        await self._set_var("CrateUpTime", l2cb_status.uptime * 8, now)
         await self._set_var("BoardSlots", self.active_slots, now)
 
         ctdb_curr = []

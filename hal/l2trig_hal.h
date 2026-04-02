@@ -72,8 +72,11 @@ CEXTERN void cta_l2cb_spi_set_delay_delays_export(int64_t _min_command_delay_ns,
 #define ADDR_CTA_L2CB_L1SEL		0x12		// L1 Trigger channel select for masking and up delay adjust
 #define ADDR_CTA_L2CB_L1MSK		0x14		// L1 Trigger mask for channels of selected L2-crate slot
 #define ADDR_CTA_L2CB_L1DEL		0x16		// L1 Trigger Delay in 37 ps steps, 0..5ns range
+#define ADDR_CTA_L2CB_MUTHR		0x18		// Muon threshold, amount of L1s, causing a Muon-trigger,
+#define ADDR_CTA_L2CB_MUDEL		0x20		// Muon trigger delay, in steps of 5ns
+#define ADDR_CTA_L2CB_L2DT		0x22		// L2 dead time in multiples of 5ns
 
-#define ADDR_CTA_L2CB_FRREV		0xfe		// Firmware Revision
+#define ADDR_CTA_L2CB_FREV		0xfe		// Firmware Revision
 
 // *** CTDB spi bus register ***
 #define ADDR_CTA_CTDB_PONF		0x00		// power on/off registers
@@ -144,7 +147,7 @@ static inline uint64_t cta_l2cb_readTimestamp(void)
 // get the firmware revision 16bit value
 static inline uint16_t cta_l2cb_getFirmwareRevision(void)
 {
-	return IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_FRREV);
+	return IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_FREV);
 }
 
 // ***** Helper Functions to set trigger enabled status and delays
