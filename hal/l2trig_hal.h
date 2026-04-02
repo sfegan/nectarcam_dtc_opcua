@@ -79,7 +79,7 @@ CEXTERN void cta_l2cb_spi_set_delay_delays_export(int64_t _min_command_delay_ns,
 #define ADDR_CTA_L2CB_L1DEL		0x16		// L1 Trigger Delay in 37 ps steps, 0..5ns range
 #define ADDR_CTA_L2CB_MUTHR		0x18		// Muon threshold, amount of L1s, causing a Muon-trigger,
 #define ADDR_CTA_L2CB_MUDEL		0x20		// Muon trigger delay, in steps of 5ns
-#define ADDR_CTA_L2CB_L2DT		0x22		// L2 dead time in multiples of 5ns
+#define ADDR_CTA_L2CB_L1DT		0x22		// L1 dead time in multiples of 5ns
 
 #define ADDR_CTA_L2CB_FREV		0xfe		// Firmware Revision
 
@@ -208,6 +208,18 @@ static inline uint16_t cta_l2cb_getMCFDelay()
 static inline void cta_l2cb_setMCFDelay(uint16_t _delay)
 {
 	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_MUDEL, _delay & 0x000F);
+}
+
+// ***** Helper Functions to set and get L1 deadtime (L1DT) parameter
+
+static inline uint16_t cta_l2cb_getL1Deadtime()
+{
+	return IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_L1DT) & 0x00FF;
+}
+
+static inline void cta_l2cb_setL1Deadtime(uint16_t _delay)
+{
+	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_L1DT, _delay & 0x00FF);
 }
 
 // ***** Helper Functions to set trigger enabled status and delays

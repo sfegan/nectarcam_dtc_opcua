@@ -39,6 +39,7 @@ typedef struct {
     uint16_t tib_trigger_busy_block_enabled;
     uint16_t mcf_threshold;
     uint16_t mcf_delay;
+    uint16_t l1_deadtime;
     uint16_t initialized;
 } DummyState;
 
@@ -48,6 +49,7 @@ static DummyState dummy_state = {
     .tib_trigger_busy_block_enabled = 1,
     .mcf_threshold = 20,
     .mcf_delay = 10,
+    .l1_deadtime = 3,
     .initialized = 0
 };
 
@@ -170,6 +172,26 @@ void cta_l2cb_setMCFDelay_export(uint16_t _delay)
     dummy_state.mcf_delay = _delay & 0x000F;
 #ifdef DUMMY_DEBUG
     printf("cta_l2cb_setMCFDelay(delay=%u)\n", dummy_state.mcf_delay);
+    fflush(stdout);
+#endif
+}
+
+uint16_t cta_l2cb_getL1Deadtime_export()
+{
+    init_dummy_state();
+#ifdef DUMMY_DEBUG
+    printf("cta_l2cb_getL1Deadtime() -> %u\n", dummy_state.l1_deadtime);
+    fflush(stdout);
+#endif
+    return dummy_state.l1_deadtime;
+}
+
+void cta_l2cb_setL1Deadtime_export(uint16_t _delay)
+{
+    init_dummy_state();
+    dummy_state.l1_deadtime = _delay & 0x00FF;
+#ifdef DUMMY_DEBUG
+    printf("cta_l2cb_setL1Deadtime(delay=%u)\n", dummy_state.l1_deadtime);
     fflush(stdout);
 #endif
 }
@@ -527,6 +549,16 @@ uint16_t cta_l2cb_getMCFDelay()
 void cta_l2cb_setMCFDelay_export(uint16_t _delay)
 {
     cta_l2cb_setMCFDelay(_delay);
+}
+
+uint16_t cta_l2cb_getL1Deadtime_export()
+{
+    return cta_l2cb_getL1Deadtime();
+}
+
+void cta_l2cb_setL1Deadtime_export(uint16_t _delay)
+{
+    cta_l2cb_setL1Deadtime(_delay);
 }
 
 // ============================================================================
