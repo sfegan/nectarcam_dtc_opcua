@@ -318,7 +318,7 @@ class L2TriggerOPCUAServer:
                 raise ValueError(f"Slot {slot} (module {module}) not enabled in this server")
             logger.info(f"Setting power for module {module} (Slot {slot} Ch {channel}) to {'enabled' if enabled else 'disabled'}")
             async with self._lock:
-                await loop.run_in_executor(None, self.system.set_channel_power_enabled, slot, channel + 1, enabled)
+                await loop.run_in_executor(None, self.system.set_channel_power_enabled, slot, channel, enabled)
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
             return f"Module {module} (Slot {slot} Ch {channel+1}) {'enabled' if enabled else 'disabled'}"
         
