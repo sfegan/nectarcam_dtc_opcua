@@ -42,7 +42,7 @@ class _SuppressUaStatusCodeTracebacks(logging.Filter):
             return False
         return True
 
-def _configure_logging(level: str, log_file: str | None) -> None:
+def _configure_logging(level: str, log_file: Optional[str]) -> None:
     """Configure the root logger."""
     formatter = logging.Formatter(_LOG_FORMAT)
     stdout_handler = logging.StreamHandler(sys.stdout)
@@ -809,20 +809,26 @@ class L2TriggerOPCUAServer:
 # ============================================================================
 
 def _parse_args():
-    p = argparse.ArgumentParser(description="L2 Trigger System OPC UA Server")
-    p.add_argument("--opcua-endpoint", default="opc.tcp://0.0.0.0:4840/l2trigger/")
+    p = argparse.ArgumentParser(
+        description="L2 Trigger System OPC UA Server",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+    p.add_argument("--opcua-endpoint", default="opc.tcp://0.0.0.0:4840/l2trigger/",
+                   help="OPC UA endpoint URL")
     p.add_argument("--opcua-root", default="L2Trigger", 
                    help="Root object path (e.g. L2Trigger or Camera.L2Trigger)")
     p.add_argument("--monitoring-path", default="Monitoring",
                    help="Name of the monitoring object under the root")
-    p.add_argument("--opcua-user", action="append", metavar="USER:PASS")
+    p.add_argument("--opcua-user", action="append", metavar="USER:PASS",
+                   help="Username and password for authentication")
     p.add_argument("--poll-interval", type=float, default=1.0, help="Polling interval in seconds")
     p.add_argument("--poll-ratio", type=int, default=10, 
                    help="Number of polling cycles between full status reads")
     p.add_argument("--power-ramp-delay-ms", type=int, default=10, help="Delay between enabling power channels in ramp in milliseconds")
     p.add_argument("--timeout-us", type=int, default=10000, help="Hardware timeout in microseconds")
-    p.add_argument("--slots", help="Comma-separated list of slots to enable (default: all)")
-    p.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    p.add_argument("--slots", help="Comma-separated list of slots to enable; if omitted, all slots are enabled")
+    p.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+                   help="Set the logging level")
     p.add_argument("--log-file", help="Optional log file path")
     return p.parse_args()
 
