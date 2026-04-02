@@ -104,6 +104,9 @@ _lib.cta_l2cb_getFirmwareRevision_export.restype = c_uint16
 _lib.cta_l2cb_readTimestamp_export.argtypes = []
 _lib.cta_l2cb_readTimestamp_export.restype = c_uint64
 
+_lib.cta_l2cb_getControlState_export.argtypes = [POINTER(c_uint16), POINTER(c_uint16), POINTER(c_uint16)]
+_lib.cta_l2cb_getControlState_export.restype = None
+
 # L1 Trigger Control
 _lib.cta_l2cb_setL1TriggerEnabled_export.argtypes = [c_uint8, c_uint16]
 _lib.cta_l2cb_setL1TriggerEnabled_export.restype = None
@@ -244,10 +247,21 @@ def get_l2cb_firmware_revision() -> int:
     return _lib.cta_l2cb_getFirmwareRevision_export()
 
 
-def read_timestamp() -> int:
+def get_l2cb_timestamp() -> int:
     """Read the current timestamp (48-bit value)"""
     return _lib.cta_l2cb_readTimestamp_export()
 
+def get_l2cb_control_state() -> dict:
+    """Get the current control state (MCF enabled, busy glitch filter enabled, TIB trigger block enabled)"""
+    mcf_enabled = c_uint16()
+    busy_glitch_filter_enabled = c_uint16()
+    tib_trigger_block_enabled = c_uint16()
+    _lib.cta_l2cb_getControlState_export(ctypes.byref(mcf_enabled), ctypes.byref(busy_glitch_filter_enabled), ctypes.byref(tib_trigger_block_enabled))
+    return {
+        "mcf_enabled": bool(mcf_enabled.value),
+        "busy_glitch_filter_enabled": bool(busy_glitch_filter_enabled.value),
+        "tib_trigger_block_enabled": bool(tib_trigger_block_enabled.value)
+    }
 
 # --- L1 Trigger Control ---
 

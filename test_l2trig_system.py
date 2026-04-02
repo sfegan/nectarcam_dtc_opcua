@@ -46,7 +46,7 @@ def mock_hal():
         set_l1_trigger_channel_enabled=DEFAULT,
         set_l1_trigger_delay=DEFAULT,
         get_l2cb_firmware_revision=DEFAULT,
-        read_timestamp=DEFAULT,
+        get_l2cb_timestamp=DEFAULT,
     ) as mocks:
         mocks['get_power_enabled'].return_value = 0xFFFE
         mocks['get_power_current'].return_value = 100.0
@@ -58,7 +58,7 @@ def mock_hal():
         mocks['get_l1_trigger_enabled'].return_value = 0x0000
         mocks['get_l1_trigger_delay'].return_value = 27
         mocks['get_l2cb_firmware_revision'].return_value = 0x0100
-        mocks['read_timestamp'].return_value = 123456789
+        mocks['get_l2cb_timestamp'].return_value = 123456789
         yield mocks
 
 

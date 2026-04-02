@@ -126,6 +126,9 @@ class L2CBStatus:
     """Status of the L2CB controller board"""
     firmware_version: int
     uptime: int
+    mcf_enabled: bool
+    busy_glitch_filter_enabled: bool
+    tib_trigger_block_enabled: bool
 
 
 # ============================================================================
@@ -431,11 +434,16 @@ class L2TriggerSystem:
     def get_l2cb_status(self) -> L2CBStatus:
         """Get status of the L2CB controller board"""
         fw_version = hal.get_l2cb_firmware_revision()
-        uptime = hal.read_timestamp()
+        uptime = hal.get_l2cb_timestamp()
         
+        control = hal.get_l2cb_control_state()
+
         return L2CBStatus(
             firmware_version=fw_version,
             uptime=uptime,
+            mcf_enabled=control["mcf_enabled"],
+            busy_glitch_filter_enabled=control["busy_glitch_filter_enabled"],
+            tib_trigger_block_enabled=control["tib_trigger_block_enabled"]
         )
     
     def get_all_monitoring_data(self) -> Dict[int, CTDBMonitoringData]:

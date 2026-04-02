@@ -137,6 +137,9 @@ static inline uint64_t cta_l2cb_readTimestamp(void)
 	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_CTRL, 0x0000);
 	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_CTRL, 0x0001);
 
+	struct timespec sleep_ts = {0, 200}; // 200ns delay to ensure timestamp is latched and ready to read
+	nanosleep(&sleep_ts, NULL);
+
 	tmp=IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_TSTMP0);
 	tmp|=(uint64_t)IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_TSTMP1) << 16;
 	tmp|=(uint64_t)IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_TSTMP2) << 32;
@@ -148,6 +151,15 @@ static inline uint64_t cta_l2cb_readTimestamp(void)
 static inline uint16_t cta_l2cb_getFirmwareRevision(void)
 {
 	return IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_FREV);
+}
+
+// get the configuration from the control register
+static inline void cta_l2cb_getControlState(uint16_t* mcf_enabled, uint16_t* busy_glitch_filter_enabled, uint16_t* tib_trigger_block_enabled)
+{
+	uint16_t value = IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_CTRL);
+	*mcf_enabled = testBitVal16(value, 13);
+	*busy_glitch_filter_enabled = testBitVal16(value, 12);
+	*tib_trigger_block_enabled = testBitVal16(value, 0);
 }
 
 // ***** Helper Functions to set trigger enabled status and delays

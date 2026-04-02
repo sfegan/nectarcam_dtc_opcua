@@ -86,6 +86,9 @@ class L2TriggerOPCUAServer:
     _MONITORING_VARS = [
         ("CrateFirmwareRevision", 0, ua.VariantType.UInt16, "L2CB board firmware version"),
         ("CrateUpTime", 0, ua.VariantType.UInt64, "L2CB uptime in nanoseconds, from crate timestamp"),
+        ("CrateMCFEnabled", 0, ua.VariantType.Boolean, "L2CB MCF enabled status: \"true\" allows the MCF-trigger to be propagated to the TIB (signal TIB_SPARE1_P/N at J14-8/7), \"false\" blocks the MCF-trigger propagation"),
+        ("CrateBusyGlitchFilterEnabled", 0, ua.VariantType.Boolean, "L2CB busy glitch filter enabled"),
+        ("CrateTIBTriggerBlockEnabled", 0, ua.VariantType.Boolean, "L2CB TIB trigger blocking enabled"),
         ("BoardSlots", [], ua.VariantType.Int32, "List of crate slots enabled in this server"),
         ("BoardFirmwareRevision", [], ua.VariantType.UInt16, "CTDB firmware versions (one per active slot)"),
         ("BoardCurrent", [], ua.VariantType.Double, "CTDB board currents in mA (one per active slot)"),
@@ -220,7 +223,7 @@ class L2TriggerOPCUAServer:
         
         # Create monitoring variables with dotted NodeIds
         fast_vars = {
-            "CrateFirmwareRevision", "CrateUpTime",
+            "CrateFirmwareRevision", "CrateUpTime", "CrateMCFEnabled", "CrateBusyGlitchFilterEnabled", "CrateTIBTriggerBlockEnabled",
             "BoardCurrent", "BoardCurrentSum", "BoardHasErrors",
             "ModuleCurrent", "ModuleState"
         }
@@ -413,6 +416,9 @@ class L2TriggerOPCUAServer:
         """Update OPC UA variables with high-frequency data"""
         await self._set_var("CrateFirmwareRevision", l2cb_status.firmware_version, now)
         await self._set_var("CrateUpTime", l2cb_status.uptime * 8, now)
+        await self._set_var("CrateMCFEnabled", bool(l2cb_status.mcf_enabled), now)
+        await self._set_var("CrateBusyGlitchFilterEnabled", bool(l2cb_status.busy_glitch_filter_enabled), now)
+        await self._set_var("CrateTIBTriggerBlockEnabled", bool(l2cb_status.tib_trigger_block_enabled), now)
         await self._set_var("BoardSlots", self.active_slots, now)
 
         ctdb_curr = []
