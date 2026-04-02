@@ -326,7 +326,7 @@ async def interactive_loop(client: L2TrigTestClient):
             cmd = parts[0].lower()
             args = parts[1:]
 
-            if cmd in ["exit", "quit"]:
+            if cmd in ["exit", "quit", "bye"]:
                 break
             elif cmd in ["help", "?"]:
                 print("\nInquiry Commands:")
@@ -365,7 +365,7 @@ async def interactive_loop(client: L2TrigTestClient):
                 await client.print_summary()
             elif cmd == "list":
                 await client.list_variables()
-            elif cmd == "read":
+            elif cmd in ("read", "get"):
                 if not args:
                     print("Usage: read <variable_name>")
                 else:
@@ -374,13 +374,13 @@ async def interactive_loop(client: L2TrigTestClient):
                         print(f"{args[0]} = {val}")
             elif cmd == "methods":
                 await client.list_methods()
-            elif cmd == "subscribe":
+            elif cmd in ("subscribe", "sub"):
                 if not args: print("Usage: subscribe <variable_name|all>")
                 else: await client.subscribe(args[0])
-            elif cmd == "unsubscribe":
+            elif cmd in ("unsubscribe", "unsub"):
                 if not args: print("Usage: unsubscribe <variable_name|all>")
                 else: await client.unsubscribe(args[0])
-            elif cmd == "reconnect":
+            elif cmd in ("reconnect", "restart"):
                 await client.reconnect()
             elif cmd == "cls":
                 os.system('cls' if os.name == 'nt' else 'clear')
