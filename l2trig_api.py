@@ -387,7 +387,7 @@ class CTDBController:
 
     def set_all_trigger_enabled(self, enabled: bool) -> None:
         """Set trigger enabled status for all channels on this board"""
-        mask = 0x7FFF if enabled else 0x0000
+        mask = 0xFFFE if enabled else 0x0000
         hal.set_l1_trigger_enabled(self.slot, mask)
         logger.debug(f"Slot {self.slot}: All trigger channels {'enabled' if enabled else 'disabled'}")
     
