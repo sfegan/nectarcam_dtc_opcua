@@ -233,9 +233,10 @@ class L2TrigTestClient:
         l2cb_mcf = await self.read_variable("CrateMCFEnabled")
         l2cb_glitch = await self.read_variable("CrateBusyGlitchFilterEnabled")
         l2cb_tib = await self.read_variable("CrateTIBTriggerBusyBlockEnabled")
+        l2cb_deadtime = await self.read_variable("CrateL1Deadtime")
         
         print(f"L2CB Firmware: 0x{l2cb_fw:04X} | Uptime: {l2cb_uptime/1e9:.3f} s")
-        print(f"L2CB Status: MCF={'ON' if l2cb_mcf else 'OFF'}, BusyGlitchFilter={'ON' if l2cb_glitch else 'OFF'}, TIBTriggerBusyBlock={'ON' if l2cb_tib else 'OFF'}")
+        print(f"L2CB Status: MCF={'ON' if l2cb_mcf else 'OFF'}, BusyGlitchFilter={'ON' if l2cb_glitch else 'OFF'}, TIBTriggerBusyBlock={'ON' if l2cb_tib else 'OFF'}, L1Deadtime={l2cb_deadtime:.1f} ns")
         
         ctdb_fw = await self.read_variable("BoardFirmwareRevision")
         ctdb_curr = await self.read_variable("BoardCurrent")
@@ -347,6 +348,7 @@ async def interactive_loop(client: L2TrigTestClient):
                 print("  mcf <on|off>         Set L2CB MCF enabled status")
                 print("  mcfdelay <ns>        Set L2CB MCF delay (0-75 ns)")
                 print("  mcfthreshold <val>   Set L2CB MCF threshold (0-512)")
+                print("  deadtime <ns>        Set L2CB L1 deadtime (0-1275 ns)")
                 print("  glitch <on|off>      Set L2CB busy glitch filter enabled status")
                 print("  tibblock <on|off>    Set L2CB TIB trigger block enabled status")
                 print("  health               Perform health check")
@@ -423,6 +425,9 @@ async def interactive_loop(client: L2TrigTestClient):
             elif cmd == "mcfthreshold":
                 if len(args) != 1: print("Usage: mcfthreshold <val>")
                 else: await client.call_method("SetMCFThreshold", args[0])
+            elif cmd == "deadtime":
+                if len(args) != 1: print("Usage: deadtime <ns>")
+                else: await client.call_method("SetL1Deadtime", args[0])
             elif cmd == "glitch":
                 if len(args) != 1: print("Usage: glitch <on|off>")
                 else: await client.call_method("SetBusyGlitchFilterEnabled", args[0])
