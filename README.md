@@ -66,7 +66,7 @@ python3 l2trig_asyncua_server.py [options]
 
 ### Polling Mechanism
 The server implements a **Phase-Locked Loop (PLL)** polling loop to maintain a constant update rate.
-- **High-Frequency Data**: Currents and error states are read every cycle (`poll-interval`).
+- **High-Frequency Data**: Currents, error states, and L2CB status are read every cycle (`poll-interval`).
 - **Low-Frequency Data**: Firmware versions, current limits, and trigger settings are read every `poll-ratio` cycles.
 - **Immediate Update**: Calling any control method (e.g., `SetModulePower`) triggers an immediate full status read outside the normal schedule.
 - **Watchdog Timer**: The server logs a system status summary (number of active boards, powered modules, and enabled trigger modules) at the `INFO` level every 180 seconds.
@@ -79,8 +79,13 @@ Located under `<Root>.<MonitoringPath>/` (e.g., `L2Trigger.Monitoring/`). All mo
 | Node Name | Type | Description |
 | :--- | :--- | :--- |
 | `CrateFirmwareRevision` | UInt16 | L2CB board firmware version |
-| `CrateTimestamp` | DateTime | L2CB hardware timestamp (converted to UTC) |
-| `CrateRawTimestamp`| UInt64 | Raw L2CB hardware timestamp counter |
+| `CrateUpTime` | UInt64 | L2CB uptime in nanoseconds |
+| `CrateMCFEnabled` | Boolean | L2CB MCF enabled status |
+| `CrateBusyGlitchFilterEnabled` | Boolean | L2CB busy glitch filter enabled |
+| `CrateTIBTriggerBusyBlockEnabled` | Boolean | L2CB TIB trigger blocking enabled |
+| `CrateMCFThreshold` | Int16 | L2CB MCF threshold (0-512) |
+| `CrateMCFDelay` | Double | L2CB MCF delay in ns (0-75 ns) |
+| `CrateL1Deadtime` | Double | L2CB L1 deadtime in ns (0-1275 ns) |
 | `BoardSlots` | Int32[] | List of crate slots enabled in the server (Constant) |
 | `BoardFirmwareRevision` | UInt16[] | Firmware versions for each active slot |
 | `BoardCurrent` | Double[] | Current readings for each CTDB board |
@@ -88,9 +93,9 @@ Located under `<Root>.<MonitoringPath>/` (e.g., `L2Trigger.Monitoring/`). All mo
 | `BoardCurrentLimitMin` | Double[] | Minimum current limit per slot |
 | `BoardCurrentLimitMax` | Double[] | Maximum current limit per slot |
 | `BoardHasErrors` | Boolean[] | Error status flag per slot |
-| `ModulePowerEnabled` | Boolean[] | Flattened array (slot_idx * 15 + ch-1) of power status |
+| `ModulePowerEnabled` | Boolean[] | Flattened array of power status |
 | `ModuleCurrent` | Double[] | Flattened array of channel currents |
-| `ModuleState` | String[] | Flattened array of channel states (on, off, error_over_current, etc.) |
+| `ModuleState` | String[] | Flattened array of channel states (on, off, error, etc.) |
 | `ModuleTriggerEnabled` | Boolean[] | Flattened array of trigger enabled status |
 | `ModuleTriggerDelay` | Double[] | Flattened array of trigger delays (0-5 ns) |
 
@@ -102,12 +107,18 @@ Located under the `<Root>/` object:
 | `EmergencyShutdown` | None | Immediately disables all power channels on all slots. |
 | `SetAllPower` | `enabled: Boolean` | Enables or disables power for all modules. |
 | `SetModulePower` | `module: Int32`, `enabled: Boolean` | Controls power for a specific module (1-270). |
-| `SetBoardCurrentLimits`| `board: Int32`, `min_ma: Double`, `max_ma: Double` | Configure safety current limits for an entire CTDB board identified by its sequence index. |
+| `SetBoardCurrentLimits`| `board: Int32`, `min_ma: Double`, `max_ma: Double` | Configure safety current limits for an entire CTDB board. |
 | `SetModuleTriggerEnabled` | `module: Int32`, `enabled: Boolean` | Enables or disables trigger for a specific module. |
 | `SetModuleTriggerDelay`| `module: Int32`, `delay_ns: Double` | Sets trigger delay (0-5 ns) for a specific module. |
 | `SetAllTriggerEnabled`| `enabled: Boolean` | Enables or disables all triggers. |
 | `SetAllTriggerDelay`| `delay_ns: Double` | Sets trigger delay for all modules. |
 | `HealthCheck` | None | Returns a summary string of system health. |
+| `SetMCFEnabled` | `enabled: Boolean` | Enable or disable MCF trigger propagation. |
+| `SetBusyGlitchFilterEnabled` | `enabled: Boolean` | Enable or disable busy glitch filter. |
+| `SetTIBTriggerBusyBlockEnabled` | `enabled: Boolean` | Enable or disable TIB trigger blocking. |
+| `SetMCFDelay` | `delay: Double` | Set MCF delay (0-75 ns). |
+| `SetMCFThreshold` | `threshold: Int16` | Set MCF threshold (0-512). |
+| `SetL1Deadtime` | `deadtime: Double` | Set L1 deadtime (0-1275 ns). |
 
 ## Test Client
 
@@ -120,15 +131,34 @@ python3 l2trig_test_client.py --endpoint opc.tcp://localhost:4840/l2trigger/
 
 ### Interactive Commands
 Once connected, you can use the following commands at the `l2trig>` prompt:
-- `summary`: Displays a formatted table of all slots, channels, currents, and states.
+
+**Inquiry:**
+- `summary`: Displays a formatted status summary (including L2CB and all slots).
 - `list`: Lists all raw monitoring variables and their current values.
-- `power <module> <on|off>`: Control power for a module (e.g., `power 5 on`).
-- `trig <module> <on|off>`: Enable or disable trigger for a module (e.g., `trig 5 on`).
-- `delay <module> <ns>`: Set trigger delay in nanoseconds.
+- `read <var>`: Read a specific variable by name.
+- `methods`: List all available methods on the server.
+- `subscribe <var|all>`: Subscribe to real-time change notifications for variables.
+- `unsubscribe <var|all>`: Stop receiving notifications.
+
+**Control:**
+- `power <module> <on|off>`: Control power for a module (1-270).
+- `allpower <on|off>`: Control power for all modules.
+- `trig <module> <on|off>`: Enable or disable trigger for a module.
+- `delay <module> <ns>`: Set trigger delay (0-5 ns) for a module.
+- `alltrig <on|off>`: Enable or disable all triggers.
+- `alldelay <ns>`: Set trigger delay for all modules.
 - `limits <board> <min> <max>`: Set current limits for a board (1-based index).
+- `mcf <on|off>`, `glitch <on|off>`, `tibblock <on|off>`: Control L2CB features.
+- `mcfdelay <ns>`, `mcfthreshold <val>`, `deadtime <ns>`: Configure L2CB timing/trigger.
 - `health`: Run the system health check.
 - `shutdown`: Trigger emergency shutdown.
-- `alltrig <on|off>`: Enable or disable all triggers.
+- `call <name> [args]`: Manually call any server method.
+
+**General:**
+- `reconnect`: Force a reconnection to the server (preserves subscriptions).
+- `cls`: Clear the terminal screen.
+- `help` / `?`: Show help information.
+- `exit` / `quit` (or `Ctrl-D`): Close the client.
 
 ## Development and Testing
 
