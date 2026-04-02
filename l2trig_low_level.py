@@ -107,6 +107,15 @@ _lib.cta_l2cb_readTimestamp_export.restype = c_uint64
 _lib.cta_l2cb_getControlState_export.argtypes = [POINTER(c_uint16), POINTER(c_uint16), POINTER(c_uint16)]
 _lib.cta_l2cb_getControlState_export.restype = None
 
+_lib.cta_l2cb_setMCFEnabled_export.argtypes = [c_uint16]
+_lib.cta_l2cb_setMCFEnabled_export.restype = None
+
+_lib.cta_l2cb_setBusyGlitchFilterEnabled_export.argtypes = [c_uint16]
+_lib.cta_l2cb_setBusyGlitchFilterEnabled_export.restype = None
+
+_lib.cta_l2cb_setTIBTriggerBlockEnabled_export.argtypes = [c_uint16]
+_lib.cta_l2cb_setTIBTriggerBlockEnabled_export.restype = None
+
 # L1 Trigger Control
 _lib.cta_l2cb_setL1TriggerEnabled_export.argtypes = [c_uint8, c_uint16]
 _lib.cta_l2cb_setL1TriggerEnabled_export.restype = None
@@ -262,6 +271,21 @@ def get_l2cb_control_state() -> dict:
         "busy_glitch_filter_enabled": bool(busy_glitch_filter_enabled.value),
         "tib_trigger_block_enabled": bool(tib_trigger_block_enabled.value)
     }
+
+
+def set_l2cb_mcf_enabled(enabled: bool) -> None:
+    """Set L2CB MCF enabled status"""
+    _lib.cta_l2cb_setMCFEnabled_export(1 if enabled else 0)
+
+
+def set_l2cb_busy_glitch_filter_enabled(enabled: bool) -> None:
+    """Set L2CB busy glitch filter enabled status"""
+    _lib.cta_l2cb_setBusyGlitchFilterEnabled_export(1 if enabled else 0)
+
+
+def set_l2cb_tib_trigger_block_enabled(enabled: bool) -> None:
+    """Set L2CB TIB trigger block enabled status"""
+    _lib.cta_l2cb_setTIBTriggerBlockEnabled_export(1 if enabled else 0)
 
 # --- L1 Trigger Control ---
 

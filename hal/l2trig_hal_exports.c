@@ -95,6 +95,36 @@ void cta_l2cb_getControlState_export(uint16_t* mcf_enabled, uint16_t* busy_glitc
     if (tib_trigger_block_enabled) *tib_trigger_block_enabled = dummy_state.tib_trigger_block_enabled;
 }
 
+void cta_l2cb_setMCFEnabled_export(uint16_t enabled)
+{
+    init_dummy_state();
+    dummy_state.mcf_enabled = enabled;
+#ifdef DUMMY_DEBUG
+    printf("cta_l2cb_setMCFEnabled(enabled=%u)\n", enabled);
+    fflush(stdout);
+#endif
+}
+
+void cta_l2cb_setBusyGlitchFilterEnabled_export(uint16_t enabled)
+{
+    init_dummy_state();
+    dummy_state.busy_glitch_filter_enabled = enabled;
+#ifdef DUMMY_DEBUG
+    printf("cta_l2cb_setBusyGlitchFilterEnabled(enabled=%u)\n", enabled);
+    fflush(stdout);
+#endif
+}
+
+void cta_l2cb_setTIBTriggerBlockEnabled_export(uint16_t enabled)
+{
+    init_dummy_state();
+    dummy_state.tib_trigger_block_enabled = enabled;
+#ifdef DUMMY_DEBUG
+    printf("cta_l2cb_setTIBTriggerBlockEnabled(enabled=%u)\n", enabled);
+    fflush(stdout);
+#endif
+}
+
 void cta_l2cb_setL1TriggerEnabled_export(uint8_t slot, uint16_t enabled)
 {
     init_dummy_state();
@@ -413,6 +443,21 @@ uint64_t cta_l2cb_readTimestamp_export(void)
 void cta_l2cb_getControlState_export(uint16_t* mcf_enabled, uint16_t* busy_glitch_filter_enabled, uint16_t* tib_trigger_block_enabled)
 {
     cta_l2cb_getControlState(mcf_enabled, busy_glitch_filter_enabled, tib_trigger_block_enabled);
+}
+
+void cta_l2cb_setMCFEnabled_export(uint16_t enabled)
+{
+    cta_l2cb_setMCFEnabled(enabled);
+}
+
+void cta_l2cb_setBusyGlitchFilterEnabled_export(uint16_t enabled)
+{
+    cta_l2cb_setBusyGlitchFilterEnabled(enabled);
+}
+
+void cta_l2cb_setTIBTriggerBlockEnabled_export(uint16_t enabled)
+{
+    cta_l2cb_setTIBTriggerBlockEnabled(enabled);
 }
 
 // ============================================================================

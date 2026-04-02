@@ -131,8 +131,13 @@ class L2TrigTestClient:
             return
         
         l2cb_fw = await self.read_variable("CrateFirmwareRevision")
-        l2cb_ts = await self.read_variable("CrateTimestamp")
-        print(f"L2CB Firmware: 0x{l2cb_fw:04X} | Timestamp: {l2cb_ts}")
+        l2cb_uptime = await self.read_variable("CrateUpTime")
+        l2cb_mcf = await self.read_variable("CrateMCFEnabled")
+        l2cb_glitch = await self.read_variable("CrateBusyGlitchFilterEnabled")
+        l2cb_tib = await self.read_variable("CrateTIBTriggerBlockEnabled")
+        
+        print(f"L2CB Firmware: 0x{l2cb_fw:04X} | Uptime: {l2cb_uptime/1e9:.3f} s")
+        print(f"L2CB Status: MCF={'ON' if l2cb_mcf else 'OFF'}, BusyGlitchFilter={'ON' if l2cb_glitch else 'OFF'}, TIBTriggerBlock={'ON' if l2cb_tib else 'OFF'}")
         
         ctdb_fw = await self.read_variable("BoardFirmwareRevision")
         ctdb_curr = await self.read_variable("BoardCurrent")
@@ -239,6 +244,9 @@ async def interactive_loop(client: L2TrigTestClient):
                 print("  alltrig <on|off>     Enable or disable all triggers")
                 print("  alldelay <ns>        Set all trigger delays")
                 print("  limits <board> <min> <max> Set current limits for a board (1-based index)")
+                print("  mcf <on|off>         Set L2CB MCF enabled status")
+                print("  glitch <on|off>      Set L2CB busy glitch filter enabled status")
+                print("  tibblock <on|off>    Set L2CB TIB trigger block enabled status")
                 print("  health               Perform health check")
                 print("  shutdown             Emergency power shutdown")
                 print("  call <name> [args]   Generic method call")
@@ -292,6 +300,15 @@ async def interactive_loop(client: L2TrigTestClient):
                 await client.call_method("HealthCheck")
             elif cmd == "shutdown":
                 await client.call_method("EmergencyShutdown")
+            elif cmd == "mcf":
+                if len(args) != 1: print("Usage: mcf <on|off>")
+                else: await client.call_method("SetMCFEnabled", args[0])
+            elif cmd == "glitch":
+                if len(args) != 1: print("Usage: glitch <on|off>")
+                else: await client.call_method("SetBusyGlitchFilterEnabled", args[0])
+            elif cmd == "tibblock":
+                if len(args) != 1: print("Usage: tibblock <on|off>")
+                else: await client.call_method("SetTIBTriggerBlockEnabled", args[0])
             else:
                 print(f"Unknown command: {cmd}")
 

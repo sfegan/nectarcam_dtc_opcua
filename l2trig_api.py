@@ -445,6 +445,21 @@ class L2TriggerSystem:
             busy_glitch_filter_enabled=control["busy_glitch_filter_enabled"],
             tib_trigger_block_enabled=control["tib_trigger_block_enabled"]
         )
+
+    def set_mcf_enabled(self, enabled: bool) -> None:
+        """Enable or disable L2CB MCF trigger propagation"""
+        hal.set_l2cb_mcf_enabled(enabled)
+        logger.info(f"L2CB MCF trigger propagation {'enabled' if enabled else 'disabled'}")
+
+    def set_busy_glitch_filter_enabled(self, enabled: bool) -> None:
+        """Enable or disable L2CB busy glitch filter"""
+        hal.set_l2cb_busy_glitch_filter_enabled(enabled)
+        logger.info(f"L2CB busy glitch filter {'enabled' if enabled else 'disabled'}")
+
+    def set_tib_trigger_block_enabled(self, enabled: bool) -> None:
+        """Enable or disable L2CB TIB trigger blocking"""
+        hal.set_l2cb_tib_trigger_block_enabled(enabled)
+        logger.info(f"L2CB TIB trigger blocking {'enabled' if enabled else 'disabled'}")
     
     def get_all_monitoring_data(self) -> Dict[int, CTDBMonitoringData]:
         """Get monitoring data for all CTDB boards"""

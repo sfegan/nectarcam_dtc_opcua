@@ -412,6 +412,45 @@ class L2TriggerOPCUAServer:
         await add_described_method("HealthCheck", health_check,
                                    outputs=[a("result", ua.VariantType.String, "Summary of system health and detected errors")])
 
+        # Set MCF Enabled
+        @uamethod
+        async def set_mcf_enabled(parent_node, enabled: bool):
+            """Enable or disable L2CB MCF trigger propagation."""
+            logger.info(f"Setting MCF enabled to {enabled}")
+            async with self._lock:
+                await loop.run_in_executor(None, self.system.set_mcf_enabled, enabled)
+            await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
+            return f"MCF trigger propagation {'enabled' if enabled else 'disabled'}"
+
+        await add_described_method("SetMCFEnabled", set_mcf_enabled,
+                                   inputs=[a("enabled", ua.VariantType.Boolean, "True to enable, False to disable")])
+
+        # Set Busy Glitch Filter Enabled
+        @uamethod
+        async def set_busy_glitch_filter_enabled(parent_node, enabled: bool):
+            """Enable or disable L2CB busy glitch filter."""
+            logger.info(f"Setting busy glitch filter enabled to {enabled}")
+            async with self._lock:
+                await loop.run_in_executor(None, self.system.set_busy_glitch_filter_enabled, enabled)
+            await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
+            return f"Busy glitch filter {'enabled' if enabled else 'disabled'}"
+
+        await add_described_method("SetBusyGlitchFilterEnabled", set_busy_glitch_filter_enabled,
+                                   inputs=[a("enabled", ua.VariantType.Boolean, "True to enable, False to disable")])
+
+        # Set TIB Trigger Block Enabled
+        @uamethod
+        async def set_tib_trigger_block_enabled(parent_node, enabled: bool):
+            """Enable or disable L2CB TIB trigger blocking."""
+            logger.info(f"Setting TIB trigger block enabled to {enabled}")
+            async with self._lock:
+                await loop.run_in_executor(None, self.system.set_tib_trigger_block_enabled, enabled)
+            await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
+            return f"TIB trigger blocking {'enabled' if enabled else 'disabled'}"
+
+        await add_described_method("SetTIBTriggerBlockEnabled", set_tib_trigger_block_enabled,
+                                   inputs=[a("enabled", ua.VariantType.Boolean, "True to enable, False to disable")])
+
     async def _write_fast_data(self, l2cb_status, monitoring_results, now: datetime.datetime):
         """Update OPC UA variables with high-frequency data"""
         await self._set_var("CrateFirmwareRevision", l2cb_status.firmware_version, now)
