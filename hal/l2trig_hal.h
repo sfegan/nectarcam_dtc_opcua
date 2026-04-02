@@ -59,9 +59,10 @@ CEXTERN void cta_l2cb_spi_set_delay_delays_export(int64_t _min_command_delay_ns,
 #define BASE_CTA_L2CB			0x00
 
 #define ADDR_CTA_L2CB_CTRL		0x00
-#define BIT_CTA_L2CB_CTRL_TIB_TRIGGER_BLOCK_EN	 0
+#define BIT_CTA_L2CB_CTRL_TIB_TRIG_BUSY_BLOCK	 0
 #define BIT_CTA_L2CB_CTRL_BUSY_GLITCH_FILTER_EN	 12
 #define BIT_CTA_L2CB_CTRL_MCF_EN		         13
+#define BIT_CTA_L2CB_CTRL_LATCH_TIMESTAMP		 15
 
 #define ADDR_CTA_L2CB_STAT		0x02
 #define BIT_CTA_L2CB_STAT_SPIBUSY		0
@@ -138,10 +139,15 @@ inline static int cta_l2cb_isValidSLot(int _slot)
 static inline uint64_t cta_l2cb_readTimestamp(void)
 {
 	uint64_t tmp=0;
-	// latch timestamp
-	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_CTRL, 0x0000);
-	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_CTRL, 0x0001);
+	
+	// latch timestamp with a 0->1 transition of the latch bit
+	uint16_t ctrl = IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_CTRL);
+	ctrl = changeBitVal16(ctrl, BIT_CTA_L2CB_CTRL_LATCH_TIMESTAMP, 0);
+	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_CTRL, ctrl);
+	ctrl = changeBitVal16(ctrl, BIT_CTA_L2CB_CTRL_LATCH_TIMESTAMP, 1);
+	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_CTRL, ctrl);
 
+	// wait a short time to ensure timestamp is latched and ready to read
 	struct timespec sleep_ts = {0, 200}; // 200ns delay to ensure timestamp is latched and ready to read
 	nanosleep(&sleep_ts, NULL);
 
@@ -164,7 +170,7 @@ static inline void cta_l2cb_getControlState(uint16_t* mcf_enabled, uint16_t* bus
 	uint16_t value = IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_CTRL);
 	if(mcf_enabled) *mcf_enabled = testBitVal16(value, BIT_CTA_L2CB_CTRL_MCF_EN);
 	if(busy_glitch_filter_enabled) *busy_glitch_filter_enabled = testBitVal16(value, BIT_CTA_L2CB_CTRL_BUSY_GLITCH_FILTER_EN);
-	if(tib_trigger_busy_block_enabled) *tib_trigger_busy_block_enabled = testBitVal16(value, BIT_CTA_L2CB_CTRL_TIB_TRIGGER_BLOCK_EN);
+	if(tib_trigger_busy_block_enabled) *tib_trigger_busy_block_enabled = testBitVal16(value, BIT_CTA_L2CB_CTRL_TIB_TRIG_BUSY_BLOCK);
 }
 
 static inline void cta_l2cb_setMCFEnabled(uint16_t _enabled)
@@ -184,7 +190,7 @@ static inline void cta_l2cb_setBusyGlitchFilterEnabled(uint16_t _enabled)
 static inline void cta_l2cb_setTIBTriggerBusyBlockEnabled(uint16_t _enabled)
 {
 	uint16_t val = IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_CTRL);
-	val = changeBitVal16(val, BIT_CTA_L2CB_CTRL_TIB_TRIGGER_BLOCK_EN, _enabled);
+	val = changeBitVal16(val, BIT_CTA_L2CB_CTRL_TIB_TRIG_BUSY_BLOCK, _enabled);
 	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_CTRL, val);
 }
 

@@ -206,7 +206,7 @@ CURRENT_CODE_MAX = 0x0FFF  # Max raw ADC code (12 bits)
 CURRENT_MAX = CURRENT_CODE_MAX * CURRENT_CONVERSION_FACTOR  # Max current corresponding to 12-bit ADC value
 
 L1DELAY_CONVERSION_FACTOR = 0.037  # ns per raw step (37 ps steps)
-L1DELAY_CODE_MAX = 0x7F # Max raw code for L1 delay (7 bits, 0-5ns range in 37 ps steps)
+L1DELAY_CODE_MAX = 0x7F # Max raw code for L1 delay (7 bits, 0-4.74ns range in 37 ps steps)
 L1DELAY_MAX = L1DELAY_CODE_MAX * L1DELAY_CONVERSION_FACTOR  # Max delay corresponding to raw code
 
 MCFDELAY_CONVERSION_FACTOR = 5  # ns per raw step
