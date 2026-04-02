@@ -90,7 +90,8 @@ class L2TriggerOPCUAServer:
         ("CrateBusyGlitchFilterEnabled", 0, ua.VariantType.Boolean, "L2CB busy glitch filter enabled"),
         ("CrateTIBTriggerBusyBlockEnabled", 0, ua.VariantType.Boolean, "L2CB TIB trigger blocking enabled"),
         ("CrateMCFThreshold", 0, ua.VariantType.Int16, "L2CB MCF threshold (0-512)"),
-        ("CrateMCFDelay", 0, ua.VariantType.Double, "L2CB MCF delay in ns (0-75 ns with 5 ns resolution)"),
+        ("CrateMCFDelay", 0, ua.VariantType.Double, "L2CB MCF delay in ns (0-75.0 ns with 5 ns resolution)"),
+        ("CrateL1Deadtime", 0, ua.VariantType.Double, "L2CB L1 deadtime in ns (0-1275.0 ns with 5 ns resolution)"),
         ("BoardSlots", [], ua.VariantType.Int32, "List of crate slots enabled in this server"),
         ("BoardFirmwareRevision", [], ua.VariantType.UInt16, "CTDB firmware versions (one per active slot)"),
         ("BoardCurrent", [], ua.VariantType.Double, "CTDB board currents in mA (one per active slot)"),
@@ -227,7 +228,7 @@ class L2TriggerOPCUAServer:
         fast_vars = {
             "CrateFirmwareRevision", "CrateUpTime", 
             "CrateMCFEnabled", "CrateBusyGlitchFilterEnabled", "CrateTIBTriggerBusyBlockEnabled",
-            "CrateMCFThreshold", "CrateMCFDelay",
+            "CrateMCFThreshold", "CrateMCFDelay", "CrateL1Deadtime",
             "BoardCurrent", "BoardCurrentSum", "BoardHasErrors",
             "ModuleCurrent", "ModuleState"
         }
@@ -481,6 +482,19 @@ class L2TriggerOPCUAServer:
         await add_described_method("SetMCFThreshold", set_mcf_threshold,
                                    inputs=[a("threshold", ua.VariantType.Int16, "MCF threshold (0-512)")])
 
+        # Set L1 Deadtime
+        @uamethod
+        async def set_l1_deadtime(parent_node, deadtime: float):
+            """Set L2CB L1 deadtime in ns (0-1275.0 ns with 5 ns resolution)"""
+            logger.info(f"Setting L1 deadtime to {deadtime}")
+            async with self._lock:
+                await loop.run_in_executor(None, self.system.set_l1_deadtime, deadtime)
+            await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
+            return f"L1 deadtime set to {deadtime} ns"
+
+        await add_described_method("SetL1Deadtime", set_l1_deadtime,
+                                   inputs=[a("deadtime", ua.VariantType.Double, "L1 deadtime in ns (0-1275.0 ns with 5 ns resolution)")])
+
     async def _write_fast_data(self, l2cb_status, monitoring_results, now: datetime.datetime):
         """Update OPC UA variables with high-frequency data"""
         await self._set_var("CrateFirmwareRevision", l2cb_status.firmware_version, now)
@@ -490,8 +504,9 @@ class L2TriggerOPCUAServer:
         await self._set_var("CrateTIBTriggerBusyBlockEnabled", bool(l2cb_status.tib_trigger_busy_block_enabled), now)
         await self._set_var("CrateMCFThreshold", l2cb_status.mcf_threshold, now)
         await self._set_var("CrateMCFDelay", l2cb_status.mcf_delay_ns, now)
+        await self._set_var("CrateL1Deadtime", l2cb_status.l1_deadtime_ns, now) 
         await self._set_var("BoardSlots", self.active_slots, now)
-
+    
         ctdb_curr = []
         ctdb_total = []
         ctdb_err = []

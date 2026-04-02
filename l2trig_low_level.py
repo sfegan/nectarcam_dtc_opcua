@@ -215,6 +215,10 @@ MCFDELAY_MAX = MCFDELAY_CODE_MAX * MCFDELAY_CONVERSION_FACTOR  # Max MCF delay c
 
 MCFTHRESHOLD_CODE_MAX = 0x7F # Max raw code for MCF threshold (7 bits)
 
+L1DEADTIME_CONVERSION_FACTOR = 5  # ns per raw step
+L1DEADTIME_CODE_MAX = 0xFF # Max raw code for L1 deadtime (8 bits)
+L1DEADTIME_MAX = L1DEADTIME_CODE_MAX * L1DEADTIME_CONVERSION_FACTOR  # Max L1 deadtime corresponding to raw code
+
 # ============================================================================
 # Low-Level Python Wrappers
 # ============================================================================
@@ -300,13 +304,21 @@ def set_l2cb_mcf_threshold(threshold: int) -> None:
     """Set L2CB MCF threshold (raw code, 0-127)"""
     _lib.cta_l2cb_setMCFThreshold_export(threshold)
 
-def get_l2cb_mcf_delay() -> float:
+def get_l2cb_mcf_delay() -> int:
     """Get L2CB MCF delay (raw code, 0-15)"""
     return _lib.cta_l2cb_getMCFDelay_export()
 
-def set_l2cb_mcf_delay(delay: float) -> None:
+def set_l2cb_mcf_delay(delay: int) -> None:
     """Set L2CB MCF delay (raw code, 0-15)"""
     _lib.cta_l2cb_setMCFDelay_export(delay)
+
+def get_l2cb_l1_deadtime() -> int:
+    """Get L2CB L1 deadtime (raw code, 0-255)"""
+    return _lib.cta_l2cb_getL1Deadtime_export()
+
+def set_l2cb_l1_deadtime(deadtime: int) -> None:
+    """Set L2CB L1 deadtime (raw code, 0-255)"""
+    _lib.cta_l2cb_setL1Deadtime_export(deadtime)
 
 # --- L1 Trigger Control ---
 
@@ -514,3 +526,11 @@ def mcf_delay_ns_to_raw(delay_ns: float) -> int:
 def mcf_delay_raw_to_ns(raw_value: int) -> float:
     """Convert raw MCF delay value to nanoseconds"""
     return (raw_value & 0x0F) * 5
+
+def l1_deadtime_ns_to_raw(deadtime_ns: float) -> int:
+    """Convert L1 deadtime in nanoseconds to raw value (5 ns steps)"""
+    return int(deadtime_ns / 5)
+
+def l1_deadtime_raw_to_ns(raw_value: int) -> float:
+    """Convert raw L1 deadtime value to nanoseconds"""
+    return (raw_value & 0xFF) * 5

@@ -130,7 +130,8 @@ class L2CBStatus:
     busy_glitch_filter_enabled: bool
     tib_trigger_busy_block_enabled: bool
     mcf_threshold: int
-    mcf_delay_ns: int
+    mcf_delay_ns: float
+    l1_deadtime_ns: float
 
 
 # ============================================================================
@@ -440,6 +441,7 @@ class L2TriggerSystem:
         control = hal.get_l2cb_control_state()
         mcf_threshold = hal.get_l2cb_mcf_threshold()
         mcf_delay = hal.get_l2cb_mcf_delay()
+        l1_deadtime = hal.get_l2cb_l1_deadtime()
 
         return L2CBStatus(
             firmware_version=fw_version,
@@ -448,7 +450,8 @@ class L2TriggerSystem:
             busy_glitch_filter_enabled=control["busy_glitch_filter_enabled"],
             tib_trigger_busy_block_enabled=control["tib_trigger_busy_block_enabled"],
             mcf_threshold=mcf_threshold,
-            mcf_delay_ns=hal.mcf_delay_raw_to_ns(mcf_delay)
+            mcf_delay_ns=hal.mcf_delay_raw_to_ns(mcf_delay),
+            l1_deadtime_ns=hal.l1_deadtime_raw_to_ns(l1_deadtime)
         )
 
     def set_mcf_enabled(self, enabled: bool) -> None:
@@ -490,6 +493,22 @@ class L2TriggerSystem:
         hal.set_l2cb_mcf_delay(hal.mcf_delay_ns_to_raw(delay_ns))
         logger.info(f"L2CB MCF delay set to {delay_ns} ns")
     
+    def get_l1_deadtime(self) -> float:
+        """Get L2CB L1 deadtime in nanoseconds"""
+        return hal.l1_deadtime_raw_to_ns(hal.get_l2cb_l1_deadtime())
+    
+    def set_l1_deadtime(self, deadtime_ns: float) -> None:
+        """Set L2CB L1 deadtime in nanoseconds"""
+        if deadtime_ns < 0:
+            logger.warning(f"Requested L1 deadtime {deadtime_ns} ns is negative, setting to 0")
+            deadtime_ns = 0
+        elif deadtime_ns > hal.L1DEADTIME_MAX:
+            logger.warning(f"Requested L1 deadtime {deadtime_ns} ns exceeds max {hal.L1DEADTIME_MAX} ns, setting to max")
+            deadtime_ns = hal.L1DEADTIME_MAX
+        
+        hal.set_l2cb_l1_deadtime(hal.l1_deadtime_ns_to_raw(deadtime_ns))
+        logger.info(f"L2CB L1 deadtime set to {deadtime_ns} ns")
+
     def get_all_monitoring_data(self) -> Dict[int, CTDBMonitoringData]:
         """Get monitoring data for all CTDB boards"""
         data = {}
