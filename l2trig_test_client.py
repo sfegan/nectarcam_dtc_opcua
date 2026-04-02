@@ -40,7 +40,12 @@ class L2TrigTestClient:
 
     async def connect(self):
         """Connect to server and find the L2Trigger root nodes"""
-        await self.client.connect()
+        try:
+            await self.client.connect()
+        except Exception as e:
+            logger.error(f"Failed to connect to {self.endpoint}: {e}")
+            raise
+        
         logger.info(f"Connected to {self.endpoint}")
 
         # Find namespace index
@@ -64,8 +69,33 @@ class L2TrigTestClient:
         self.monitoring_node = await self.root_node.get_child(f"{self.ns_idx}:{self.monitoring_name}")
         print(f"Found root node: {self.root_path}")
 
+    async def ensure_connected(self):
+        """Check if connected and attempt to reconnect if not"""
+        try:
+            # Check connection with a simple node browse
+            await self.client.nodes.root.get_children()
+            return
+        except Exception:
+            pass
+
+        print("Connection lost. Reconnecting...")
+        try:
+            await self.client.disconnect()
+        except:
+            pass
+        
+        # Reset nodes as they are session-specific
+        self.root_node = None
+        self.monitoring_node = None
+        
+        # Try to reconnect
+        await self.connect()
+
     async def disconnect(self):
-        await self.client.disconnect()
+        try:
+            await self.client.disconnect()
+        except:
+            pass
 
     async def list_variables(self):
         """List all variables in the Monitoring folder"""
@@ -184,6 +214,9 @@ async def interactive_loop(client: L2TrigTestClient):
             cmd_line = await asyncio.to_thread(input, "l2trig> ")
             if not cmd_line.strip():
                 continue
+            
+            # Ensure we are connected before executing the command
+            await client.ensure_connected()
             
             parts = cmd_line.split()
             cmd = parts[0].lower()
