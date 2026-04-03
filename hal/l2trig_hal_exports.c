@@ -389,13 +389,8 @@ int cta_ctdb_getPowerCurrent_export(uint8_t slot, uint16_t channel, uint16_t* va
     if (!value || slot >= 32) return CTA_L2CB_NO_ERROR;
 
     if (channel == 0) {
-        // Slot current = sum of enabled channels + base load
+        // Board current (base load)
         uint32_t total_raw = 1023; // ~500mA base load
-        for (int ch = 1; ch <= 15; ch++) {
-            if (dummy_state.slots[slot].power_enable & (1 << ch)) {
-                total_raw += 619; // ~300mA per channel
-            }
-        }
         *value = (uint16_t)(total_raw & 0x0FFF);
     } else if (channel <= 15) {
         if (dummy_state.slots[slot].power_enable & (1 << channel)) {
@@ -420,6 +415,11 @@ int cta_ctdb_getUnderCurrentErrors_export(uint8_t slot, uint16_t* value)
     if (value && slot < 32) {
         // Simulate error if power is on but current is too low (not possible in this dummy logic yet)
         *value = 0x0000;
+        for(int ch=1; ch<=15; ch++) {
+           if ((dummy_state.slots[slot].power_enable & (1 << ch)) && dummy_state.slots[slot].current_min > 619) {
+                *value |= (1 << ch); // Simulate undercurrent error if channel is enabled but min current is set too low
+            }
+        }
     }
 #ifdef DUMMY_DEBUG
     printf("cta_ctdb_getUnderCurrentErrors(slot=%u)\n", slot);
@@ -433,6 +433,11 @@ int cta_ctdb_getOverCurrentErrors_export(uint8_t slot, uint16_t* value)
     init_dummy_state();
     if (value && slot < 32) {
         *value = 0x0000;
+        for(int ch=1; ch<=15; ch++) {
+           if ((dummy_state.slots[slot].power_enable & (1 << ch)) && dummy_state.slots[slot].current_max < 619) {
+                *value |= (1 << ch); // Simulate overcurrent error if channel is enabled but max current is set too low
+            }
+        }
     }
 #ifdef DUMMY_DEBUG
     printf("cta_ctdb_getOverCurrentErrors(slot=%u)\n", slot);
