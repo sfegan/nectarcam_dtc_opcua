@@ -284,9 +284,9 @@ class L2TrigTestClient:
             typed_args = []
             for arg in args:
                 if isinstance(arg, str):
-                    if arg.lower() in ["true", "on", "yes", "1"]:
+                    if arg.lower() in ["true", "on", "yes", "up", "enable", "enabled"]:
                         typed_args.append(True)
-                    elif arg.lower() in ["false", "off", "no", "0"]:
+                    elif arg.lower() in ["false", "off", "no", "down", "disable", "disabled"]:
                         typed_args.append(False)
                     elif "." in arg:
                         typed_args.append(float(arg))
