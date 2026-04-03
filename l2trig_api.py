@@ -615,7 +615,7 @@ class L2TriggerSystem:
     def set_all_trigger_delay(self, delay_ns: float) -> None:
         """Set trigger delay for all channels on all boards"""
         for ctdb in self.ctdbs.values():
-            for ch in range(CHANNELS_PER_SLOT):
+            for ch in range(1, CHANNELS_PER_SLOT+1):
                 try:
                     ctdb.set_channel_trigger_delay(ch, delay_ns)
                 except Exception as e:
