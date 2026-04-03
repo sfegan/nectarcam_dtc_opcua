@@ -723,9 +723,12 @@ class L2TriggerOPCUAServer:
 
     async def _ramp_power(self, enabled: bool):
         """Gradually turn power on/off for all modules with interleaving across slots."""
-        logger.info(f"Starting power ramp: {'enabled' if enabled else 'disabled'}")
+        nmod = len(self.active_slots) * CHANNELS_PER_SLOT
+        logger.info(f"Starting power ramp: setting power=%s for %d modules with %.1fs ramp",
+                    'on' if enabled else 'off', nmod, self.power_delay*nmod)
         try:
             loop = asyncio.get_running_loop()
+            lastpoll = time.monotonic()
             # Order: cycle between slots for each channel to minimize inrush into each slot
             for ch in range(1, CHANNELS_PER_SLOT + 1):
                 for slot in self.active_slots:
@@ -738,11 +741,15 @@ class L2TriggerOPCUAServer:
                     if self.power_delay > 0:
                         await asyncio.sleep(self.power_delay)
                     
-                    # Perform fast polling update after each channel is enabled
-                    await self._do_poll_fast(datetime.datetime.now(datetime.timezone.utc))
+                    # Perform fast polling update every 0.5 seconds to keep user up-to-date during the ramp
+                    now = time.monotonic()
+                    if now - lastpoll >= 0.5:
+                        await self._do_poll_fast(datetime.datetime.now(datetime.timezone.utc))
+                        lastpoll = now
             
-            logger.info(f"Power ramp complete: {'enabled' if enabled else 'disabled'}")
-            # Finally do a full poll to make sure slow variables are updated
+            logger.info(f"Power ramp complete: set power=%s for %d modules", 'on' if enabled else 'off', nmod)
+            
+            # Final full poll to ensure all variables are up-to-date after the ramp
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
             
         except asyncio.CancelledError:
