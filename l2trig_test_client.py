@@ -393,10 +393,10 @@ async def interactive_loop(client: L2TrigTestClient):
             # Shortcut commands
             elif cmd == "power":
                 if len(args) != 2: print("Usage: power <module> <on|off>")
-                else: await client.call_method("SetModulePower", args[0], args[1])
+                else: await client.call_method("SetModulePowerEnabled", args[0], args[1])
             elif cmd == "allpower":
                 if len(args) != 1: print("Usage: allpower <on|off>")
-                else: await client.call_method("SetAllPower", args[0])
+                else: await client.call_method("SetAllPowerEnabled", args[0])
             elif cmd == "trig":
                 if len(args) != 2: print("Usage: trig <module> <on|off>")
                 else: await client.call_method("SetModuleTriggerEnabled", args[0], args[1])

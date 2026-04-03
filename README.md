@@ -69,18 +69,18 @@ python3 l2trig_asyncua_server.py [options]
 The server implements a **Phase-Locked Loop (PLL)** polling loop to maintain a constant update rate.
 - **High-Frequency Data**: Currents, error states, and L2CB status are read every cycle (`poll-interval`).
 - **Low-Frequency Data**: Firmware versions, current limits, and trigger settings are read every `poll-ratio` cycles.
-- **Immediate Update**: Calling any control method (e.g., `SetModulePower`) triggers an immediate full status read outside the normal schedule.
+- **Immediate Update**: Calling any control method (e.g., `SetModulePowerEnabled`) triggers an immediate full status read outside the normal schedule.
 - **Watchdog Timer**: The server logs a system status summary (number of active boards, powered modules, and enabled trigger modules) at the `INFO` level every 180 seconds.
 
 ### Power Ramping
 
-When `SetAllPower(true)` is called to enable power on all modules, the server performs a **controlled power ramp** rather than instantly enabling all channels. This prevents power supply inrush and helps reduce electrical stress on the hardware.
+When `SetAllPowerEnabled(true)` is called to enable power on all modules, the server performs a **controlled power ramp** rather than instantly enabling all channels. This prevents power supply inrush and helps reduce electrical stress on the hardware.
 
 **Ramping Mechanism:**
 - Modules are enabled sequentially, one at a time, across all active slots.
 - The delay between enabling consecutive modules is controlled by the `--power-ramp-delay-ms` command line parameter (default: 10 ms).
 - A ramping task runs in the background, tracking which modules have been enabled and waiting the specified delay before moving to the next module.
-- If power is ramping and `SetAllPower(false)` is called, the ramping is cancelled immediately and all modules are disabled.
+- If power is ramping and `SetAllPowerEnabled(false)` is called, the ramping is cancelled immediately and all modules are disabled.
 - If a new power command is issued while ramping is in progress, the previous ramp is cancelled and the new command starts immediately.
 
 **Example:**
@@ -125,8 +125,8 @@ Located under the `<Root>` object:
 | Method Name | Arguments | Description |
 | :--- | :--- | :--- |
 | `EmergencyShutdown` | None | Immediately disables all power channels on all slots. |
-| `SetAllPower` | `enabled: Boolean` | Enables or disables power for all modules. |
-| `SetModulePower` | `module: Int32`, `enabled: Boolean` | Controls power for a specific module (1-270). |
+| `SetAllPowerEnabled` | `enabled: Boolean` | Enables or disables power for all modules. |
+| `SetModulePowerEnabled` | `module: Int32`, `enabled: Boolean` | Controls power for a specific module (1-270). |
 | `SetBoardCurrentLimits`| `board: Int32`, `min_ma: Double`, `max_ma: Double` | Configure safety current limits for an entire CTDB board. |
 | `SetModuleTriggerEnabled` | `module: Int32`, `enabled: Boolean` | Enables or disables trigger for a specific module. |
 | `SetModuleTriggerDelay`| `module: Int32`, `delay_ns: Double` | Sets trigger delay (0-5 ns) for a specific module. |
@@ -142,13 +142,13 @@ Located under the `<Root>` object:
 
 ### Power Ramping
 
-When `SetAllPower(true/false)` is called to enable power on all modules, the server performs a **controlled power ramp** rather than instantly enabling/disabling all channels. This prevents power supply inrush and helps reduce electrical stress on the hardware.
+When `SetAllPowerEnabled(true/false)` is called to enable power on all modules, the server performs a **controlled power ramp** rather than instantly enabling/disabling all channels. This prevents power supply inrush and helps reduce electrical stress on the hardware.
 
 **Ramping Mechanism:**
 - Modules are enabled sequentially in a round-robin pattern across all active slots: for each channel level, the server enables one module per slot before moving to the next channel. Concretely, the 270 modules are enabled in this order: S1C1, S2C1, S3C1, ..., S18C1, S1C2, S2C2, ..., S18C2, ..., S18C1, ..., S18C15.
 - The delay between enabling each module is controlled by the `--power-ramp-delay-ms` command line parameter (default: 10 ms).
 - A ramping task runs in the background, tracking which modules have been enabled and waiting the specified delay before moving to the next module.
-- If a new power command is issued while ramping is in progress, the ramp is cancelled and the new command starts immediately; this could be an emergency shutdown (`EmergencyShutdown`), another ramping command (`SetAllPower`), or a command to change the power status of an individual module (`SetModulePower`).
+- If a new power command is issued while ramping is in progress, the ramp is cancelled and the new command starts immediately; this could be an emergency shutdown (`EmergencyShutdown`), another ramping command (`SetAllPowerEnabled`), or a command to change the power status of an individual module (`SetModulePowerEnabled`).
 
 **Example:**
 To ramp power with 20ms delay between modules (5.4s to power all 270 modules):

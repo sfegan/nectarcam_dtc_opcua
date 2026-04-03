@@ -324,7 +324,7 @@ class ModuleMatrix(tk.Frame):
             # Toggle power
             new_state = not indicator.power_enabled
             self.opcua_client.run_async(
-                self.opcua_client.call_method("SetModulePower", 
+                self.opcua_client.call_method("SetModulePowerEnabled", 
                                              indicator.module_idx, new_state)
             )
         
@@ -545,14 +545,14 @@ class ControlPanel(tk.Frame):
         if messagebox.askyesno("Confirm Ramp Up", 
                                "Are you sure you want to ramp up all module power?"):
             self.opcua_client.run_async(
-                self.opcua_client.call_method("SetAllPower", True)
+                self.opcua_client.call_method("SetAllPowerEnabled", True)
             )
     
     def on_ramp_down(self):
         if messagebox.askyesno("Confirm Ramp Down",
                                "Are you sure you want to ramp down all module power?"):
             self.opcua_client.run_async(
-                self.opcua_client.call_method("SetAllPower", False)
+                self.opcua_client.call_method("SetAllPowerEnabled", False)
             )
     
     def on_emergency_stop(self):

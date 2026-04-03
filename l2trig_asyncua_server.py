@@ -313,7 +313,7 @@ class L2TriggerOPCUAServer:
             self._power_ramp_task = asyncio.create_task(self._ramp_power(enabled))
             return f"All power {'enable' if enabled else 'disable'} ramping started"
         
-        await add_described_method("SetAllPower", set_all_power_enabled,
+        await add_described_method("SetAllPowerEnabled", set_all_power_enabled,
                                    inputs=[a("enabled", ua.VariantType.Boolean, "True to enable all modules, False to disable all")])
         
         # Set Module Power
@@ -330,7 +330,7 @@ class L2TriggerOPCUAServer:
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
             return f"Module {module} (Slot {slot} Ch {channel}) {'enabled' if enabled else 'disabled'}"
         
-        await add_described_method("SetModulePower", set_module_power,
+        await add_described_method("SetModulePowerEnabled", set_module_power,
                                    inputs=[a("module", ua.VariantType.Int32, "Module number (1-270)"),
                                            a("enabled", ua.VariantType.Boolean, "True to enable, False to disable")])
 
