@@ -142,14 +142,13 @@ Located under the `<Root>` object:
 
 ### Power Ramping
 
-When `SetAllPower(true)` is called to enable power on all modules, the server performs a **controlled power ramp** rather than instantly enabling all channels. This prevents power supply inrush and helps reduce electrical stress on the hardware.
+When `SetAllPower(true/false)` is called to enable power on all modules, the server performs a **controlled power ramp** rather than instantly enabling/disabling all channels. This prevents power supply inrush and helps reduce electrical stress on the hardware.
 
 **Ramping Mechanism:**
 - Modules are enabled sequentially in a round-robin pattern across all active slots: for each channel level, the server enables one module per slot before moving to the next channel. Concretely, the 270 modules are enabled in this order: S1C1, S2C1, S3C1, ..., S18C1, S1C2, S2C2, ..., S18C2, ..., S18C1, ..., S18C15.
 - The delay between enabling each module is controlled by the `--power-ramp-delay-ms` command line parameter (default: 10 ms).
 - A ramping task runs in the background, tracking which modules have been enabled and waiting the specified delay before moving to the next module.
-- If power is ramping and `SetAllPower(false)` is called, the ramping is cancelled immediately and all modules are disabled.
-- If a new power command is issued while ramping is in progress, the previous ramp is cancelled and the new command starts immediately.
+- If a new power command is issued while ramping is in progress, the ramp is cancelled and the new command starts immediately; this could be an emergency shutdown (`EmergencyShutdown`), another ramping command (`SetAllPower`), or a command to change the power status of an individual module (`SetModulePower`).
 
 **Example:**
 To ramp power with 20ms delay between modules (5.4s to power all 270 modules):
