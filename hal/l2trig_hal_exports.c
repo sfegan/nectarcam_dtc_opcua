@@ -58,8 +58,8 @@ static void init_dummy_state() {
     clock_gettime(CLOCK_MONOTONIC, &dummy_state.start_time);
     for (int i = 0; i < 32; i++) {
         dummy_state.slots[i].power_enable = 0x0000;    // All off
-        dummy_state.slots[i].trigger_enabled = 0x0000; // All disabled (assuming 1=active, 0=disabled)
-        for (int j = 0; j < 15; j++) dummy_state.slots[i].trigger_delays[j] = 27; // ~1ns
+        dummy_state.slots[i].trigger_enabled = 0xFFFE; // All enabled (assuming 1=active, 0=disabled)
+        for (int j = 0; j < 15; j++) dummy_state.slots[i].trigger_delays[j+1] = 27; // ~1ns
         dummy_state.slots[i].current_min = 206;       // ~100mA
         dummy_state.slots[i].current_max = 2000;      // ~1000mA
         dummy_state.slots[i].firmware = 0x0100;
@@ -86,7 +86,7 @@ uint64_t cta_l2cb_readTimestamp_export(void)
     // Return a monotonic-ish timestamp based on real time
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
-    uint64_t timestamp = (uint64_t)(ts.tv_sec - dummy_state.start_time.tv_sec) * 1000000000ULL + (ts.tv_nsec - dummy_state.start_time.tv_nsec)/8; // Convert to 8ns units;
+    uint64_t timestamp = (uint64_t)(ts.tv_sec - dummy_state.start_time.tv_sec) * 125000000ULL + (ts.tv_nsec - dummy_state.start_time.tv_nsec)/8; // Convert to 8ns units;
 #ifdef DUMMY_DEBUG
     printf("cta_l2cb_readTimestamp() -> %llu\n", (unsigned long long)timestamp);
     fflush(stdout);
@@ -222,7 +222,7 @@ uint16_t cta_l2cb_getL1TriggerEnabled_export(uint8_t slot)
 void cta_l2cb_setL1TriggerChannelEnabled_export(uint8_t slot, uint8_t channel, uint16_t on)
 {
     init_dummy_state();
-    if (slot < 32 && channel < 15) {
+    if (slot < 32 && channel >= 1 && channel <= 15) {
         if (on) dummy_state.slots[slot].trigger_enabled |= (1 << channel);
         else dummy_state.slots[slot].trigger_enabled &= ~(1 << channel);
 #ifdef DUMMY_DEBUG
@@ -236,7 +236,7 @@ uint16_t cta_l2cb_getL1TriggerChannelEnabled_export(uint8_t slot, uint8_t channe
 {
     init_dummy_state();
     uint16_t active = 0;
-    if (slot < 32 && channel < 15) {
+    if (slot < 32 && channel >= 1 && channel <= 15) {
         active = (dummy_state.slots[slot].trigger_enabled & (1 << channel)) ? 1 : 0;
     }
 #ifdef DUMMY_DEBUG
@@ -249,7 +249,7 @@ uint16_t cta_l2cb_getL1TriggerChannelEnabled_export(uint8_t slot, uint8_t channe
 int cta_l2cb_setL1TriggerDelay_export(uint8_t slot, uint8_t channel, uint16_t delay)
 {
     init_dummy_state();
-    if (slot < 32 && channel < 15) {
+    if (slot < 32 && channel >= 1 && channel <= 15) {
         dummy_state.slots[slot].trigger_delays[channel] = delay;
 #ifdef DUMMY_DEBUG
         printf("cta_l2cb_setL1TriggerDelay(slot=%u, channel=%u, delay=%u)\n", slot, channel, delay);
@@ -263,7 +263,7 @@ uint16_t cta_l2cb_getL1TriggerDelay_export(uint8_t slot, uint8_t channel)
 {
     init_dummy_state();
     uint16_t delay = 0;
-    if (slot < 32 && channel < 15) {
+    if (slot < 32 && channel >= 1 && channel <= 15) {
         delay = dummy_state.slots[slot].trigger_delays[channel];
     }
 #ifdef DUMMY_DEBUG
