@@ -410,7 +410,7 @@ class ControlPanel(tk.Frame):
         """Initialize control panel UI"""
         # Crate controls group
         crate_frame = ttk.LabelFrame(self, text="Crate Controls", padding=10)
-        crate_frame.pack(fill=tk.X, padx=5, pady=5)
+        crate_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         row = 0
         
@@ -478,7 +478,7 @@ class ControlPanel(tk.Frame):
         
         # Power control group
         power_frame = ttk.LabelFrame(self, text="Power Control", padding=10)
-        power_frame.pack(fill=tk.X, padx=5, pady=5)
+        power_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         ttk.Button(
             power_frame, text="Ramp Up All Power",
@@ -497,33 +497,19 @@ class ControlPanel(tk.Frame):
         )
         emergency_btn.pack(fill=tk.X, pady=2)
         
-        # Channel control group
-        channel_frame = ttk.LabelFrame(self, text="Channel Control", padding=10)
-        channel_frame.pack(fill=tk.X, padx=5, pady=5)
-        
-        ttk.Label(channel_frame, text="Slot:").grid(row=0, column=0, sticky=tk.W, pady=2)
-        self.slot_var = tk.IntVar(value=1)
-        ttk.Spinbox(
-            channel_frame, from_=1, to=18, textvariable=self.slot_var, width=10
-        ).grid(row=0, column=1, sticky=tk.W, pady=2)
-        
-        ttk.Label(channel_frame, text="Channel:").grid(row=1, column=0, sticky=tk.W, pady=2)
-        self.channel_var = tk.IntVar(value=1)
-        ttk.Spinbox(
-            channel_frame, from_=1, to=15, textvariable=self.channel_var, width=10
-        ).grid(row=1, column=1, sticky=tk.W, pady=2)
-        
-        ttk.Label(channel_frame, text="Delay (ns):").grid(row=2, column=0, sticky=tk.W, pady=2)
-        self.delay_var = tk.DoubleVar(value=0.0)
-        ttk.Spinbox(
-            channel_frame, from_=0, to=1000.0, increment=1.0,
-            textvariable=self.delay_var, width=10
-        ).grid(row=2, column=1, sticky=tk.W, pady=2)
+        # Trigger control group
+        trigger_frame = ttk.LabelFrame(self, text="Trigger Control", padding=10)
+        trigger_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         ttk.Button(
-            channel_frame, text="Set Trigger Delay",
-            command=self.on_set_delay
-        ).grid(row=3, column=0, columnspan=2, sticky=tk.EW, pady=2)
+            trigger_frame, text="Enable All Triggers",
+            command=self.on_enable_all_triggers
+        ).pack(fill=tk.X, pady=2)
+        
+        ttk.Button(
+            trigger_frame, text="Disable All Triggers",
+            command=self.on_disable_all_triggers
+        ).pack(fill=tk.X, pady=2)
     
     def on_mcf_enabled_changed(self):
         self.opcua_client.run_async(
@@ -577,21 +563,19 @@ class ControlPanel(tk.Frame):
                 self.opcua_client.call_method("EmergencyShutdown")
             )
     
-    def on_set_delay(self):
-        # Find module number from slot and channel
-        slot = self.slot_var.get()
-        channel = self.channel_var.get()
-        # Find slot index
-        try:
-            slot_idx = VALID_SLOTS.index(slot)
-            module_idx = slot_idx * 15 + channel
+    def on_enable_all_triggers(self):
+        if messagebox.askyesno("Enable All Triggers",
+                               "Are you sure you want to enable triggers on all modules?"):
             self.opcua_client.run_async(
-                self.opcua_client.call_method("SetModuleTriggerDelay",
-                                             module_idx,
-                                             self.delay_var.get())
+                self.opcua_client.call_method("SetAllTriggerEnabled", True)
             )
-        except ValueError:
-            messagebox.showerror("Error", f"Invalid slot: {slot}")
+    
+    def on_disable_all_triggers(self):
+        if messagebox.askyesno("Disable All Triggers",
+                               "Are you sure you want to disable triggers on all modules?"):
+            self.opcua_client.run_async(
+                self.opcua_client.call_method("SetAllTriggerEnabled", False)
+            )
     
     def update_from_data(self, var_name: str, value):
         """Update controls from OPC UA data"""
@@ -767,8 +751,8 @@ class MainWindow:
         content_frame = ttk.Frame(self.root)
         content_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        content_frame.columnconfigure(0, weight=7)
-        content_frame.columnconfigure(1, weight=3)
+        content_frame.columnconfigure(0, weight=1)
+        content_frame.columnconfigure(1, weight=0, minsize=300)
         content_frame.rowconfigure(0, weight=1)
 
         # C1 (Left 70%): Module matrix
@@ -803,6 +787,7 @@ class MainWindow:
         c2 = ttk.Frame(content_frame)
         c2.grid(row=0, column=1, sticky=tk.NSEW, padx=5)
 
+        c2.columnconfigure(0, weight=1) # Expand columns horizontally
         c2.rowconfigure(0, weight=6) # 60%
         c2.rowconfigure(1, weight=4) # 40%
 
@@ -810,6 +795,7 @@ class MainWindow:
         c2r1 = ttk.Frame(c2)
         c2r1.grid(row=0, column=0, sticky=tk.NSEW)
 
+        c2r1.rowconfigure(0, weight=1) # Expand row vertically
         c2r1.columnconfigure(0, weight=1) # C2R1C1
         c2r1.columnconfigure(1, weight=1) # C2R1C2
 
@@ -821,22 +807,29 @@ class MainWindow:
         control_frame = ttk.Frame(c2r1)
         control_frame.grid(row=0, column=1, sticky=tk.NSEW)
 
-        control_canvas = tk.Canvas(control_frame, width=250)
+        control_canvas = tk.Canvas(control_frame)
         control_scrollbar = ttk.Scrollbar(control_frame, orient=tk.VERTICAL, command=control_canvas.yview)
 
         control_container = ttk.Frame(control_canvas)
+        control_container.columnconfigure(0, weight=1)
 
-        control_canvas.create_window((0, 0), window=control_container, anchor=tk.NW)
+        control_canvas.create_window((0, 0), window=control_container, anchor=tk.NW, tags="frame")
         control_canvas.configure(yscrollcommand=control_scrollbar.set)
 
         control_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         control_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
         self.control_panel = ControlPanel(control_container, self.opcua_client)
-        self.control_panel.pack()
+        self.control_panel.pack(fill=tk.BOTH, expand=True)
 
         control_container.update_idletasks()
         control_canvas.config(scrollregion=control_canvas.bbox("all"))
+        
+        # Bind canvas resize to update the window
+        def on_canvas_configure(event):
+            control_canvas.itemconfig("frame", width=event.width)
+        
+        control_canvas.bind("<Configure>", on_canvas_configure)
 
         # C2R2 (Bottom 40%): Log
         log_frame = ttk.LabelFrame(c2, text="System Log")
