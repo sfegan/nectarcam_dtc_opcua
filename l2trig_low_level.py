@@ -213,7 +213,7 @@ MCFDELAY_CONVERSION_FACTOR = 5  # ns per raw step
 MCFDELAY_CODE_MAX = 0x0F # Max raw code for MCF delay (4 bits)
 MCFDELAY_MAX = MCFDELAY_CODE_MAX * MCFDELAY_CONVERSION_FACTOR  # Max MCF delay corresponding to raw code
 
-MCFTHRESHOLD_CODE_MAX = 0x7F # Max raw code for MCF threshold (7 bits)
+MCFTHRESHOLD_CODE_MAX = 0x1FF # Max raw code for MCF threshold (9 bits)
 
 L1DEADTIME_CONVERSION_FACTOR = 5  # ns per raw step
 L1DEADTIME_CODE_MAX = 0xFF # Max raw code for L1 deadtime (8 bits)
