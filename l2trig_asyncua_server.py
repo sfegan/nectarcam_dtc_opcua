@@ -152,13 +152,14 @@ class L2TriggerOPCUAServer:
 
     def _module_to_slot_channel(self, module: int) -> Tuple[int, int]:
         """Convert 1-based module number to (slot, channel)."""
-        if not 1 <= module <= len(VALID_SLOTS) * CHANNELS_PER_SLOT:
-            raise ValueError(f"Module number {module} out of range (1-270)")
+        max_module = len(self.active_slots) * CHANNELS_PER_SLOT
+        if not 1 <= module <= max_module:
+            raise ValueError(f"Module number {module} out of range (1-{max_module})")
         
         slot_idx = (module - 1) // CHANNELS_PER_SLOT
-        slot = VALID_SLOTS[slot_idx]
-        channel = (module - 1) % CHANNELS_PER_SLOT
-        return slot, channel+1
+        slot = self.active_slots[slot_idx]  # Use active_slots instead of VALID_SLOTS
+        channel = (module - 1) % CHANNELS_PER_SLOT + 1
+        return slot, channel
 
     async def init(self):
         """Initialize the OPC UA server"""
