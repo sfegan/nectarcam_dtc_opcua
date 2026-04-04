@@ -366,7 +366,7 @@ class ModuleMatrix(tk.Frame):
                 print(f"Warning: Slot {slot} not in VALID_SLOTS")
                 continue
 
-            slot_frame = ttk.LabelFrame(self, text=f"Slot {slot}")
+            slot_frame = ttk.LabelFrame(self, text=f"S{slot}")
             slot_frame.grid(row=0, column=slot_col, padx=1, pady=1, sticky=tk.NSEW)
             
             # Configure slot_frame to expand its rows
@@ -566,7 +566,7 @@ class ControlPanel(tk.Frame):
         emergency_btn = tk.Button(
             power_frame, text="EMERGENCY STOP",
             command=self.on_emergency_stop,
-            bg="#cc0000", fg="white", font=("TkDefaultFont", 10, "bold")
+            bg="white", fg="red", font=("TkDefaultFont", 10, "bold")
         )
         emergency_btn.pack(fill=tk.X, pady=1)
         
@@ -775,8 +775,8 @@ class MainWindow:
         content_frame = ttk.Frame(self.root)
         content_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        content_frame.columnconfigure(0, weight=1)  # Module matrix gets all expanding space
-        content_frame.columnconfigure(1, weight=0)  # Right panel fixed to natural width
+        content_frame.columnconfigure(0, weight=5)  # Module matrix gets all expanding space
+        content_frame.columnconfigure(1, weight=0, minsize=300)  # Right panel fixed to natural width
         content_frame.rowconfigure(0, weight=1)
 
         # C1 (Left): Module matrix - fits directly into frame to allow resizing
@@ -816,7 +816,8 @@ class MainWindow:
         log_frame.rowconfigure(0, weight=1)
         log_frame.columnconfigure(0, weight=1)
 
-        self.log_text = scrolledtext.ScrolledText(log_frame, height=5, font=("Monospace", 8), state=tk.DISABLED)
+        # Set width=1 to allow the log to be as narrow as the other widgets in the column
+        self.log_text = scrolledtext.ScrolledText(log_frame, height=5, width=1, font=("Monospace", 8), state=tk.DISABLED)
         self.log_text.grid(row=0, column=0, sticky=tk.NSEW, padx=2, pady=2)
     def on_log_message(self, message):
         """Handle log message (runs on background thread, schedules on main)"""
