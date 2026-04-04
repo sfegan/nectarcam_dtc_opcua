@@ -380,10 +380,10 @@ async def interactive_loop(client: L2TrigTestClient):
             elif cmd in ("unsubscribe", "unsub", "unmonitor", "unmon"):
                 if not args: print("Usage: unsubscribe <variable_name|all>")
                 else: await client.unsubscribe(args[0])
-            elif cmd in ("reconnect", "restart"):
+            elif cmd in ("reconnect", "recon", "reconn", "restart", "connect", "conn"):
                 await client.reconnect()
             elif cmd == "cls":
-                os.system('cls' if os.name == 'nt' else 'clear')
+                print('\033[2J\033[H', end='')
             elif cmd == "call":
                 if not args:
                     print("Usage: call <method_name> [args...]")
