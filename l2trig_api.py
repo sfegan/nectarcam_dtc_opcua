@@ -398,6 +398,24 @@ class CTDBController:
         hal.set_l1_trigger_enabled(self.slot, mask)
         logger.debug(f"Slot {self.slot}: All trigger channels {'enabled' if enabled else 'disabled'}")
     
+    def set_some_trigger_enabled(self, channel_states: Dict[int, bool]) -> None:
+        """
+        Set multiple trigger channels at once
+        
+        Args:
+            channel_states: Dict mapping channel number to enable state
+        """
+        mask = hal.get_l1_trigger_enabled(self.slot)
+        for channel, enabled in channel_states.items():
+            if not 1 <= channel <= CHANNELS_PER_SLOT:
+                raise ValueError(f"Channel must be 1-{CHANNELS_PER_SLOT}")
+            if enabled:
+                mask |= (1 << channel)
+            else:
+                mask &= ~(1 << channel)
+        hal.set_l1_trigger_enabled(self.slot, mask)
+        logger.debug(f"Slot {self.slot}: Set trigger channels {channel_states}")
+
     def set_channel_trigger_delay(self, channel: int, delay_ns: float) -> float:
         """
         Set trigger delay for a channel

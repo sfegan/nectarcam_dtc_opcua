@@ -15,7 +15,7 @@ import logging
 import signal
 import sys
 import time
-from typing import Dict, Optional, List, Any, Tuple
+from typing import Dict, Optional, List, Any, Tuple, Set
 
 from asyncua import Server, ua
 from asyncua.common.methods import uamethod
@@ -106,6 +106,7 @@ class L2TriggerOPCUAServer:
         ("ModuleState", [], ua.VariantType.String, "Channel state strings: \"on\", \"off\", \"error_over_current\", \"error_under_current\" or \"error_both\" (flattened: slot_idx*15 + ch-1)"),
         ("ModuleTriggerEnabled", [], ua.VariantType.Boolean, "Trigger enabled status: true if enabled, false otherwise (flattened: slot_idx*15 + ch-1)"),
         ("ModuleTriggerDelay", [], ua.VariantType.Double, "Trigger delay in ns (flattened: slot_idx*15 + ch-1)"),
+        ("ModuleIsActive", [], ua.VariantType.Boolean, "Flag whether module is active (true) or inactive (false) (flattened: slot_idx*15 + ch-1)"),
     ]
 
     def __init__(self, 
@@ -116,6 +117,7 @@ class L2TriggerOPCUAServer:
                  poll_interval: float = 1.0,
                  poll_ratio: int = 10,
                  enabled_slots: Optional[List[int]] = None,
+                 inactive_channels: Optional[Set[Tuple[int, int]]] = None,
                  power_delay: float = 0.0001):
         """
         Initialize OPC UA server
@@ -127,6 +129,7 @@ class L2TriggerOPCUAServer:
         self.poll_interval = poll_interval
         self.poll_ratio = poll_ratio
         self.power_delay = power_delay
+        self.inactive_channels = inactive_channels or set()
         
         # Hardware interface
         self.system = L2TriggerSystem(
@@ -134,6 +137,12 @@ class L2TriggerOPCUAServer:
         )
         self.active_slots = sorted(list(self.system.ctdbs.keys()))
         
+        # Pre-calculate ModuleIsActive vector
+        self._module_is_active = []
+        for slot in self.active_slots:
+            for ch in range(1, CHANNELS_PER_SLOT + 1):
+                self._module_is_active.append((slot, ch) not in self.inactive_channels)
+
         # OPC UA server
         self.server = Server()
         self.namespace_idx = None
@@ -327,6 +336,11 @@ class L2TriggerOPCUAServer:
                 logger.warning(f"Failed to set power for module {module}: {e}")
                 return str(e)
 
+            if (slot, channel) in self.inactive_channels:
+                err = f"Module {module} (Slot {slot} Ch {channel}) is marked as INACTIVE and cannot be powered"
+                logger.warning(err)
+                return err
+
             logger.info(f"Setting power for module {module} (Slot {slot} Ch {channel}) to {'enabled' if enabled else 'disabled'}")
             await self._cancel_power_ramp()
             try:
@@ -377,6 +391,11 @@ class L2TriggerOPCUAServer:
                 logger.warning(f"Failed to set trigger enabled for module {module}: {e}")
                 return str(e)
 
+            if (slot, channel) in self.inactive_channels:
+                err = f"Module {module} (Slot {slot} Ch {channel}) is marked as INACTIVE and trigger cannot be enabled"
+                logger.warning(err)
+                return err
+
             logger.info(f"Setting trigger enabled for module {module} (Slot {slot} Ch {channel}) to {'enabled' if enabled else 'disabled'}")
             try:
                 async with self._lock:
@@ -401,6 +420,11 @@ class L2TriggerOPCUAServer:
                 logger.warning(f"Failed to set trigger delay for module {module}: {e}")
                 return str(e)
 
+            if (slot, channel) in self.inactive_channels:
+                err = f"Module {module} (Slot {slot} Ch {channel}) is marked as INACTIVE and delay cannot be set"
+                logger.warning(err)
+                return err
+
             logger.info(f"Setting trigger delay for module {module} (Slot {slot} Ch {channel}) to {delay_ns} ns")
             try:
                 async with self._lock:
@@ -419,11 +443,24 @@ class L2TriggerOPCUAServer:
         @uamethod
         async def set_all_trigger_enabled(parent_node, enabled: bool):
             """Global control to enable or disable triggers for all modules."""
-            logger.info(f"Setting all trigger enabled status to {'enabled' if enabled else 'disabled'}")
+            logger.info(f"Setting all trigger enabled status to {'enabled' if enabled else 'disabled'} (skipping inactive channels)")
+            
+            # Group active modules by slot for batch update
+            active_by_slot = {}
+            for slot in self.active_slots:
+                ch_states = {}
+                for ch in range(1, CHANNELS_PER_SLOT + 1):
+                    if (slot, ch) not in self.inactive_channels:
+                        ch_states[ch] = enabled
+                if ch_states:
+                    active_by_slot[slot] = ch_states
+
             async with self._lock:
-                await loop.run_in_executor(None, self.system.set_all_trigger_enabled, enabled)
+                for slot, ch_states in active_by_slot.items():
+                    await loop.run_in_executor(None, self.system.ctdbs[slot].set_some_trigger_enabled, ch_states)
+            
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
-            return f"All triggers {'enabled' if enabled else 'disabled'}"
+            return f"All active triggers {'enabled' if enabled else 'disabled'}"
 
         await add_described_method("SetAllTriggerEnabled", set_all_trigger_enabled,
                                    inputs=[a("enabled", ua.VariantType.Boolean, "True to enable all triggers, False to disable all")])
@@ -432,11 +469,17 @@ class L2TriggerOPCUAServer:
         @uamethod
         async def set_all_trigger_delay(parent_node, delay_ns: float):
             """Apply a uniform trigger delay to all modules in the system."""
-            logger.info(f"Setting all trigger delays to {delay_ns} ns")
+            logger.info(f"Setting all trigger delays to {delay_ns} ns (skipping inactive channels)")
+            
+            actual_delay = delay_ns
             async with self._lock:
-                delay_ns = await loop.run_in_executor(None, self.system.set_all_trigger_delay, delay_ns)
+                for slot in self.active_slots:
+                    for ch in range(1, CHANNELS_PER_SLOT + 1):
+                        if (slot, ch) not in self.inactive_channels:
+                            actual_delay = await loop.run_in_executor(None, self.system.ctdbs[slot].set_channel_trigger_delay, ch, delay_ns)
+            
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
-            return f"All trigger delays set to {delay_ns:.3f} ns"
+            return f"All active trigger delays set to {actual_delay:.3f} ns"
 
         await add_described_method("SetAllTriggerDelay", set_all_trigger_delay,
                                    inputs=[a("delay_ns", ua.VariantType.Double, "Delay in nanoseconds (0.0 to 5.0 ns) for all modules")])
@@ -649,6 +692,7 @@ class L2TriggerOPCUAServer:
         await self._set_var("BoardCurrentLimitMax", ctdb_max, now)
         await self._set_var("ModuleTriggerEnabled", trig_enabled, now)
         await self._set_var("ModuleTriggerDelay", trig_delay, now)
+        await self._set_var("ModuleIsActive", self._module_is_active, now)
 
     async def _do_poll_fast(self, now: datetime.datetime):
         """Perform high-frequency polling and update variables"""
@@ -753,7 +797,7 @@ class L2TriggerOPCUAServer:
     async def _ramp_power(self, enabled: bool):
         """Gradually turn power on/off for all modules with interleaving across slots."""
         nmod = len(self.active_slots) * CHANNELS_PER_SLOT
-        logger.info(f"Starting power ramp: setting power=%s for %d modules with %.1fs ramp",
+        logger.info(f"Starting power ramp: setting power=%s for %d modules with %.1fs ramp (skipping inactive channels)",
                     'on' if enabled else 'off', nmod, self.power_delay*nmod)
         try:
             loop = asyncio.get_running_loop()
@@ -761,6 +805,9 @@ class L2TriggerOPCUAServer:
             # Order: cycle between slots for each channel to minimize inrush into each slot
             for ch in range(1, CHANNELS_PER_SLOT + 1):
                 for slot in self.active_slots:
+                    if (slot, ch) in self.inactive_channels:
+                        continue
+
                     logger.debug(f"Ramp: Slot {slot} Ch {ch} -> {enabled}")
                     async with self._lock:
                         await loop.run_in_executor(
@@ -863,10 +910,32 @@ def _parse_args():
     p.add_argument("--power-ramp-delay-ms", type=int, default=10, help="Delay between enabling power channels in ramp in milliseconds")
     p.add_argument("--timeout-us", type=int, default=10000, help="Hardware timeout in microseconds")
     p.add_argument("--slots", help="Comma-separated list of slots to enable; if omitted, all slots are enabled")
+    p.add_argument("--inactive-channels", default="S21C11,S21C12,S21C13,S21C14,S21C15",
+                   help="Comma-separated list of inactive slot/channel pairs (e.g. S1C1,S18C15)")
     p.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"],
                    help="Set the logging level")
     p.add_argument("--log-file", help="Optional log file path")
     return p.parse_args()
+
+def _parse_inactive_channels(inactive_str: str) -> Set[Tuple[int, int]]:
+    """Parse comma-separated list of inactive slot/channel pairs (e.g. S1C1,S18C15)"""
+    import re
+    inactive = set()
+    if not inactive_str:
+        return inactive
+    parts = inactive_str.split(",")
+    for part in parts:
+        part = part.strip().upper()
+        if not part:
+            continue
+        m = re.match(r"S(\d+)C(\d+)", part)
+        if m:
+            slot = int(m.group(1))
+            chan = int(m.group(2))
+            inactive.add((slot, chan))
+        else:
+            logger.warning(f"Invalid inactive channel format: {part}")
+    return inactive
 
 async def main():
     """Main entry point"""
@@ -888,6 +957,8 @@ async def main():
         except ValueError:
             logger.error(f"Invalid slots argument: {args.slots}")
             return 1
+    
+    inactive_channels = _parse_inactive_channels(args.inactive_channels)
 
     server = L2TriggerOPCUAServer(
         opcua_endpoint=args.opcua_endpoint,
@@ -897,6 +968,7 @@ async def main():
         poll_interval=args.poll_interval,
         poll_ratio=args.poll_ratio,
         enabled_slots=enabled_slots,
+        inactive_channels=inactive_channels,
         power_delay=args.power_ramp_delay_ms / 1_000.0
     )
     
