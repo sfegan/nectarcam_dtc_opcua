@@ -321,15 +321,22 @@ class L2TriggerOPCUAServer:
         @uamethod
         async def set_module_power(parent_node, module: int, enabled: bool):
             """Enable or disable power for a specific module. Cancels any ongoing global power ramp."""
-            slot, channel = self._module_to_slot_channel(module)
-            if slot not in self.system.ctdbs:
-                raise ValueError(f"Slot {slot} (module {module}) not enabled in this server")
+            try:
+                slot, channel = self._module_to_slot_channel(module)
+            except (ValueError, IndexError) as e:
+                logger.warning(f"Failed to set power for module {module}: {e}")
+                return str(e)
+
             logger.info(f"Setting power for module {module} (Slot {slot} Ch {channel}) to {'enabled' if enabled else 'disabled'}")
             await self._cancel_power_ramp()
-            async with self._lock:
-                await loop.run_in_executor(None, self.system.set_channel_power_enabled, slot, channel, enabled)
-            await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
-            return f"Module {module} (Slot {slot} Ch {channel}) {'enabled' if enabled else 'disabled'}"
+            try:
+                async with self._lock:
+                    await loop.run_in_executor(None, self.system.set_channel_power_enabled, slot, channel, enabled)
+                await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
+                return f"Module {module} (Slot {slot} Ch {channel}) {'enabled' if enabled else 'disabled'}"
+            except Exception as e:
+                logger.error(f"Error setting power for module {module}: {e}")
+                return f"Error: {e}"
         
         await add_described_method("SetModulePowerEnabled", set_module_power,
                                    inputs=[a("module", ua.VariantType.Int32, "Module number (1-270)"),
@@ -340,13 +347,20 @@ class L2TriggerOPCUAServer:
         async def set_board_current_limits(parent_node, board: int, min_ma: float, max_ma: float):
             """Configure safety current limits for an entire CTDB board identified by its sequence index."""
             if not 1 <= board <= len(self.active_slots):
-                raise ValueError(f"Board index {board} out of range (1-{len(self.active_slots)})")
+                err = f"Board index {board} out of range (1-{len(self.active_slots)})"
+                logger.warning(err)
+                return err
+
             slot = self.active_slots[board - 1]
             logger.info(f"Setting current limits for board {board} (Slot {slot}) to {min_ma}-{max_ma} mA")
-            async with self._lock:
-                min_ma, max_ma = await loop.run_in_executor(None, self.system.ctdbs[slot].set_current_limits, min_ma, max_ma)
-            await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
-            return f"Board {board} (Slot {slot}) limits set to {min_ma}-{max_ma} mA"
+            try:
+                async with self._lock:
+                    min_ma, max_ma = await loop.run_in_executor(None, self.system.ctdbs[slot].set_current_limits, min_ma, max_ma)
+                await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
+                return f"Board {board} (Slot {slot}) limits set to {min_ma}-{max_ma} mA"
+            except Exception as e:
+                logger.error(f"Error setting current limits for board {board} (Slot {slot}): {e}")
+                return f"Error: {e}"
 
         await add_described_method("SetBoardCurrentLimits", set_board_current_limits,
                                    inputs=[a("board", ua.VariantType.Int32, f"Sequential board index (1 to {len(self.active_slots)})"),
@@ -357,14 +371,21 @@ class L2TriggerOPCUAServer:
         @uamethod
         async def set_module_trigger_enabled(parent_node, module: int, enabled: bool):
             """Enable or disable the L1 trigger contribution for a specific module."""
-            slot, channel = self._module_to_slot_channel(module)
-            if slot not in self.system.ctdbs:
-                raise ValueError(f"Slot {slot} (module {module}) not enabled in this server")
+            try:
+                slot, channel = self._module_to_slot_channel(module)
+            except (ValueError, IndexError) as e:
+                logger.warning(f"Failed to set trigger enabled for module {module}: {e}")
+                return str(e)
+
             logger.info(f"Setting trigger enabled for module {module} (Slot {slot} Ch {channel}) to {'enabled' if enabled else 'disabled'}")
-            async with self._lock:
-                await loop.run_in_executor(None, self.system.ctdbs[slot].set_channel_trigger_enabled, channel, enabled)
-            await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
-            return f"Module {module} (Slot {slot} Trigger Ch {channel}) {'enabled' if enabled else 'disabled'}"
+            try:
+                async with self._lock:
+                    await loop.run_in_executor(None, self.system.ctdbs[slot].set_channel_trigger_enabled, channel, enabled)
+                await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
+                return f"Module {module} (Slot {slot} Trigger Ch {channel}) {'enabled' if enabled else 'disabled'}"
+            except Exception as e:
+                logger.error(f"Error setting trigger enabled for module {module} (Slot {slot} Ch {channel}): {e}")
+                return f"Error: {e}"
 
         await add_described_method("SetModuleTriggerEnabled", set_module_trigger_enabled,
                                    inputs=[a("module", ua.VariantType.Int32, "Module number (1-270)"),
@@ -374,14 +395,21 @@ class L2TriggerOPCUAServer:
         @uamethod
         async def set_module_trigger_delay(parent_node, module: int, delay_ns: float):
             """Adjust the fine-grained trigger delay for a module to synchronize signal timing."""
-            slot, channel = self._module_to_slot_channel(module)
-            if slot not in self.system.ctdbs:
-                raise ValueError(f"Slot {slot} (module {module}) not enabled in this server")
+            try:
+                slot, channel = self._module_to_slot_channel(module)
+            except (ValueError, IndexError) as e:
+                logger.warning(f"Failed to set trigger delay for module {module}: {e}")
+                return str(e)
+
             logger.info(f"Setting trigger delay for module {module} (Slot {slot} Ch {channel}) to {delay_ns} ns")
-            async with self._lock:
-                await loop.run_in_executor(None, self.system.ctdbs[slot].set_channel_trigger_delay, channel, delay_ns)
-            await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
-            return f"Module {module} (Slot {slot} Trigger Ch {channel}) delay set to {delay_ns} ns"
+            try:
+                async with self._lock:
+                    await loop.run_in_executor(None, self.system.ctdbs[slot].set_channel_trigger_delay, channel, delay_ns)
+                await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
+                return f"Module {module} (Slot {slot} Trigger Ch {channel}) delay set to {delay_ns} ns"
+            except Exception as e:
+                logger.error(f"Error setting trigger delay for module {module} (Slot {slot} Ch {channel}): {e}")
+                return f"Error: {e}"
 
         await add_described_method("SetModuleTriggerDelay", set_module_trigger_delay,
                                    inputs=[a("module", ua.VariantType.Int32, "Module number (1-270)"),
