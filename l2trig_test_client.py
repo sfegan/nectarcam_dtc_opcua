@@ -382,7 +382,7 @@ async def interactive_loop(client: L2TrigTestClient):
                 else: await client.unsubscribe(args[0])
             elif cmd in ("reconnect", "recon", "reconn", "restart", "connect", "conn"):
                 await client.reconnect()
-            elif cmd == "cls":
+            elif cmd in ( "cls", "clear", "clr" ):
                 print('\033[2J\033[H', end='')
             elif cmd == "call":
                 if not args:
