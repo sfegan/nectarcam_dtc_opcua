@@ -185,8 +185,13 @@ class OPCUAClient:
 class ModuleIndicator(tk.Canvas):
     """Individual module status indicator"""
     
-    def __init__(self, parent, slot: int, channel: int, click_callback, **kwargs):
-        super().__init__(parent, width=50, height=50, highlightthickness=1, **kwargs)
+    def __init__(self, parent, slot: int, channel: int, click_callback, width=50, height=50, **kwargs):
+        self.module_width = width
+        self.module_height = height
+        # Calculate appropriate font size based on module size
+        self.font_size = max(5, int(min(width, height) / 8))
+        
+        super().__init__(parent, width=width, height=height, highlightthickness=1, **kwargs)
         self.slot = slot
         self.channel = channel
         self.module_idx = None
@@ -198,10 +203,22 @@ class ModuleIndicator(tk.Canvas):
         self.trigger_enabled = False
         self.trigger_delay = 0.0
         
-        # Create text item
-        self.text_id = self.create_text(25, 25, text="", font=("Monospace", 7), fill="white")
+        # Create text item - will be updated dynamically
+        self.text_id = self.create_text(width/2, height/2, text="", font=("Monospace", self.font_size), fill="white")
         
         self.bind("<Button-1>", self.on_click)
+        self.update_display()
+    
+    def set_size(self, new_width, new_height):
+        """Update the size of the indicator"""
+        if new_width == self.module_width and new_height == self.module_height:
+            return
+        self.module_width = new_width
+        self.module_height = new_height
+        self.font_size = max(5, int(min(new_width, new_height) / 8))
+        self.config(width=new_width, height=new_height)
+        self.coords(self.text_id, new_width/2, new_height/2)
+        self.itemconfig(self.text_id, font=("Monospace", self.font_size))
         self.update_display()
     
     def on_click(self, event):
@@ -284,16 +301,65 @@ class ModuleMatrix(tk.Frame):
         self.display_mode = DisplayMode.POWER
         self.modules: List[ModuleIndicator] = []
         self.opcua_client = opcua_client
+        self.min_module_width = 10
+        self.min_module_height = 10
         
         self.init_ui()
+        self.bind("<Configure>", self.on_resize)
+    
+    def calculate_module_size(self):
+        """Calculate appropriate module dimensions based on available space"""
+        if not self.slots:
+            return 40, 40
+        
+        # Get the size of this frame
+        self.update_idletasks()
+        available_width = self.winfo_width()
+        available_height = self.winfo_height()
+        
+        # If window hasn't been rendered yet, use default
+        if available_width <= 1 or available_height <= 1:
+            return 40, 40
+        
+        # Each slot needs: module width + 2*padx + LabelFrame overhead
+        slot_overhead_w = 20  # Total overhead per slot frame width
+        num_slots = len(self.slots)
+        
+        # Calculate available width for each module
+        total_overhead_w = num_slots * slot_overhead_w
+        available_for_modules_w = max(0, available_width - total_overhead_w)
+        width_per_slot = available_for_modules_w // num_slots if num_slots > 0 else 40
+        
+        # Each channel needs: module height + 2*pady + LabelFrame overhead
+        # 15 channels per slot
+        slot_overhead_h = 40  # Overhead for LabelFrame title and borders
+        available_for_modules_h = max(0, available_height - slot_overhead_h)
+        height_per_ch = available_for_modules_h // 15
+        
+        # Constrain to reasonable bounds
+        target_w = max(self.min_module_width, width_per_slot)
+        target_h = max(self.min_module_height, height_per_ch)
+        
+        return target_w, target_h
+    
+    def on_resize(self, event=None):
+        """Handle frame resize event"""
+        new_w, new_h = self.calculate_module_size()
+        for module in self.modules:
+            module.set_size(new_w, new_h)
     
     def init_ui(self):
         """Initialize the module matrix UI"""
-        # Create a LabelFrame for each slot, arranged horizontally
-        # Each LabelFrame contains 15 channels arranged vertically
+        # Configure columns for expansion
+        for col_idx in range(len(self.slots)):
+            self.columnconfigure(col_idx, weight=1)
+        self.rowconfigure(0, weight=1)
+
+        # Use a reasonable default size for initial layout
+        initial_w, initial_h = 40, 40
+        
         for slot in self.slots:
             try:
-                # Find column index for this slot to maintain consistent grid layout
                 slot_col = self.slots.index(slot)
                 slot_idx = VALID_SLOTS.index(slot)
             except ValueError:
@@ -301,15 +367,19 @@ class ModuleMatrix(tk.Frame):
                 continue
 
             slot_frame = ttk.LabelFrame(self, text=f"Slot {slot}")
-            slot_frame.grid(row=0, column=slot_col, padx=5, pady=5, sticky=tk.NS)
+            slot_frame.grid(row=0, column=slot_col, padx=1, pady=1, sticky=tk.NSEW)
             
+            # Configure slot_frame to expand its rows
+            for row_idx in range(15):
+                slot_frame.rowconfigure(row_idx, weight=1)
+            slot_frame.columnconfigure(0, weight=1)
+
             for ch in range(1, 16):  # Channels 1-15
                 indicator = ModuleIndicator(
-                    slot_frame, slot, ch, self.on_module_clicked
+                    slot_frame, slot, ch, self.on_module_clicked, width=initial_w, height=initial_h
                 )
-                # Calculate module index (1-based for server) using VALID_SLOTS
                 indicator.module_idx = slot_idx * 15 + ch
-                indicator.grid(row=ch-1, column=0, padx=2, pady=1)
+                indicator.grid(row=ch-1, column=0, padx=1, pady=1, sticky=tk.NSEW)
                 self.modules.append(indicator)
     
     def set_display_mode(self, mode: DisplayMode):
@@ -409,8 +479,8 @@ class ControlPanel(tk.Frame):
     def init_ui(self):
         """Initialize control panel UI"""
         # Crate controls group
-        crate_frame = ttk.LabelFrame(self, text="Crate Controls", padding=10)
-        crate_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        crate_frame = ttk.LabelFrame(self, text="Crate Controls", padding=5)
+        crate_frame.pack(fill=tk.X, padx=2, pady=2)  # fill X only, no expand
         
         row = 0
         
@@ -420,7 +490,7 @@ class ControlPanel(tk.Frame):
             crate_frame, text="MCF Enabled", 
             variable=self.mcf_enabled_var,
             command=self.on_mcf_enabled_changed
-        ).grid(row=row, column=0, columnspan=2, sticky=tk.W, pady=2)
+        ).grid(row=row, column=0, columnspan=2, sticky=tk.W, pady=1)
         row += 1
         
         # Busy Glitch Filter
@@ -429,7 +499,7 @@ class ControlPanel(tk.Frame):
             crate_frame, text="Busy Glitch Filter",
             variable=self.busy_filter_var,
             command=self.on_busy_filter_changed
-        ).grid(row=row, column=0, columnspan=2, sticky=tk.W, pady=2)
+        ).grid(row=row, column=0, columnspan=2, sticky=tk.W, pady=1)
         row += 1
         
         # TIB Trigger Busy Block
@@ -438,78 +508,81 @@ class ControlPanel(tk.Frame):
             crate_frame, text="TIB Trigger Busy Block",
             variable=self.tib_block_var,
             command=self.on_tib_block_changed
-        ).grid(row=row, column=0, columnspan=2, sticky=tk.W, pady=2)
+        ).grid(row=row, column=0, columnspan=2, sticky=tk.W, pady=1)
         row += 1
         
         # MCF Threshold
-        ttk.Label(crate_frame, text="MCF Threshold:").grid(row=row, column=0, sticky=tk.W, pady=2)
+        ttk.Label(crate_frame, text="MCF Threshold:").grid(row=row, column=0, sticky=tk.W, pady=1)
         self.mcf_threshold_var = tk.IntVar(value=0)
         threshold_spin = ttk.Spinbox(
             crate_frame, from_=0, to=512, textvariable=self.mcf_threshold_var,
-            width=10, command=self.on_mcf_threshold_changed
+            width=8, command=self.on_mcf_threshold_changed
         )
-        threshold_spin.grid(row=row, column=1, sticky=tk.W, pady=2)
+        threshold_spin.grid(row=row, column=1, sticky=tk.EW, pady=1)
         threshold_spin.bind('<Return>', lambda e: self.on_mcf_threshold_changed())
         row += 1
         
         # MCF Delay
-        ttk.Label(crate_frame, text="MCF Delay (ns):").grid(row=row, column=0, sticky=tk.W, pady=2)
+        ttk.Label(crate_frame, text="MCF Delay (ns):").grid(row=row, column=0, sticky=tk.W, pady=1)
         self.mcf_delay_var = tk.DoubleVar(value=0.0)
         delay_spin = ttk.Spinbox(
             crate_frame, from_=0, to=75.0, increment=5.0,
-            textvariable=self.mcf_delay_var, width=10,
+            textvariable=self.mcf_delay_var, width=8,
             command=self.on_mcf_delay_changed
         )
-        delay_spin.grid(row=row, column=1, sticky=tk.W, pady=2)
+        delay_spin.grid(row=row, column=1, sticky=tk.EW, pady=1)
         delay_spin.bind('<Return>', lambda e: self.on_mcf_delay_changed())
         row += 1
         
         # L1 Deadtime
-        ttk.Label(crate_frame, text="L1 Deadtime (ns):").grid(row=row, column=0, sticky=tk.W, pady=2)
+        ttk.Label(crate_frame, text="L1 Deadtime (ns):").grid(row=row, column=0, sticky=tk.W, pady=1)
         self.l1_deadtime_var = tk.DoubleVar(value=0.0)
         deadtime_spin = ttk.Spinbox(
             crate_frame, from_=0, to=1275.0, increment=5.0,
-            textvariable=self.l1_deadtime_var, width=10,
+            textvariable=self.l1_deadtime_var, width=8,
             command=self.on_l1_deadtime_changed
         )
-        deadtime_spin.grid(row=row, column=1, sticky=tk.W, pady=2)
+        deadtime_spin.grid(row=row, column=1, sticky=tk.EW, pady=1)
         deadtime_spin.bind('<Return>', lambda e: self.on_l1_deadtime_changed())
         row += 1
         
+        # Configure column to expand
+        crate_frame.columnconfigure(1, weight=1)
+        
         # Power control group
-        power_frame = ttk.LabelFrame(self, text="Power Control", padding=10)
-        power_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        power_frame = ttk.LabelFrame(self, text="Power Control", padding=5)
+        power_frame.pack(fill=tk.X, padx=2, pady=2)  # fill X only, no expand
         
         ttk.Button(
             power_frame, text="Ramp Up All Power",
             command=self.on_ramp_up
-        ).pack(fill=tk.X, pady=2)
+        ).pack(fill=tk.X, pady=1)
         
         ttk.Button(
             power_frame, text="Ramp Down All Power",
             command=self.on_ramp_down
-        ).pack(fill=tk.X, pady=2)
+        ).pack(fill=tk.X, pady=1)
         
         emergency_btn = tk.Button(
             power_frame, text="EMERGENCY STOP",
             command=self.on_emergency_stop,
             bg="#cc0000", fg="white", font=("TkDefaultFont", 10, "bold")
         )
-        emergency_btn.pack(fill=tk.X, pady=2)
+        emergency_btn.pack(fill=tk.X, pady=1)
         
         # Trigger control group
-        trigger_frame = ttk.LabelFrame(self, text="Trigger Control", padding=10)
-        trigger_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        trigger_frame = ttk.LabelFrame(self, text="Trigger Control", padding=5)
+        trigger_frame.pack(fill=tk.X, padx=2, pady=2)  # fill X only, no expand
         
         ttk.Button(
             trigger_frame, text="Enable All Triggers",
             command=self.on_enable_all_triggers
-        ).pack(fill=tk.X, pady=2)
+        ).pack(fill=tk.X, pady=1)
         
         ttk.Button(
             trigger_frame, text="Disable All Triggers",
             command=self.on_disable_all_triggers
-        ).pack(fill=tk.X, pady=2)
+        ).pack(fill=tk.X, pady=1)
     
     def on_mcf_enabled_changed(self):
         self.opcua_client.run_async(
@@ -604,33 +677,24 @@ class StatusPanel(tk.Frame):
     def init_ui(self):
         """Initialize status panel UI"""
         # Crate status
-        crate_frame = ttk.LabelFrame(self, text="Crate Status", padding=10)
-        crate_frame.pack(fill=tk.X, padx=5, pady=5)
+        crate_frame = ttk.LabelFrame(self, text="Crate Status", padding=5)  # Reduced padding
+        crate_frame.pack(fill=tk.X, padx=2, pady=2)  # Reduced padding
         
-        ttk.Label(crate_frame, text="Firmware:").grid(row=0, column=0, sticky=tk.W)
+        ttk.Label(crate_frame, text="Firmware:").grid(row=0, column=0, sticky=tk.W, pady=1)
         self.fw_label = ttk.Label(crate_frame, text="--")
-        self.fw_label.grid(row=0, column=1, sticky=tk.W)
+        self.fw_label.grid(row=0, column=1, sticky=tk.W, pady=1)
         
-        ttk.Label(crate_frame, text="Uptime:").grid(row=1, column=0, sticky=tk.W)
+        ttk.Label(crate_frame, text="Uptime:").grid(row=1, column=0, sticky=tk.W, pady=1)
         self.uptime_label = ttk.Label(crate_frame, text="--")
-        self.uptime_label.grid(row=1, column=1, sticky=tk.W)
+        self.uptime_label.grid(row=1, column=1, sticky=tk.W, pady=1)
         
-        ttk.Label(crate_frame, text="Powered Modules:").grid(row=2, column=0, sticky=tk.W)
+        ttk.Label(crate_frame, text="Powered Modules:").grid(row=2, column=0, sticky=tk.W, pady=1)
         self.powered_label = ttk.Label(crate_frame, text="--")
-        self.powered_label.grid(row=2, column=1, sticky=tk.W)
+        self.powered_label.grid(row=2, column=1, sticky=tk.W, pady=1)
         
-        ttk.Label(crate_frame, text="Trigger Enabled:").grid(row=3, column=0, sticky=tk.W)
+        ttk.Label(crate_frame, text="Trigger Enabled:").grid(row=3, column=0, sticky=tk.W, pady=1)
         self.trigger_label = ttk.Label(crate_frame, text="--")
-        self.trigger_label.grid(row=3, column=1, sticky=tk.W)
-        
-        # Board status
-        board_frame = ttk.LabelFrame(self, text="Board Status", padding=10)
-        board_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        
-        self.board_text = tk.Text(board_frame, height=10, width=30, font=("Monospace", 8))
-        self.board_text.pack(fill=tk.BOTH, expand=True)
-        self.board_text.insert("1.0", "No data")
-        self.board_text.config(state=tk.DISABLED)
+        self.trigger_label.grid(row=3, column=1, sticky=tk.W, pady=1)
     
     def update_from_data(self, var_name: str, value):
         """Update status displays from OPC UA data"""
@@ -649,46 +713,6 @@ class StatusPanel(tk.Frame):
         
         elif var_name == "CrateNumTriggerEnabledModules":
             self.trigger_label.config(text=str(value))
-        
-        elif var_name in ("BoardSlots", "BoardCurrent", "BoardCurrentSum", "BoardHasErrors"):
-            self.update_board_status()
-    
-    def update_board_status(self):
-        """Update the board status text from cached data"""
-        if not self.opcua_client.handler:
-            return
-        
-        cache = self.opcua_client.handler.data_cache
-        
-        slots = []
-        currents = []
-        errors = []
-        
-        for node_id, value in cache.items():
-            var_name = self.opcua_client.var_name_map.get(node_id, "")
-            if not hasattr(value, "__iter__") or isinstance(value, (str, bytes)):
-                continue
-            if var_name == "BoardSlots":
-                slots = value
-            elif var_name == "BoardCurrent":
-                currents = value
-            elif var_name == "BoardHasErrors":
-                errors = value
-        
-        if not slots:
-            return
-        
-        text = ""
-        for idx, slot in enumerate(slots):
-            current = currents[idx] if idx < len(currents) else 0.0
-            has_error = errors[idx] if idx < len(errors) else False
-            error_str = " [ERROR]" if has_error else ""
-            text += f"Slot {slot}: {current:.1f} mA{error_str}\n"
-        
-        self.board_text.config(state=tk.NORMAL)
-        self.board_text.delete("1.0", tk.END)
-        self.board_text.insert("1.0", text.strip() if text else "No data")
-        self.board_text.config(state=tk.DISABLED)
 
 
 class MainWindow:
@@ -751,92 +775,49 @@ class MainWindow:
         content_frame = ttk.Frame(self.root)
         content_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        content_frame.columnconfigure(0, weight=1)
-        content_frame.columnconfigure(1, weight=0, minsize=300)
+        content_frame.columnconfigure(0, weight=1)  # Module matrix gets all expanding space
+        content_frame.columnconfigure(1, weight=0)  # Right panel fixed to natural width
         content_frame.rowconfigure(0, weight=1)
 
-        # C1 (Left 70%): Module matrix
+        # C1 (Left): Module matrix - fits directly into frame to allow resizing
         matrix_frame = ttk.Frame(content_frame)
         matrix_frame.grid(row=0, column=0, sticky=tk.NSEW)
+        self.matrix_container = matrix_frame
 
-        matrix_canvas = tk.Canvas(matrix_frame)
-        matrix_scrollbar_y = ttk.Scrollbar(matrix_frame, orient=tk.VERTICAL, command=matrix_canvas.yview)
-        matrix_scrollbar_x = ttk.Scrollbar(matrix_frame, orient=tk.HORIZONTAL, command=matrix_canvas.xview)
-
-        self.matrix_container = ttk.Frame(matrix_canvas)
-
-        matrix_canvas.create_window((0, 0), window=self.matrix_container, anchor=tk.NW)
-        matrix_canvas.configure(yscrollcommand=matrix_scrollbar_y.set, xscrollcommand=matrix_scrollbar_x.set)
-
-        matrix_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        matrix_scrollbar_y.pack(side=tk.RIGHT, fill=tk.Y)
-        matrix_scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X)
-
-        # Initialize with default slots
+        # Initialize matrix directly in the frame
         self.module_matrix = ModuleMatrix(
             self.matrix_container,
             VALID_SLOTS,
             self.opcua_client
         )
-        self.module_matrix.pack()
+        self.module_matrix.pack(fill=tk.BOTH, expand=True)
 
-        self.matrix_container.update_idletasks()
-        matrix_canvas.config(scrollregion=matrix_canvas.bbox("all"))
-
-        # C2 (Right 30%): Subdivided
+        # C2 (Right panel): Status and Controls stacked vertically
         c2 = ttk.Frame(content_frame)
-        c2.grid(row=0, column=1, sticky=tk.NSEW, padx=5)
+        c2.grid(row=0, column=1, sticky=tk.NSEW, padx=(5, 0))
 
-        c2.columnconfigure(0, weight=1) # Expand columns horizontally
-        c2.rowconfigure(0, weight=6) # 60%
-        c2.rowconfigure(1, weight=4) # 40%
+        c2.columnconfigure(0, weight=1)
+        c2.rowconfigure(0, weight=0)  # Status panel - fixed height
+        c2.rowconfigure(1, weight=0)  # Controls panel - fixed height
+        c2.rowconfigure(2, weight=1)  # Log panel - takes remaining space
 
-        # C2R1 (Top 60%): Status and Controls
-        c2r1 = ttk.Frame(c2)
-        c2r1.grid(row=0, column=0, sticky=tk.NSEW)
+        # Status Panel
+        self.status_panel = StatusPanel(c2, self.opcua_client)
+        self.status_panel.grid(row=0, column=0, sticky=tk.EW, pady=(0, 2))
 
-        c2r1.rowconfigure(0, weight=1) # Expand row vertically
-        c2r1.columnconfigure(0, weight=1) # C2R1C1
-        c2r1.columnconfigure(1, weight=1) # C2R1C2
+        # Control Panel - No scrollbar
+        self.control_panel = ControlPanel(c2, self.opcua_client)
+        self.control_panel.grid(row=1, column=0, sticky=tk.NSEW, pady=2)
 
-        # C2R1C1: Statuses
-        self.status_panel = StatusPanel(c2r1, self.opcua_client)
-        self.status_panel.grid(row=0, column=0, sticky=tk.NSEW)
-
-        # C2R1C2: Controls
-        control_frame = ttk.Frame(c2r1)
-        control_frame.grid(row=0, column=1, sticky=tk.NSEW)
-
-        control_canvas = tk.Canvas(control_frame)
-        control_scrollbar = ttk.Scrollbar(control_frame, orient=tk.VERTICAL, command=control_canvas.yview)
-
-        control_container = ttk.Frame(control_canvas)
-        control_container.columnconfigure(0, weight=1)
-
-        control_canvas.create_window((0, 0), window=control_container, anchor=tk.NW, tags="frame")
-        control_canvas.configure(yscrollcommand=control_scrollbar.set)
-
-        control_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        control_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-        self.control_panel = ControlPanel(control_container, self.opcua_client)
-        self.control_panel.pack(fill=tk.BOTH, expand=True)
-
-        control_container.update_idletasks()
-        control_canvas.config(scrollregion=control_canvas.bbox("all"))
-        
-        # Bind canvas resize to update the window
-        def on_canvas_configure(event):
-            control_canvas.itemconfig("frame", width=event.width)
-        
-        control_canvas.bind("<Configure>", on_canvas_configure)
-
-        # C2R2 (Bottom 40%): Log
+        # Log Panel
         log_frame = ttk.LabelFrame(c2, text="System Log")
-        log_frame.grid(row=1, column=0, sticky=tk.NSEW, pady=5)
+        log_frame.grid(row=2, column=0, sticky=tk.NSEW, pady=(2, 0))
+        
+        log_frame.rowconfigure(0, weight=1)
+        log_frame.columnconfigure(0, weight=1)
 
-        self.log_text = scrolledtext.ScrolledText(log_frame, height=10, font=("Monospace", 8), state=tk.DISABLED)
-        self.log_text.pack(fill=tk.BOTH, expand=True)
+        self.log_text = scrolledtext.ScrolledText(log_frame, height=5, font=("Monospace", 8), state=tk.DISABLED)
+        self.log_text.grid(row=0, column=0, sticky=tk.NSEW, padx=2, pady=2)
     def on_log_message(self, message):
         """Handle log message (runs on background thread, schedules on main)"""
         if self.root:
@@ -934,7 +915,7 @@ class MainWindow:
         self.module_matrix = ModuleMatrix(
             self.matrix_container, slots, self.opcua_client
         )
-        self.module_matrix.pack()
+        self.module_matrix.pack(fill=tk.BOTH, expand=True)
         
         self.matrix_container.update_idletasks()
 
