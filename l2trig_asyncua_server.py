@@ -357,7 +357,7 @@ class L2TriggerOPCUAServer:
                 async with self._lock:
                     min_ma, max_ma = await loop.run_in_executor(None, self.system.ctdbs[slot].set_current_limits, min_ma, max_ma)
                 await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
-                return f"Board {board} (Slot {slot}) limits set to {min_ma}-{max_ma} mA"
+                return f"Board {board} (Slot {slot}) limits set to {min_ma:.1f}-{max_ma:.1f} mA"
             except Exception as e:
                 logger.error(f"Error setting current limits for board {board} (Slot {slot}): {e}")
                 return f"Error: {e}"
@@ -404,9 +404,9 @@ class L2TriggerOPCUAServer:
             logger.info(f"Setting trigger delay for module {module} (Slot {slot} Ch {channel}) to {delay_ns} ns")
             try:
                 async with self._lock:
-                    await loop.run_in_executor(None, self.system.ctdbs[slot].set_channel_trigger_delay, channel, delay_ns)
+                    delay_ns = await loop.run_in_executor(None, self.system.ctdbs[slot].set_channel_trigger_delay, channel, delay_ns)
                 await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
-                return f"Module {module} (Slot {slot} Trigger Ch {channel}) delay set to {delay_ns} ns"
+                return f"Module {module} (Slot {slot} Trigger Ch {channel}) delay set to {delay_ns:.3f} ns"
             except Exception as e:
                 logger.error(f"Error setting trigger delay for module {module} (Slot {slot} Ch {channel}): {e}")
                 return f"Error: {e}"
@@ -434,9 +434,9 @@ class L2TriggerOPCUAServer:
             """Apply a uniform trigger delay to all modules in the system."""
             logger.info(f"Setting all trigger delays to {delay_ns} ns")
             async with self._lock:
-                await loop.run_in_executor(None, self.system.set_all_trigger_delay, delay_ns)
+                delay_ns = await loop.run_in_executor(None, self.system.set_all_trigger_delay, delay_ns)
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
-            return f"All trigger delays set to {delay_ns} ns"
+            return f"All trigger delays set to {delay_ns:.3f} ns"
 
         await add_described_method("SetAllTriggerDelay", set_all_trigger_delay,
                                    inputs=[a("delay_ns", ua.VariantType.Double, "Delay in nanoseconds (0.0 to 5.0 ns) for all modules")])
@@ -498,9 +498,9 @@ class L2TriggerOPCUAServer:
             """Set L2CB MCF delay in ns (0-75 ns with 5 ns resolution)"""
             logger.info(f"Setting MCF delay to {delay}")
             async with self._lock:
-                await loop.run_in_executor(None, self.system.set_mcf_delay, delay)
+                delay = await loop.run_in_executor(None, self.system.set_mcf_delay, delay)
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
-            return f"MCF delay set to {delay}"
+            return f"MCF delay set to {delay} ns"
 
         await add_described_method("SetMCFDelay", set_mcf_delay,
                                    inputs=[a("delay", ua.VariantType.Int16, "MCF delay in ns (0-75 ns with 5 ns resolution)")])
@@ -511,7 +511,7 @@ class L2TriggerOPCUAServer:
             """Set L2CB MCF threshold (0-512)"""
             logger.info(f"Setting MCF threshold to {threshold}")
             async with self._lock:
-                await loop.run_in_executor(None, self.system.set_mcf_threshold, threshold)
+                threshold = await loop.run_in_executor(None, self.system.set_mcf_threshold, threshold)
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
             return f"MCF threshold set to {threshold}"
         
@@ -524,7 +524,7 @@ class L2TriggerOPCUAServer:
             """Set L2CB L1 deadtime in ns (0-1275.0 ns with 5 ns resolution)"""
             logger.info(f"Setting L1 deadtime to {deadtime}")
             async with self._lock:
-                await loop.run_in_executor(None, self.system.set_l1_deadtime, deadtime)
+                deadtime = await loop.run_in_executor(None, self.system.set_l1_deadtime, deadtime)
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
             return f"L1 deadtime set to {deadtime} ns"
 

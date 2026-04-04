@@ -321,13 +321,16 @@ class CTDBController:
         
         logger.debug(f"Slot {self.slot}: Set channels {channel_states}")
     
-    def set_current_limits(self, min_ma: float, max_ma: float) -> None:
+    def set_current_limits(self, min_ma: float, max_ma: float) -> Tuple[float, float]:
         """
         Set current limits for all channels
         
         Args:
             min_ma: Minimum current in mA
             max_ma: Maximum current in mA
+            
+        Returns:
+            Tuple[float, float]: Actual (min, max) current limits set after clipping/rounding
         """
 
         if min_ma < 0:
@@ -349,9 +352,13 @@ class CTDBController:
         hal.set_power_current_min(self.slot, min_raw)
         hal.set_power_current_max(self.slot, max_raw)
         
-        logger.debug(f"Slot {self.slot}: Current limits set to {min_ma:.1f}-{max_ma:.1f} mA (raw: {min_raw}-{max_raw})")
+        # Re-calculate actual values from raw to account for rounding/clipping
+        actual_min = hal.current_raw_to_ma(min_raw)
+        actual_max = hal.current_raw_to_ma(max_raw)
+
+        logger.debug(f"Slot {self.slot}: Current limits set to {actual_min:.1f}-{actual_max:.1f} mA (raw: {min_raw}-{max_raw})")
     
-        return min_ma, max_ma
+        return actual_min, actual_max
 
     def get_trigger_status(self) -> List[TriggerChannel]:
         """Get trigger configuration for all channels"""
@@ -391,8 +398,13 @@ class CTDBController:
         hal.set_l1_trigger_enabled(self.slot, mask)
         logger.debug(f"Slot {self.slot}: All trigger channels {'enabled' if enabled else 'disabled'}")
     
-    def set_channel_trigger_delay(self, channel: int, delay_ns: float) -> None:
-        """Set trigger delay for a channel"""
+    def set_channel_trigger_delay(self, channel: int, delay_ns: float) -> float:
+        """
+        Set trigger delay for a channel
+        
+        Returns:
+            float: Actual delay in nanoseconds set after clipping/rounding
+        """
         if not 1 <= channel <= CHANNELS_PER_SLOT:
             raise ValueError(f"Channel must be 1-{CHANNELS_PER_SLOT}")
     
@@ -409,7 +421,9 @@ class CTDBController:
             self.slot, channel, delay_raw
         )
         
-        logger.debug(f"Slot {self.slot} Trigger Ch{channel}: Delay set to {delay_ns:.3f} ns")
+        actual_delay = hal.delay_raw_to_ns(delay_raw)
+        logger.debug(f"Slot {self.slot} Trigger Ch{channel}: Delay set to {actual_delay:.3f} ns")
+        return actual_delay
 
 
 # ============================================================================
@@ -474,8 +488,13 @@ class L2TriggerSystem:
         hal.set_l2cb_tib_trigger_busy_block_enabled(enabled)
         logger.info(f"L2CB TIB trigger blocking {'enabled' if enabled else 'disabled'}")
 
-    def set_mcf_threshold(self, threshold: int) -> None:
-        """Set L2CB MCF threshold"""
+    def set_mcf_threshold(self, threshold: int) -> int:
+        """
+        Set L2CB MCF threshold
+        
+        Returns:
+            int: Actual threshold set after clipping
+        """
         if threshold < 0:
             logger.warning(f"Requested MCF threshold {threshold} is negative, setting to 0")
             threshold = 0
@@ -485,9 +504,15 @@ class L2TriggerSystem:
 
         hal.set_l2cb_mcf_threshold(threshold)
         logger.info(f"L2CB MCF threshold set to {threshold}")
+        return threshold
 
-    def set_mcf_delay(self, delay_ns: float) -> None:
-        """Set L2CB MCF delay"""
+    def set_mcf_delay(self, delay_ns: float) -> float:
+        """
+        Set L2CB MCF delay
+        
+        Returns:
+            float: Actual delay in ns set after clipping/rounding
+        """
         if delay_ns < 0:
             logger.warning(f"Requested MCF delay {delay_ns} ns is negative, setting to 0")
             delay_ns = 0
@@ -495,15 +520,23 @@ class L2TriggerSystem:
             logger.warning(f"Requested MCF delay {delay_ns} ns exceeds max {hal.MCFDELAY_MAX} ns, setting to max")
             delay_ns = hal.MCFDELAY_MAX
         
-        hal.set_l2cb_mcf_delay(hal.mcf_delay_ns_to_raw(delay_ns))
-        logger.info(f"L2CB MCF delay set to {delay_ns} ns")
+        raw = hal.mcf_delay_ns_to_raw(delay_ns)
+        hal.set_l2cb_mcf_delay(raw)
+        actual_delay = hal.mcf_delay_raw_to_ns(raw)
+        logger.info(f"L2CB MCF delay set to {actual_delay} ns")
+        return actual_delay
     
     def get_l1_deadtime(self) -> float:
         """Get L2CB L1 deadtime in nanoseconds"""
         return hal.l1_deadtime_raw_to_ns(hal.get_l2cb_l1_deadtime())
     
-    def set_l1_deadtime(self, deadtime_ns: float) -> None:
-        """Set L2CB L1 deadtime in nanoseconds"""
+    def set_l1_deadtime(self, deadtime_ns: float) -> float:
+        """
+        Set L2CB L1 deadtime in nanoseconds
+        
+        Returns:
+            float: Actual deadtime in ns set after clipping/rounding
+        """
         if deadtime_ns < 0:
             logger.warning(f"Requested L1 deadtime {deadtime_ns} ns is negative, setting to 0")
             deadtime_ns = 0
@@ -511,8 +544,11 @@ class L2TriggerSystem:
             logger.warning(f"Requested L1 deadtime {deadtime_ns} ns exceeds max {hal.L1DEADTIME_MAX} ns, setting to max")
             deadtime_ns = hal.L1DEADTIME_MAX
         
-        hal.set_l2cb_l1_deadtime(hal.l1_deadtime_ns_to_raw(deadtime_ns))
-        logger.info(f"L2CB L1 deadtime set to {deadtime_ns} ns")
+        raw = hal.l1_deadtime_ns_to_raw(deadtime_ns)
+        hal.set_l2cb_l1_deadtime(raw)
+        actual_deadtime = hal.l1_deadtime_raw_to_ns(raw)
+        logger.info(f"L2CB L1 deadtime set to {actual_deadtime} ns")
+        return actual_deadtime
 
     def get_all_monitoring_data(self) -> Dict[int, CTDBMonitoringData]:
         """Get monitoring data for all CTDB boards"""
@@ -612,35 +648,48 @@ class L2TriggerSystem:
                 logger.error(f"Error setting trigger enabled on slot {ctdb.slot}: {e}")
         logger.debug(f"All trigger channels {'enabled' if enabled else 'disabled'}")
 
-    def set_all_trigger_delay(self, delay_ns: float) -> None:
-        """Set trigger delay for all channels on all boards"""
+    def set_all_trigger_delay(self, delay_ns: float) -> float:
+        """
+        Set trigger delay for all channels on all boards
+
+        Returns:
+            float: Actual delay in nanoseconds set after clipping/rounding (from last channel set)
+        """
+        actual_delay = delay_ns
         for ctdb in self.ctdbs.values():
             for ch in range(1, CHANNELS_PER_SLOT+1):
                 try:
-                    ctdb.set_channel_trigger_delay(ch, delay_ns)
+                    actual_delay = ctdb.set_channel_trigger_delay(ch, delay_ns)
                 except Exception as e:
                     logger.error(f"Error setting trigger delay on slot {ctdb.slot} ch {ch}: {e}")
-        logger.debug(f"All trigger delays set to {delay_ns:.3f} ns")
-    
+        logger.debug(f"All trigger delays set to {actual_delay:.3f} ns")
+        return actual_delay
+
     def emergency_shutdown(self) -> None:
         """Emergency shutdown - turn off all power channels immediately"""
         logger.warning("EMERGENCY SHUTDOWN initiated")
-        
+
         # Use low-level call for speed
         hal.set_power_enabled_all(False)
-        
+
         logger.warning("EMERGENCY SHUTDOWN complete")
-    
-    def set_current_limits_all(self, min_ma: float, max_ma: float) -> None:
-        """Set current limits for all slots"""
+
+    def set_current_limits_all(self, min_ma: float, max_ma: float) -> Tuple[float, float]:
+        """
+        Set current limits for all slots
+
+        Returns:
+            Tuple[float, float]: Actual (min, max) current limits set (from last slot set)
+        """
+        actual_min, actual_max = min_ma, max_ma
         for ctdb in self.ctdbs.values():
             try:
-                min_ma, max_ma = ctdb.set_current_limits(min_ma, max_ma)
+                actual_min, actual_max = ctdb.set_current_limits(min_ma, max_ma)
             except Exception as e:
                 logger.error(f"Error setting current limits on slot {ctdb.slot}: {e}")
-        
-        logger.debug(f"Current limits set to {min_ma:.1f}-{max_ma:.1f} mA on all slots")
-    
+
+        logger.debug(f"Current limits set to {actual_min:.1f}-{actual_max:.1f} mA on all slots")
+        return actual_min, actual_max    
     def get_slots_with_errors(self) -> List[int]:
         """Get list of slots that have error conditions"""
         all_status = self.get_all_status()
