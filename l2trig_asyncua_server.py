@@ -106,7 +106,7 @@ class L2TriggerOPCUAServer:
         ("ModuleState", [], ua.VariantType.String, "Channel state strings: \"on\", \"off\", \"error_over_current\", \"error_under_current\" or \"error_both\" (flattened: slot_idx*15 + ch-1)"),
         ("ModuleTriggerEnabled", [], ua.VariantType.Boolean, "Trigger enabled status: true if enabled, false otherwise (flattened: slot_idx*15 + ch-1)"),
         ("ModuleTriggerDelay", [], ua.VariantType.Double, "Trigger delay in ns (flattened: slot_idx*15 + ch-1)"),
-        ("ModuleIsActive", [], ua.VariantType.Boolean, "Flag whether module is active (true) or inactive (false) (flattened: slot_idx*15 + ch-1)"),
+        ("ModuleIsModifiable", [], ua.VariantType.Boolean, "Flag whether module state can be modified by the server (true) or not (false) (flattened: slot_idx*15 + ch-1)"),
     ]
 
     def __init__(self, 
@@ -137,7 +137,7 @@ class L2TriggerOPCUAServer:
         )
         self.active_slots = sorted(list(self.system.ctdbs.keys()))
         
-        # Pre-calculate ModuleIsActive vector
+        # Pre-calculate ModuleIsModifiable vector
         self._module_is_active = []
         for slot in self.active_slots:
             for ch in range(1, CHANNELS_PER_SLOT + 1):
@@ -692,7 +692,7 @@ class L2TriggerOPCUAServer:
         await self._set_var("BoardCurrentLimitMax", ctdb_max, now)
         await self._set_var("ModuleTriggerEnabled", trig_enabled, now)
         await self._set_var("ModuleTriggerDelay", trig_delay, now)
-        await self._set_var("ModuleIsActive", self._module_is_active, now)
+        await self._set_var("ModuleIsModifiable", self._module_is_active, now)
 
     async def _do_poll_fast(self, now: datetime.datetime):
         """Perform high-frequency polling and update variables"""
