@@ -249,6 +249,29 @@ Once connected, you can use the following commands at the `l2trig>` prompt:
 - `help` / `?`: Show help information.
 - `exit` / `quit` (or `Ctrl-D`): Close the client.
 
+### Direct CLI Client (`l2trig_direct_client.py`)
+
+A text-based command line interface for direct, low-level access to the hardware via the HAL. This tool is useful for debugging or for initializing the state of the trigger system before the OPC UA server is started.
+
+**Warning:** This tool should **not** be used while the OPC UA server is running. Concurrent access to the hardware can lead to corruption of SPI transfers and unstable system behavior.
+
+**Features:**
+- **Raw Access:** Read and write registers using raw values (decimal or hex).
+- **Batch Mode:** Can read commands from a file or via a pipe, making it ideal for automation.
+- **Initialization:** Useful for configuring hardware settings that the OPC UA server is restricted from modifying (e.g., initializing state for `inactive-channels`).
+
+**Example Usage:**
+```bash
+# Interactive mode
+python3 l2trig_direct_client.py
+
+# Execute a configuration script
+python3 l2trig_direct_client.py config.txt
+
+# Pipe commands
+echo "allpower on" | python3 l2trig_direct_client.py
+```
+
 ## Development and Testing
 
 ### Running Tests
