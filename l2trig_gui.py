@@ -485,7 +485,7 @@ class ModuleMatrix(tk.Frame):
             except TypeError:
                 pass
 
-        elif var_name == "ModuleIsModifiable":
+        elif var_name == "ModuleIsMutable":
             try:
                 for idx, val in enumerate(value):
                     if idx < len(self.modules):

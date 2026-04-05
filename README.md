@@ -63,7 +63,7 @@ python3 l2trig_asyncua_server.py [options]
 | `--poll-ratio` | Ratio of high-frequency to full status reads | `10` |
 | `--power-ramp-delay-ms` | Delay between enabling power channels during ramp (milliseconds) | `10` |
 | `--slots` | Comma-separated list of active slots | (All valid slots) |
-| `--inactive-channels` | Comma-separated list of inactive slot/channel pairs | `S21C11,S21C12,S21C13,S21C14,S21C15` |
+| `--immutable-channels` | Comma-separated list of inactive slot/channel pairs | `S21C11,S21C12,S21C13,S21C14,S21C15` |
 | `--log-level` | Logging level (DEBUG, INFO, WARNING, ERROR) | `INFO` |
 
 ### Polling Mechanism
@@ -105,6 +105,7 @@ Located under `<Root>.<MonitoringPath>` (e.g., `L2Trigger.Monitoring`). All moni
 | `CrateMCFThreshold` | Int16 | Fast | L2CB MCF threshold (0-512) |
 | `CrateMCFDelay` | Double | Fast | L2CB MCF delay in ns (0-75 ns) |
 | `CrateL1Deadtime` | Double | Fast | L2CB L1 deadtime in ns (0-1275 ns) |
+| `CrateNumMutabeModules` | UInt16 | Fast | Total number of modules that are actively contolled by the server (excludes empty channels or disabled modules)|
 | `CrateNumPoweredModules` | UInt16 | Fast | Total number of modules currently in 'on' state (enabled and no errors) |
 | `CrateNumTriggerEnabledModules` | UInt16 | Slow | Total number of modules with trigger enabled |
 | `BoardSlots` | Int32[] | Constant | List of crate slots enabled in the server |
@@ -119,7 +120,7 @@ Located under `<Root>.<MonitoringPath>` (e.g., `L2Trigger.Monitoring`). All moni
 | `ModuleState` | String[] | Fast | Flattened array of channel states (on, off, error, etc.) |
 | `ModuleTriggerEnabled` | Boolean[] | Slow | Flattened array of trigger enabled status |
 | `ModuleTriggerDelay` | Double[] | Slow | Flattened array of trigger delays (0-5 ns) |
-| `ModuleIsModifiable` | Boolean[] | Slow | Flag whether module state can be modified by the server (true) or not (false) |
+| `ModuleIsMutable` | Boolean[] | Slow | Flag whether module is actively contolled by the server (true) or not (false) |
 
 ### Control Methods
 Located under the `<Root>` object:
@@ -258,7 +259,7 @@ A text-based command line interface for direct, low-level access to the hardware
 **Features:**
 - **Raw Access:** Read and write registers using raw values (decimal or hex).
 - **Batch Mode:** Can read commands from a file or via a pipe, making it ideal for automation.
-- **Initialization:** Useful for configuring hardware settings that the OPC UA server is restricted from modifying (e.g., initializing state for `inactive-channels`).
+- **Initialization:** Useful for configuring hardware settings that the OPC UA server is restricted from modifying (e.g., initializing state for `immutable-channels`).
 
 **Example Usage:**
 ```bash
