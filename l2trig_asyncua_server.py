@@ -194,6 +194,11 @@ class L2TriggerOPCUAServer:
         # Create address space
         await self._create_address_space()
         
+        # Write initial values for static variables
+        now = datetime.datetime.now(datetime.timezone.utc)
+        await self._set_var("BoardSlots", self.active_slots, now)
+        await self._set_var("ModuleIsModifiable", self._module_is_active, now)
+
         logger.info(f"OPC UA Server initialized at {self.endpoint}")
 
     @staticmethod
@@ -443,21 +448,29 @@ class L2TriggerOPCUAServer:
         @uamethod
         async def set_all_trigger_enabled(parent_node, enabled: bool):
             """Global control to enable or disable triggers for all modules."""
-            logger.info(f"Setting all trigger enabled status to {'enabled' if enabled else 'disabled'} (skipping inactive channels)")
-            
-            # Group active modules by slot for batch update
-            active_by_slot = {}
-            for slot in self.active_slots:
-                ch_states = {}
-                for ch in range(1, CHANNELS_PER_SLOT + 1):
-                    if (slot, ch) not in self.inactive_channels:
-                        ch_states[ch] = enabled
-                if ch_states:
-                    active_by_slot[slot] = ch_states
 
+            nmod = sum(1 for slot in self.active_slots 
+                    for ch in range(1, CHANNELS_PER_SLOT + 1)
+                    if (slot, ch) not in self.inactive_channels)
+
+            logger.info(f"Setting trigger enabled status for %d modules to %s",
+                        nmod, 'enabled' if enabled else 'disabled')
+            
             async with self._lock:
-                for slot, ch_states in active_by_slot.items():
-                    await loop.run_in_executor(None, self.system.ctdbs[slot].set_some_trigger_enabled, ch_states)
+                for slot in self.active_slots:
+                    # Check if any channels in this slot are inactive
+                    inactive_in_slot = any((slot, ch) in self.inactive_channels 
+                                        for ch in range(1, CHANNELS_PER_SLOT + 1))
+                    
+                    if inactive_in_slot:
+                        # Partial update - only set active channels
+                        ch_states = {ch: enabled for ch in range(1, CHANNELS_PER_SLOT + 1)
+                                    if (slot, ch) not in self.inactive_channels}
+                        if ch_states:
+                            await loop.run_in_executor(None, self.system.ctdbs[slot].set_some_trigger_enabled, ch_states)
+                    else:
+                        # All channels in this slot are active - use fast batch update
+                        await loop.run_in_executor(None, self.system.ctdbs[slot].set_all_trigger_enabled, enabled)
             
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
             return f"All active triggers {'enabled' if enabled else 'disabled'}"
@@ -469,7 +482,13 @@ class L2TriggerOPCUAServer:
         @uamethod
         async def set_all_trigger_delay(parent_node, delay_ns: float):
             """Apply a uniform trigger delay to all modules in the system."""
-            logger.info(f"Setting all trigger delays to {delay_ns} ns (skipping inactive channels)")
+
+            nmod = sum(1 for slot in self.active_slots 
+                    for ch in range(1, CHANNELS_PER_SLOT + 1)
+                    if (slot, ch) not in self.inactive_channels)
+
+            logger.info(f"Setting trigger delays for %d modules to %g ns",
+                        nmod, delay_ns)
             
             actual_delay = delay_ns
             async with self._lock:
@@ -546,7 +565,7 @@ class L2TriggerOPCUAServer:
             return f"MCF delay set to {delay} ns"
 
         await add_described_method("SetMCFDelay", set_mcf_delay,
-                                   inputs=[a("delay", ua.VariantType.Int16, "MCF delay in ns (0-75 ns with 5 ns resolution)")])
+                                   inputs=[a("delay", ua.VariantType.Double, "MCF delay in ns (0-75 ns with 5 ns resolution)")])
         
         # Set MCF Threshold
         @uamethod
@@ -577,6 +596,7 @@ class L2TriggerOPCUAServer:
     async def _write_fast_data(self, l2cb_status, monitoring_results, now: datetime.datetime):
         """Update OPC UA variables with high-frequency data"""
         await self._set_var("CrateFirmwareRevision", l2cb_status.firmware_version, now)
+        # Hardware uptime is in 8ns ticks from 125MHz oscillator; convert to nanoseconds
         await self._set_var("CrateUpTime", l2cb_status.uptime * 8, now)
         await self._set_var("CrateMCFEnabled", bool(l2cb_status.mcf_enabled), now)
         await self._set_var("CrateBusyGlitchFilterEnabled", bool(l2cb_status.busy_glitch_filter_enabled), now)
@@ -584,7 +604,6 @@ class L2TriggerOPCUAServer:
         await self._set_var("CrateMCFThreshold", l2cb_status.mcf_threshold, now)
         await self._set_var("CrateMCFDelay", l2cb_status.mcf_delay_ns, now)
         await self._set_var("CrateL1Deadtime", l2cb_status.l1_deadtime_ns, now) 
-        await self._set_var("BoardSlots", self.active_slots, now)
     
         ctdb_curr = []
         ctdb_total = []
@@ -692,7 +711,6 @@ class L2TriggerOPCUAServer:
         await self._set_var("BoardCurrentLimitMax", ctdb_max, now)
         await self._set_var("ModuleTriggerEnabled", trig_enabled, now)
         await self._set_var("ModuleTriggerDelay", trig_delay, now)
-        await self._set_var("ModuleIsModifiable", self._module_is_active, now)
 
     async def _do_poll_fast(self, now: datetime.datetime):
         """Perform high-frequency polling and update variables"""
@@ -796,8 +814,12 @@ class L2TriggerOPCUAServer:
 
     async def _ramp_power(self, enabled: bool):
         """Gradually turn power on/off for all modules with interleaving across slots."""
-        nmod = len(self.active_slots) * CHANNELS_PER_SLOT
-        logger.info(f"Starting power ramp: setting power=%s for %d modules with %.1fs ramp (skipping inactive channels)",
+
+        nmod = sum(1 for slot in self.active_slots 
+                    for ch in range(1, CHANNELS_PER_SLOT + 1)
+                    if (slot, ch) not in self.inactive_channels)
+
+        logger.info(f"Starting power ramp: setting power=%s for %d modules with %.1fs ramp delay",
                     'on' if enabled else 'off', nmod, self.power_delay*nmod)
         try:
             loop = asyncio.get_running_loop()
@@ -957,8 +979,21 @@ async def main():
         except ValueError:
             logger.error(f"Invalid slots argument: {args.slots}")
             return 1
-    
+
     inactive_channels = _parse_inactive_channels(args.inactive_channels)
+
+    # Validate inactive channels
+    if enabled_slots is not None:
+        active_slots_set = set(enabled_slots)
+    else:
+        active_slots_set = set(VALID_SLOTS)
+
+    invalid_inactive = [(s, c) for (s, c) in inactive_channels 
+                        if s not in active_slots_set or not (1 <= c <= CHANNELS_PER_SLOT)]
+
+    if invalid_inactive:
+        logger.info(f"Ignoring inactive channels: {invalid_inactive}")
+        inactive_channels = inactive_channels - set(invalid_inactive)
 
     server = L2TriggerOPCUAServer(
         opcua_endpoint=args.opcua_endpoint,
