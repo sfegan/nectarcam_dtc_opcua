@@ -911,7 +911,7 @@ def _parse_args():
     p.add_argument("--timeout-us", type=int, default=10000, help="Hardware timeout in microseconds")
     p.add_argument("--slots", help="Comma-separated list of slots to enable; if omitted, all slots are enabled")
     p.add_argument("--inactive-channels", default="S21C11,S21C12,S21C13,S21C14,S21C15",
-                   help="Comma-separated list of inactive slot/channel pairs (e.g. S1C1,S18C15)")
+                   help="Comma-separated list of inactive slot/channel pairs whose state should not be modified by the server (e.g. S1C1,S18C15)")
     p.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"],
                    help="Set the logging level")
     p.add_argument("--log-file", help="Optional log file path")

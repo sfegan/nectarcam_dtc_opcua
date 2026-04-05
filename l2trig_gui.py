@@ -29,6 +29,7 @@ class DisplayMode(Enum):
     TRIGGER = "Trigger Enabled"
     DELAY = "Trigger Delay (ns)"
     STATE = "Module State"
+    MODIFIABLE = "Modifiable"
 
 
 class SubscriptionHandler:
@@ -202,6 +203,7 @@ class ModuleIndicator(tk.Canvas):
         self.state = "off"
         self.trigger_enabled = False
         self.trigger_delay = 0.0
+        self.is_modifiable = True
         
         # Create text item - will be updated dynamically
         self.text_id = self.create_text(width/2, height/2, text="", font=("Monospace", self.font_size), fill="white")
@@ -287,6 +289,16 @@ class ModuleIndicator(tk.Canvas):
             fg = "white"
             state_text = self.state.replace("error_", "").replace("_", "\n").upper()
             text = f"S{self.slot}\nC{self.channel}\n{state_text[:6]}"
+        
+        elif mode == DisplayMode.MODIFIABLE:
+            if self.is_modifiable:
+                bg = "#00cc00"
+                fg = "black"
+                text = f"S{self.slot}\nC{self.channel}\nMOD"
+            else:
+                bg = "#666666"
+                fg = "white"
+                text = f"S{self.slot}\nC{self.channel}\nNON"
         
         self.configure(bg=bg)
         self.itemconfig(self.text_id, text=text, fill=fg)
@@ -390,6 +402,12 @@ class ModuleMatrix(tk.Frame):
     
     def on_module_clicked(self, indicator: ModuleIndicator):
         """Handle module click - toggle power or trigger based on mode"""
+        # We can add a check here to prevent interaction if the module is not modifiable, but 
+        # for now we allow it and let the server reject changes if needed as this provides better 
+        # feedback to the user via the server's response and log messages.
+        # if not indicator.is_modifiable:
+        #     return
+
         if self.display_mode == DisplayMode.POWER or self.display_mode == DisplayMode.CURRENT:
             # Toggle power
             new_state = not indicator.power_enabled
@@ -463,6 +481,15 @@ class ModuleMatrix(tk.Frame):
                 for idx, val in enumerate(value):
                     if idx < len(self.modules):
                         self.modules[idx].trigger_delay = float(val)
+                        self.modules[idx].update_display(self.display_mode)
+            except TypeError:
+                pass
+
+        elif var_name == "ModuleIsModifiable":
+            try:
+                for idx, val in enumerate(value):
+                    if idx < len(self.modules):
+                        self.modules[idx].is_modifiable = bool(val)
                         self.modules[idx].update_display(self.display_mode)
             except TypeError:
                 pass

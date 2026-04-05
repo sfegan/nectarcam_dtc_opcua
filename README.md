@@ -63,6 +63,7 @@ python3 l2trig_asyncua_server.py [options]
 | `--poll-ratio` | Ratio of high-frequency to full status reads | `10` |
 | `--power-ramp-delay-ms` | Delay between enabling power channels during ramp (milliseconds) | `10` |
 | `--slots` | Comma-separated list of active slots | (All valid slots) |
+| `--inactive-channels` | Comma-separated list of inactive slot/channel pairs | `S21C11,S21C12,S21C13,S21C14,S21C15` |
 | `--log-level` | Logging level (DEBUG, INFO, WARNING, ERROR) | `INFO` |
 
 ### Polling Mechanism
@@ -118,6 +119,7 @@ Located under `<Root>.<MonitoringPath>` (e.g., `L2Trigger.Monitoring`). All moni
 | `ModuleState` | String[] | Fast | Flattened array of channel states (on, off, error, etc.) |
 | `ModuleTriggerEnabled` | Boolean[] | Slow | Flattened array of trigger enabled status |
 | `ModuleTriggerDelay` | Double[] | Slow | Flattened array of trigger delays (0-5 ns) |
+| `ModuleIsModifiable` | Boolean[] | Slow | Flag whether module state can be modified by the server (true) or not (false) |
 
 ### Control Methods
 Located under the `<Root>` object:
