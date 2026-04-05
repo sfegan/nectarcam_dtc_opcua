@@ -546,7 +546,7 @@ void cta_l2cb_setMCFThreshold_export(uint16_t _threshold)
     cta_l2cb_setMCFThreshold(_threshold);
 }
 
-uint16_t cta_l2cb_getMCFDelay()
+uint16_t cta_l2cb_getMCFDelay_export()
 {
 	return cta_l2cb_getMCFDelay();
 }
