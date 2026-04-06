@@ -81,6 +81,14 @@ if _lib is None:
 # Function Signatures
 # ============================================================================
 
+# SMC open / close
+
+_lib.smc_open_export.argtypes = [ctypes.c_char_p]
+_lib.smc_open_export.restype = c_int
+
+_lib.smc_close_export.argtypes = []
+_lib.smc_close_export.restype = None
+
 # SPI Functions
 _lib.cta_l2cb_spi_read.argtypes = [c_uint8, c_uint8, POINTER(c_uint16)]
 _lib.cta_l2cb_spi_read.restype = c_int
@@ -222,6 +230,23 @@ L1DEADTIME_MAX = L1DEADTIME_CODE_MAX * L1DEADTIME_CONVERSION_FACTOR  # Max L1 de
 # ============================================================================
 # Low-Level Python Wrappers
 # ============================================================================
+
+# --- SMC open / close ---
+
+def smc_open(devname: Optional[str] = None) -> int:
+    """Open SMC device and return file descriptor.
+
+    Passing None or an empty string uses a null pointer for the device name.
+    """
+    c_devname = None if not devname else devname.encode("utf-8")
+    status = _lib.smc_open_export(c_devname)
+    if status < 0:
+        raise RuntimeError(f"Failed to open SMC device '{devname}'")
+    return status
+
+def smc_close() -> None:
+    """Close SMC device"""
+    _lib.smc_close_export() 
 
 # --- SPI Functions ---
 

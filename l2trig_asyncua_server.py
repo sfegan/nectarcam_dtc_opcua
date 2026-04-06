@@ -28,6 +28,11 @@ from l2trig_api import (
     CHANNELS_PER_SLOT
 )
 
+from l2trig_low_level import (
+    smc_open, 
+    smc_close
+)
+
 # ============================================================================
 # Logging
 # ============================================================================
@@ -1008,4 +1013,6 @@ async def main():
     return 0
 
 if __name__ == "__main__":
+    smc_open()
     sys.exit(asyncio.run(main()))
+    smc_close()

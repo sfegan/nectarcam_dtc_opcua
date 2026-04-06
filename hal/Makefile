@@ -11,11 +11,21 @@ ifeq ($(DUMMY),1)
 endif
 
 # Source files
-SOURCES = l2trig_hal.c l2trig_hal_exports.c smc.c
+SOURCES = l2trig_hal.c l2trig_hal_exports.c
 HEADERS = l2trig_hal.h bits.h
 
 # Output library
-TARGET = libl2trig_hal.so
+TARGET_LIBRARY = libl2trig_hal.so
+TARGET = $(TARGET_LIBRARY)
+
+EMULATESMC ?= 0
+ifeq ($(EMULATESMC),1)
+	SOURCES += smc_emulated.c
+	TARGET += test_smc_emulation
+else
+	SOURCES += smc.c
+endif
+
 
 # Installation paths
 PREFIX ?= /usr/local
@@ -26,12 +36,16 @@ INCLUDEDIR = $(PREFIX)/include
 
 all: $(TARGET)
 
-$(TARGET): $(SOURCES) $(HEADERS)
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $(TARGET) $(SOURCES)
-	@echo "Built $(TARGET)"
+$(TARGET_LIBRARY): $(SOURCES) $(HEADERS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $(TARGET_LIBRARY) $(SOURCES)
+	@echo "Built $(TARGET_LIBRARY)"
+
+test_smc_emulation: test_smc_emulation.c $(HEADERS) $(TARGET_LIBRARY)
+	$(CC) $(CFLAGS) -o $@ $< -L. -ll2trig_hal
+	@echo "Built SMC emulation test executable"
 
 clean:
-	rm -f $(TARGET)
+	rm -f $(TARGET) test_smc_emulationg test_hal
 	@echo "Cleaned build artifacts"
 
 install: $(TARGET)
@@ -48,7 +62,5 @@ uninstall:
 	ldconfig
 	@echo "Uninstalled from $(PREFIX)"
 
-# Test compilation (requires hardware or mock)
-test: $(TARGET)
-	$(CC) -o test_hal test_hal.c -L. -ll2trig_hal
-	@echo "Built test executable"
+test: test_smc_emulation
+	./test_smc_emulation

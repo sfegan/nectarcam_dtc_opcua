@@ -458,6 +458,7 @@ class L2TriggerSystem:
         Args:
             enabled_slots: List of slots to control (default: all valid slots)
         """
+
         if enabled_slots is None:
             enabled_slots = VALID_SLOTS
         

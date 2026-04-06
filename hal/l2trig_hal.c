@@ -84,16 +84,6 @@ int cta_l2cb_spi_generalized_wait(cta_l2cb_spi_wait_config_t* _config, int _is_r
     return CTA_L2CB_NO_ERROR;
 }
 
-void cta_l2cb_spi_set_ctdb_delays_export(int64_t _min_command_delay_ns, int64_t _min_read_delay_ns, int64_t _timeout_ns)
-{
-    cta_l2cb_spi_set_delays(&cta_l2cb_spi_wait_config_ctdb, _min_command_delay_ns, _min_read_delay_ns, _timeout_ns);
-}
-
-void cta_l2cb_spi_set_delay_delays_export(int64_t _min_command_delay_ns, int64_t _min_read_delay_ns, int64_t _timeout_ns)
-{
-    cta_l2cb_spi_set_delays(&cta_l2cb_spi_wait_config_delay, _min_command_delay_ns, _min_read_delay_ns, _timeout_ns);
-}
-
 // wait for a spi transfer to complete
 int cta_l2cb_spi_wait(void)
 {

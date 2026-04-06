@@ -500,6 +500,34 @@ int cta_l2cb_isValidSlot_export(int slot)
     return cta_l2cb_isValidSLot(slot);  // Use the actual validation function
 }
 
+// ============================================================================
+// SPI Configuration Functions
+// ============================================================================
+
+void cta_l2cb_spi_set_ctdb_delays_export(int64_t _min_command_delay_ns, int64_t _min_read_delay_ns, int64_t _timeout_ns)
+{
+    // nothing to see here
+}
+
+void cta_l2cb_spi_set_delay_delays_export(int64_t _min_command_delay_ns, int64_t _min_read_delay_ns, int64_t _timeout_ns)
+{
+    // nothing to see here
+}
+
+// ============================================================================
+// SMC open / close
+// ============================================================================
+
+int smc_open_export(const char* devname)
+{
+    return 0; // Return OK status
+}
+
+void smc_close_export()
+{
+    // nothing to see here
+}
+
 #else  // !DUMMY - REAL IMPLEMENTATIONS
 
 // ============================================================================
@@ -703,16 +731,12 @@ int cta_ctdb_setSlaveRegister_export(uint8_t slot, uint8_t address, uint16_t val
 
 void cta_l2cb_spi_set_ctdb_delays_export(int64_t _min_command_delay_ns, int64_t _min_read_delay_ns, int64_t _timeout_ns)
 {
-#ifndef DUMMY
     cta_l2cb_spi_set_delays(&cta_l2cb_spi_wait_config_ctdb, _min_command_delay_ns, _min_read_delay_ns, _timeout_ns);
-#endif
 }
 
 void cta_l2cb_spi_set_delay_delays_export(int64_t _min_command_delay_ns, int64_t _min_read_delay_ns, int64_t _timeout_ns)
 {
-#ifndef DUMMY
     cta_l2cb_spi_set_delays(&cta_l2cb_spi_wait_config_delay, _min_command_delay_ns, _min_read_delay_ns, _timeout_ns);
-#endif
 }
 
 // ============================================================================
@@ -722,6 +746,20 @@ void cta_l2cb_spi_set_delay_delays_export(int64_t _min_command_delay_ns, int64_t
 int cta_l2cb_isValidSlot_export(int slot)
 {
     return cta_l2cb_isValidSLot(slot);
+}
+
+// ============================================================================
+// SMC open / close
+// ============================================================================
+
+int smc_open_export(const char* devname)
+{
+    return smc_open(devname);
+}
+
+void smc_close_export()
+{
+    smc_close();
 }
 
 #endif  // DUMMY
