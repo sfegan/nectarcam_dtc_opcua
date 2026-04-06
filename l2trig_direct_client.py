@@ -38,7 +38,9 @@ from l2trig_low_level import (
     get_power_current, get_under_current_errors, get_over_current_errors,
     get_ctdb_firmware_revision, set_debug_pins, get_debug_pins,
     get_slave_register, set_slave_register,
-    is_valid_slot, HALError, L2TrigError
+    is_valid_slot, HALError, L2TrigError,
+    smc_open, 
+    smc_close
 )
 
 # ============================================================================
@@ -343,6 +345,7 @@ def main():
     parser.add_argument("file", nargs="?", help="Optional file containing commands to execute")
     args = parser.parse_args()
 
+
     client = CommandClient()
 
     if args.file:
@@ -375,4 +378,6 @@ def main():
                 print(f"Unexpected error: {e}")
 
 if __name__ == "__main__":
+    smc_open()
     main()
+    smc_close()
