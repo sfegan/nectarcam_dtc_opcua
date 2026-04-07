@@ -35,10 +35,11 @@ from l2trig_low_level import (
     set_power_enabled_all,
     set_power_current_max, get_power_current_max,
     set_power_current_min, get_power_current_min,
-    get_power_current, get_under_current_errors, get_over_current_errors,
+    get_power_current, get_power_current_raw, get_under_current_errors, get_over_current_errors,
     get_ctdb_firmware_revision, set_debug_pins, get_debug_pins,
     get_slave_register, set_slave_register,
     is_valid_slot, HALError, L2TrigError,
+    current_raw_to_ma, delay_raw_to_ns, mcf_delay_raw_to_ns, l1_deadtime_raw_to_ns,
     smc_open, 
     smc_close
 )
@@ -75,20 +76,22 @@ class CommandClient:
             "mcf": (self.do_mcf, "mcf <on|off> : Set MCF enabled"),
             "glitch": (self.do_glitch, "glitch <on|off> : Set busy glitch filter enabled"),
             "tibblock": (self.do_tibblock, "tibblock <on|off> : Set TIB trigger busy block enabled"),
-            "mcfthr": (self.do_mcfthr, "mcfthr [val] : Get or set MCF threshold"),
-            "mcfdel": (self.do_mcfdel, "mcfdel [val] : Get or set MCF delay"),
-            "deadtime": (self.do_deadtime, "deadtime [val] : Get or set L1 deadtime"),
+            "mcfthr": (self.do_mcfthr, "mcfthr [val] : Get or set MCF threshold (L1 counts)"),
+            "mcfdel": (self.do_mcfdel, "mcfdel [val] : Get or set MCF delay (5ns/step)"),
+            "deadtime": (self.do_deadtime, "deadtime [val] : Get or set L1 deadtime (5ns/step)"),
             "trigmask": (self.do_trigmask, "trigmask <slot> [mask] : Get or set trigger mask (bit 0 masked)"),
             "trig": (self.do_trig, "trig <slot> <ch> [on|off] : Get or set trigger for channel"),
             "alltrig": (self.do_alltrig, "alltrig <on|off> : Set all trigger masks to 0xFFFE or 0x0000"),
-            "delay": (self.do_delay, "delay <slot> <ch> [val] : Get or set trigger delay for channel"),
-            "alldelay": (self.do_alldelay, "alldelay <val> : Set trigger delay for all channels in all slots"),
+            "delay": (self.do_delay, "delay <slot> <ch> [val] : Get or set trigger delay for channel (37ps/step)"),
+            "alldelay": (self.do_alldelay, "alldelay <val> : Set trigger delay for all channels in all slots (37ps/step)"),
             "powermask": (self.do_powermask, "powermask <slot> [mask] : Get or set power mask (bit 0 masked)"),
             "power": (self.do_power, "power <slot> <ch> [on|off] : Get or set power for channel"),
             "allpower": (self.do_allpower, "allpower <on|off> : Set all power channels on all slots"),
-            "curmax": (self.do_curmax, "curmax <slot> [val] : Get or set max current limit"),
-            "curmin": (self.do_curmin, "curmin <slot> [val] : Get or set min current limit"),
-            "cur": (self.do_cur, "cur <slot> <ch> : Get channel current (raw/converted)"),
+            "curmax": (self.do_curmax, "curmax <slot> [val] : Get or set max current limit (0.485mA/step)"),
+            "allcurmax": (self.do_allcurmax, "allcurmax <val> : Set max current limit for all slots (0.485mA/step)"),
+            "curmin": (self.do_curmin, "curmin <slot> [val] : Get or set min current limit (0.485mA/step)"),
+            "allcurmin": (self.do_allcurmin, "allcurmin <val> : Set min current limit for all slots (0.485mA/step)"),
+            "cur": (self.do_cur, "cur <slot> <ch> : Get channel current (code & mA)"),
             "under": (self.do_under, "under <slot> : Get under-current error mask"),
             "over": (self.do_over, "over <slot> : Get over-current error mask"),
             "ctdb_fw": (self.do_ctdb_fw, "ctdb_fw <slot> : Get CTDB firmware revision"),
@@ -158,19 +161,22 @@ class CommandClient:
         if args:
             set_l2cb_mcf_threshold(parse_int(args[0]))
         else:
-            print(f"MCF Threshold: {get_l2cb_mcf_threshold()}")
+            val = get_l2cb_mcf_threshold()
+            print(f"MCF Threshold: {val} (L1 counts)")
 
     def do_mcfdel(self, args):
         if args:
             set_l2cb_mcf_delay(parse_int(args[0]))
         else:
-            print(f"MCF Delay: {get_l2cb_mcf_delay()}")
+            val = get_l2cb_mcf_delay()
+            print(f"MCF Delay: {val} ({mcf_delay_raw_to_ns(val):.1f} ns)")
 
     def do_deadtime(self, args):
         if args:
             set_l2cb_l1_deadtime(parse_int(args[0]))
         else:
-            print(f"L1 Deadtime: {get_l2cb_l1_deadtime()}")
+            val = get_l2cb_l1_deadtime()
+            print(f"L1 Deadtime: {val} ({l1_deadtime_raw_to_ns(val):.1f} ns)")
 
     def do_trigmask(self, args):
         if not args:
@@ -213,7 +219,8 @@ class CommandClient:
         if len(args) > 2:
             set_l1_trigger_delay(slot, ch, parse_int(args[2]))
         else:
-            print(f"Slot {slot} Ch {ch} Delay: {get_l1_trigger_delay(slot, ch)}")
+            val = get_l1_trigger_delay(slot, ch)
+            print(f"Slot {slot} Ch {ch} Delay: {val} ({delay_raw_to_ns(val)*1000:.0f} ps)")
 
     def do_alldelay(self, args):
         if not args:
@@ -261,7 +268,17 @@ class CommandClient:
         if len(args) > 1:
             set_power_current_max(slot, parse_int(args[1]))
         else:
-            print(f"Slot {slot} Max Current Limit: {get_power_current_max(slot)}")
+            val = get_power_current_max(slot)
+            print(f"Slot {slot} Max Current Limit: {val} ({current_raw_to_ma(val):.2f} mA)")
+
+    def do_allcurmax(self, args):
+        if not args:
+            print("Usage: allcurmax <val>")
+            return
+        val = parse_int(args[0])
+        for slot in range(1, 22):
+            if is_valid_slot(slot):
+                set_power_current_max(slot, val)
 
     def do_curmin(self, args):
         if not args:
@@ -271,7 +288,17 @@ class CommandClient:
         if len(args) > 1:
             set_power_current_min(slot, parse_int(args[1]))
         else:
-            print(f"Slot {slot} Min Current Limit: {get_power_current_min(slot)}")
+            val = get_power_current_min(slot)
+            print(f"Slot {slot} Min Current Limit: {val} ({current_raw_to_ma(val):.2f} mA)")
+
+    def do_allcurmin(self, args):
+        if not args:
+            print("Usage: allcurmin <val>")
+            return
+        val = parse_int(args[0])
+        for slot in range(1, 22):
+            if is_valid_slot(slot):
+                set_power_current_min(slot, val)
 
     def do_cur(self, args):
         if len(args) < 2:
@@ -279,7 +306,9 @@ class CommandClient:
             return
         slot = parse_int(args[0])
         ch = parse_int(args[1])
-        print(f"Slot {slot} Ch {ch} Current: {get_power_current(slot, ch):.2f} mA (from raw ADC)")
+        raw = get_power_current_raw(slot, ch)
+        ma = current_raw_to_ma(raw)
+        print(f"Slot {slot} Ch {ch} Current: {raw} ({ma:.2f} mA)")
 
     def do_under(self, args):
         if not args:

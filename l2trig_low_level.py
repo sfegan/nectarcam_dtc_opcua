@@ -446,6 +446,18 @@ def get_power_current_min(slot: int) -> int:
     return value.value
 
 
+def get_power_current_raw(slot: int, channel: int) -> int:
+    """
+    Get raw current reading for a channel (12-bit ADC value)
+    channel 0: CTDB board itself
+    channel 1-15: individual power channels
+    """
+    value = c_uint16()
+    err = _lib.cta_ctdb_getPowerCurrent_export(slot, channel, ctypes.byref(value))
+    _check_error(err, f"get_power_current_raw(slot={slot}, ch={channel})")
+    return value.value & 0x0FFF
+
+
 def get_power_current(slot: int, channel: int) -> float:
     """
     Get current reading for a channel
@@ -453,11 +465,7 @@ def get_power_current(slot: int, channel: int) -> float:
     channel 1-15: individual power channels
     Returns: current in mA
     """
-    value = c_uint16()
-    err = _lib.cta_ctdb_getPowerCurrent_export(slot, channel, ctypes.byref(value))
-    _check_error(err, f"get_power_current(slot={slot}, ch={channel})")
-    # Convert to mA: 0.485mA per count, mask to 12 bits
-    return (value.value & 0x0FFF) * CURRENT_CONVERSION_FACTOR
+    return current_raw_to_ma(get_power_current_raw(slot, channel))
 
 
 def get_under_current_errors(slot: int) -> int:
