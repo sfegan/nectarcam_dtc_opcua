@@ -138,134 +138,36 @@ exit                        Quit
 
 ## Server Configuration
 
-The OPC UA server supports extensive configuration through command-line options. Understanding these options is essential for production deployment.
+### Command-Line Options
 
-### Command-Line Options Reference
-
-```bash
-python3 l2trig_asyncua_server.py [options]
-```
-
-#### Network Configuration
-
-**`--opcua-endpoint <url>`**  
-Server endpoint URL for client connections.  
-**Default:** `opc.tcp://0.0.0.0:4840/l2trigger/`  
-**Example:** `--opcua-endpoint opc.tcp://192.168.1.100:4840/l2trigger/`  
-Use `0.0.0.0` to listen on all interfaces, or specify an IP to bind to a specific interface.
-
-**`--opcua-root <name>`**  
-Root object name in the OPC UA address space.  
-**Default:** `L2Trigger`  
-**Example:** `--opcua-root MST_L2Trigger`  
-All monitoring variables and methods appear under this root object.
-
-**`--monitoring-path <name>`**  
-Name of the monitoring object under the root.  
-**Default:** `Monitoring`  
-**Example:** `--monitoring-path Status`  
-Monitoring variables appear at `<root>.<monitoring-path>` (e.g., `L2Trigger.Monitoring`).
-
-**`--opcua-user <user:password>`**  
-Add user authentication (can be specified multiple times).  
-**Default:** Anonymous access only  
-**Example:** `--opcua-user admin:secret123 --opcua-user operator:pass456`  
-When set, clients must authenticate. Without this option, anonymous connections are allowed.
-
-#### Polling Configuration
-
-**`--poll-interval <seconds>`**  
-Base polling interval for high-frequency variables.  
-**Default:** `1.0`  
-**Range:** `0.1` to `10.0` seconds recommended  
-**Example:** `--poll-interval 0.5`  
-Critical data (currents, errors, L2CB status) updates at this rate.
-
-**`--poll-ratio <N>`**  
-Ratio of high-frequency to full status reads.  
-**Default:** `10`  
-**Range:** `1` to `100`  
-**Example:** `--poll-ratio 20`  
-Slow-changing data (firmware, trigger settings) updates every N cycles. With `--poll-interval 1.0 --poll-ratio 10`, slow variables update every 10 seconds.
-
-#### Power Management
-
-**`--power-ramp-delay-ms <milliseconds>`**  
-Delay between enabling individual modules during power ramp.  
-**Default:** `10` ms  
-**Range:** `0` to `1000` ms  
-**Example:** `--power-ramp-delay-ms 20`  
-Total ramp time = delay × number of modules. At 10ms: 2.7s for 270 modules. At 20ms: 5.4s.  
-Set to `0` for instant enable (not recommended for hardware).
-
-#### Hardware Configuration
-
-**`--slots <list>`**  
-Comma-separated list of active crate slots.  
-**Default:** All valid slots (1-18, 21)  
-**Example:** `--slots 1,2,3,4,5`  
-Only specified slots are monitored and controlled. Reduces polling overhead if some slots are empty.
-
-**`--immutable-channels <list>`**  
-Comma-separated list of slot/channel pairs to exclude from server control.  
-**Default:** `S21C11,S21C12,S21C13,S21C14,S21C15`  
-**Format:** `S<slot>C<channel>` where slot is 1-21 and channel is 1-15  
-**Example:** `--immutable-channels S21C11,S21C12,S1C15,S2C15`  
-These channels are not controlled by the server but can be pre-configured using the direct controller.
-
-#### Logging
-
-**`--log-level <level>`**  
-Logging verbosity level.  
-**Default:** `INFO`  
-**Options:** `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`  
-**Example:** `--log-level DEBUG`  
-- `DEBUG`: Detailed diagnostic output (polling cycles, SPI transactions)
-- `INFO`: Normal operation (connections, configuration changes, watchdog summaries)
-- `WARNING`: Unexpected conditions (timeouts, retries)
-- `ERROR`: Failures requiring attention
-- `CRITICAL`: Severe problems
+| Option | Default | Description |
+| :--- | :--- | :--- |
+| `--opcua-endpoint <url>` | `opc.tcp://0.0.0.0:4840/l2trigger/` | Server endpoint URL |
+| `--opcua-root <name>` | `L2Trigger` | Root object name in address space |
+| `--monitoring-path <name>` | `Monitoring` | Path for monitoring variables under root |
+| `--opcua-user <u:p>` | (None) | User authentication (can be specified multiple times) |
+| `--poll-interval <sec>` | `1.0` | Base polling interval for high-frequency variables |
+| `--poll-ratio <N>` | `10` | Ratio of slow-to-fast polling (slow update = interval * N) |
+| `--power-ramp-delay-ms <ms>` | `10` | Delay between modules during sequential power-up |
+| `--slots <list>` | 1-9, 13-21 | Comma-separated list of active crate slots |
+| `--immutable-channels <list>` | S21C11-15 | Slot/channel pairs excluded from server control |
+| `--log-level <level>` | `INFO` | DEBUG, INFO, WARNING, ERROR, or CRITICAL |
 
 ### Configuration Examples
 
-**Production deployment with authentication:**
+**Production with Auth:**
 ```bash
-python3 l2trig_asyncua_server.py \
-  --opcua-endpoint opc.tcp://10.0.1.50:4840/l2trigger/ \
-  --opcua-user admin:secure_password \
-  --poll-interval 1.0 \
-  --power-ramp-delay-ms 15 \
-  --log-level INFO
+python3 l2trig_asyncua_server.py --opcua-endpoint opc.tcp://10.0.1.50:4840/l2trigger/ --opcua-user admin:secure_password --poll-interval 1.0 --power-ramp-delay-ms 15
 ```
 
-**High-speed monitoring (2 Hz updates):**
+**High-speed Monitoring (2 Hz):**
 ```bash
-python3 l2trig_asyncua_server.py \
-  --poll-interval 0.5 \
-  --poll-ratio 20 \
-  --log-level WARNING
+python3 l2trig_asyncua_server.py --poll-interval 0.5 --poll-ratio 20 --log-level WARNING
 ```
 
-**Testing with limited slots:**
+**Partial Slot Monitoring:**
 ```bash
-python3 l2trig_asyncua_server.py \
-  --slots 1,2,3 \
-  --poll-interval 0.5 \
-  --log-level DEBUG
-```
-
-**Custom immutable channels:**
-```bash
-python3 l2trig_asyncua_server.py \
-  --immutable-channels S1C15,S2C15,S3C15,S21C11,S21C12,S21C13,S21C14,S21C15 \
-  --log-level INFO
-```
-
-**Fast power ramping for testing:**
-```bash
-python3 l2trig_asyncua_server.py \
-  --power-ramp-delay-ms 5 \
-  --log-level DEBUG
+python3 l2trig_asyncua_server.py --slots 1,2,3 --immutable-channels S1C15,S21C11,S21C12
 ```
 
 ### How Polling Works
