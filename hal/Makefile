@@ -4,12 +4,6 @@ CC = gcc
 CFLAGS = -Wall -fPIC -O2
 LDFLAGS = -shared
 
-# Optional: Set to 1 to build with dummy implementations for testing
-DUMMY ?= 0
-ifeq ($(DUMMY),1)
-	CFLAGS += -DDUMMY
-endif
-
 # Source files
 SOURCES = l2trig_hal.c l2trig_hal_exports.c
 HEADERS = l2trig_hal.h bits.h
@@ -19,6 +13,7 @@ TARGET_LIBRARY = libl2trig_hal.so
 TARGET = $(TARGET_LIBRARY)
 
 EMULATESMC ?= 0
+
 ifeq ($(EMULATESMC),1)
 	SOURCES += smc_emulated.c
 	TARGET += test_smc_emulation
