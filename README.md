@@ -223,7 +223,7 @@ When `SetAllPowerEnabled(true)` is called, modules enable sequentially to preven
 
 ## Testing and Development Tools
 
-### Graphical Interface (GUI)
+### OPC IA graphical Interface
 
 A Tkinter-based GUI is provided for visual testing and development:
 
@@ -247,7 +247,7 @@ python3 l2trig_gui.py
 
 The GUI is useful for hardware verification and debugging but not intended for production control system integration.
 
-### Interactive Test Client
+### Interactive OPC UA Test Client
 
 Command-line tool for testing server functionality:
 
@@ -284,60 +284,60 @@ The test client supports both interactive use and scripting via pipes or command
 
 All monitoring data is accessible through the OPC UA address space under `L2Trigger.Monitoring`:
 
-**L2CB Controller Status:**
-- `CrateFirmwareRevision` — Firmware version
-- `CrateUpTime` — Time since boot (nanoseconds)
-- `CrateNumMutabeModules` — Total actively controlled modules
-- `CrateNumPoweredModules` — Modules currently powered
-- `CrateNumTriggerEnabledModules` — Modules with trigger enabled
+**L2CB Controller Status (Scalars):**
+- `CrateFirmwareRevision` (`UInt16`) — Firmware version
+- `CrateUpTime` (`UInt64`) — Time since boot (nanoseconds)
+- `CrateNumMutableModules` (`UInt16`) — Total actively controlled modules
+- `CrateNumPoweredModules` (`UInt16`) — Modules currently powered
+- `CrateNumTriggerEnabledModules` (`UInt16`) — Modules with trigger enabled
 
-**L2CB Trigger Configuration:**
-- `CrateMCFEnabled` — MCF propagation state
-- `CrateBusyGlitchFilterEnabled` — Glitch filter state
-- `CrateTIBTriggerBusyBlockEnabled` — TIB blocking state
-- `CrateMCFThreshold` — MCF threshold (0-512)
-- `CrateMCFDelay` — MCF delay in ns (0-75)
-- `CrateL1Deadtime` — L1 deadtime in ns (0-1275)
+**L2CB Trigger Configuration (Scalars):**
+- `CrateMCFEnabled` (`Boolean`) — MCF propagation state
+- `CrateBusyGlitchFilterEnabled` (`Boolean`) — Glitch filter state
+- `CrateTIBTriggerBusyBlockEnabled` (`Boolean`) — TIB blocking state
+- `CrateMCFThreshold` (`Int16`) — MCF threshold (0-512)
+- `CrateMCFDelay` (`Double`) — MCF delay in ns (0-75)
+- `CrateL1Deadtime` (`Double`) — L1 deadtime in ns (0-1275)
 
-**Per-Slot Board Data (Arrays):**
-- `BoardSlots` — List of active slot numbers
-- `BoardFirmwareRevision` — Firmware per slot
-- `BoardCurrent` — Total current per slot
-- `BoardCurrentSum` — Sum of all enabled channels per slot
-- `BoardCurrentLimitMin/Max` — Current safety limits
-- `BoardHasErrors` — Error flag per slot
+**Per-Slot Board Data. (Arrays; one element per configured slot):**
+- `BoardSlots` (`Int32[]`) — List of active slot numbers
+- `BoardFirmwareRevision` (`UInt16[]`) — Firmware per slot
+- `BoardCurrent` (`Double[]`) — Total current per slot
+- `BoardCurrentSum` (`Double[]`) — Sum of all enabled channels per slot
+- `BoardCurrentLimitMin/Max` (`Double[]`) — Current safety limits
+- `BoardHasErrors` (`Boolean[]`) — Error flag per slot
 
-**Per-Module Data (Flattened Arrays, 1-270):**
-- `ModulePowerEnabled` — Power state
-- `ModuleCurrent` — Current reading (mA)
-- `ModuleState` — Detailed state (on/off/error/etc.)
-- `ModuleTriggerEnabled` — Trigger state
-- `ModuleTriggerDelay` — Trigger delay (ns)
-- `ModuleIsMutable` — Whether server controls this module
+**Per-Module Data (Arrays; one element per configured channel):**
+- `ModulePowerEnabled` (`Boolean[]`) — Power state
+- `ModuleCurrent` (`Double[]`) — Current reading (mA)
+- `ModuleState` (`String[]`) — Detailed state (on/off/error/etc.)
+- `ModuleTriggerEnabled` (`Boolean[]`) — Trigger state
+- `ModuleTriggerDelay` (`Double[]`) — Trigger delay (ns)
+- `ModuleIsMutable` (`Boolean[]`) — Whether server controls this module
 
 ### Available Control Methods
 
-All control methods are located under the `L2Trigger` root object:
+All control methods are located under the `L2Trigger` root object and return a status `String`. Boards and modules are indexed sequentially starting from one. For example, if all slots are enabled (1-9, 13-21), as is the default, then `board` must be given as 1-18 and `module` as 1-270.
 
 **Power Control:**
 - `EmergencyShutdown()` — Immediately disable all power
-- `SetAllPowerEnabled(enabled)` — Ramp all modules on/off
-- `SetModulePowerEnabled(module, enabled)` — Control single module (1-270)
-- `SetBoardCurrentLimits(board, min_ma, max_ma)` — Set safety limits
+- `SetAllPowerEnabled(enabled: Boolean)` — Ramp all modules on/off
+- `SetModulePowerEnabled(module: Int32, enabled: Boolean)` — Control single module (1-270)
+- `SetBoardCurrentLimits(board: Int32, min_ma: Double, max_ma: Double)` — Set safety limits
 
 **Trigger Control:**
-- `SetAllTriggerEnabled(enabled)` — Enable/disable all triggers
-- `SetModuleTriggerEnabled(module, enabled)` — Control single module trigger
-- `SetAllTriggerDelay(delay_ns)` — Set delay for all modules
-- `SetModuleTriggerDelay(module, delay_ns)` — Set delay for single module (0-5 ns)
+- `SetAllTriggerEnabled(enabled: Boolean)` — Enable/disable all triggers
+- `SetModuleTriggerEnabled(module: Int32, enabled: Boolean)` — Control single module trigger
+- `SetAllTriggerDelay(delay_ns: Double)` — Set delay for all modules
+- `SetModuleTriggerDelay(module: Int32, delay_ns: Double)` — Set delay for single module (0-5 ns)
 
 **L2CB Configuration:**
-- `SetMCFEnabled(enabled)` — Enable MCF trigger propagation
-- `SetBusyGlitchFilterEnabled(enabled)` — Enable busy glitch filter
-- `SetTIBTriggerBusyBlockEnabled(enabled)` — Enable TIB trigger blocking
-- `SetMCFThreshold(threshold)` — Set MCF threshold (0-512)
-- `SetMCFDelay(delay_ns)` — Set MCF delay (0-75 ns)
-- `SetL1Deadtime(deadtime_ns)` — Set L1 deadtime (0-1275 ns)
+- `SetMCFEnabled(enabled: Boolean)` — Enable MCF trigger propagation
+- `SetBusyGlitchFilterEnabled(enabled: Boolean)` — Enable busy glitch filter
+- `SetTIBTriggerBusyBlockEnabled(enabled: Boolean)` — Enable TIB trigger blocking
+- `SetMCFThreshold(threshold: Int16)` — Set MCF threshold (0-512)
+- `SetMCFDelay(delay_ns: Double)` — Set MCF delay (0-75 ns)
+- `SetL1Deadtime(deadtime_ns: Double)` — Set L1 deadtime (0-1275 ns)
 
 **System:**
 - `HealthCheck()` — Return system health summary string
