@@ -101,11 +101,9 @@ class CommandClient:
         }
 
     def run_command(self, line: str):
-        if not line or line.strip().startswith("#"):
-            return
-        
         try:
-            parts = shlex.split(line)
+            # comments=True enables stripping of anything from '#' to the end of the line
+            parts = shlex.split(line, comments=True)
         except ValueError as e:
             print(f"Error parsing line: {e}")
             return
