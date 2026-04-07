@@ -324,7 +324,7 @@ class L2TriggerOPCUAServer:
             async with self._lock:
                 await loop.run_in_executor(None, self.system.emergency_shutdown)
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
-            return "Emergency shutdown complete"
+            return "OK: Emergency shutdown complete"
         
         await add_described_method("EmergencyShutdown", emergency_shutdown, 
                                    outputs=[a("result", ua.VariantType.String, "Status of the shutdown operation")])
@@ -336,7 +336,7 @@ class L2TriggerOPCUAServer:
             logger.info(f"Setting all power to {'enabled' if enabled else 'disabled'} (gradual ramp)")
             await self._cancel_power_ramp()
             self._power_ramp_task = asyncio.create_task(self._ramp_power(enabled))
-            return f"All power {'enable' if enabled else 'disable'} ramping started"
+            return f"OK: All power {'enable' if enabled else 'disable'} ramping started"
         
         await add_described_method("SetAllPowerEnabled", set_all_power_enabled,
                                    inputs=[a("enabled", ua.VariantType.Boolean, "True to enable all modules, False to disable all")])
@@ -349,12 +349,12 @@ class L2TriggerOPCUAServer:
                 slot, channel = self._module_to_slot_channel(module)
             except (ValueError, IndexError) as e:
                 logger.warning(f"Failed to set power for module {module}: {e}")
-                return str(e)
+                return f"ERROR: {e}"
 
             if (slot, channel) in self.immutable_channels:
                 err = f"Module {module} (Slot {slot} Ch {channel}) is marked as INACTIVE and cannot be powered"
                 logger.warning(err)
-                return err
+                return f"ERROR: {err}"
 
             logger.info(f"Setting power for module {module} (Slot {slot} Ch {channel}) to {'enabled' if enabled else 'disabled'}")
             await self._cancel_power_ramp()
@@ -362,10 +362,10 @@ class L2TriggerOPCUAServer:
                 async with self._lock:
                     await loop.run_in_executor(None, self.system.set_channel_power_enabled, slot, channel, enabled)
                 await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
-                return f"Module {module} (Slot {slot} Ch {channel}) {'enabled' if enabled else 'disabled'}"
+                return f"OK: Module {module} (Slot {slot} Ch {channel}) {'enabled' if enabled else 'disabled'}"
             except Exception as e:
                 logger.error(f"Error setting power for module {module}: {e}")
-                return f"Error: {e}"
+                return f"ERROR: {e}"
         
         await add_described_method("SetModulePowerEnabled", set_module_power,
                                    inputs=[a("module", ua.VariantType.Int32, "Module number (1-270)"),
@@ -378,7 +378,7 @@ class L2TriggerOPCUAServer:
             if not 1 <= board <= len(self.active_slots):
                 err = f"Board index {board} out of range (1-{len(self.active_slots)})"
                 logger.warning(err)
-                return err
+                return f"ERROR: {err}"
 
             slot = self.active_slots[board - 1]
             logger.info(f"Setting current limits for board {board} (Slot {slot}) to {min_ma}-{max_ma} mA")
@@ -386,10 +386,10 @@ class L2TriggerOPCUAServer:
                 async with self._lock:
                     min_ma, max_ma = await loop.run_in_executor(None, self.system.ctdbs[slot].set_current_limits, min_ma, max_ma)
                 await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
-                return f"Board {board} (Slot {slot}) limits set to {min_ma:.1f}-{max_ma:.1f} mA"
+                return f"OK: Board {board} (Slot {slot}) limits set to {min_ma:.1f}-{max_ma:.1f} mA"
             except Exception as e:
                 logger.error(f"Error setting current limits for board {board} (Slot {slot}): {e}")
-                return f"Error: {e}"
+                return f"ERROR: {e}"
 
         await add_described_method("SetBoardCurrentLimits", set_board_current_limits,
                                    inputs=[a("board", ua.VariantType.Int32, f"Sequential board index (1 to {len(self.active_slots)})"),
@@ -404,22 +404,22 @@ class L2TriggerOPCUAServer:
                 slot, channel = self._module_to_slot_channel(module)
             except (ValueError, IndexError) as e:
                 logger.warning(f"Failed to set trigger enabled for module {module}: {e}")
-                return str(e)
+                return f"ERROR: {e}"
 
             if (slot, channel) in self.immutable_channels:
                 err = f"Module {module} (Slot {slot} Ch {channel}) is marked as INACTIVE and trigger cannot be enabled"
                 logger.warning(err)
-                return err
+                return f"ERROR: {err}"
 
             logger.info(f"Setting trigger enabled for module {module} (Slot {slot} Ch {channel}) to {'enabled' if enabled else 'disabled'}")
             try:
                 async with self._lock:
                     await loop.run_in_executor(None, self.system.ctdbs[slot].set_channel_trigger_enabled, channel, enabled)
                 await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
-                return f"Module {module} (Slot {slot} Trigger Ch {channel}) {'enabled' if enabled else 'disabled'}"
+                return f"OK: Module {module} (Slot {slot} Trigger Ch {channel}) {'enabled' if enabled else 'disabled'}"
             except Exception as e:
                 logger.error(f"Error setting trigger enabled for module {module} (Slot {slot} Ch {channel}): {e}")
-                return f"Error: {e}"
+                return f"ERROR: {e}"
 
         await add_described_method("SetModuleTriggerEnabled", set_module_trigger_enabled,
                                    inputs=[a("module", ua.VariantType.Int32, "Module number (1-270)"),
@@ -433,22 +433,22 @@ class L2TriggerOPCUAServer:
                 slot, channel = self._module_to_slot_channel(module)
             except (ValueError, IndexError) as e:
                 logger.warning(f"Failed to set trigger delay for module {module}: {e}")
-                return str(e)
+                return f"ERROR: {e}"
 
             if (slot, channel) in self.immutable_channels:
                 err = f"Module {module} (Slot {slot} Ch {channel}) is marked as INACTIVE and delay cannot be set"
                 logger.warning(err)
-                return err
+                return f"ERROR: {err}"
 
             logger.info(f"Setting trigger delay for module {module} (Slot {slot} Ch {channel}) to {delay_ns} ns")
             try:
                 async with self._lock:
                     delay_ns = await loop.run_in_executor(None, self.system.ctdbs[slot].set_channel_trigger_delay, channel, delay_ns)
                 await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
-                return f"Module {module} (Slot {slot} Trigger Ch {channel}) delay set to {delay_ns:.3f} ns"
+                return f"OK: Module {module} (Slot {slot} Trigger Ch {channel}) delay set to {delay_ns:.3f} ns"
             except Exception as e:
                 logger.error(f"Error setting trigger delay for module {module} (Slot {slot} Ch {channel}): {e}")
-                return f"Error: {e}"
+                return f"ERROR: {e}"
 
         await add_described_method("SetModuleTriggerDelay", set_module_trigger_delay,
                                    inputs=[a("module", ua.VariantType.Int32, "Module number (1-270)"),
@@ -479,7 +479,7 @@ class L2TriggerOPCUAServer:
                         await loop.run_in_executor(None, self.system.ctdbs[slot].set_all_trigger_enabled, enabled)
             
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
-            return f"All active triggers {'enabled' if enabled else 'disabled'}"
+            return f"OK: All active triggers {'enabled' if enabled else 'disabled'}"
 
         await add_described_method("SetAllTriggerEnabled", set_all_trigger_enabled,
                                    inputs=[a("enabled", ua.VariantType.Boolean, "True to enable all triggers, False to disable all")])
@@ -500,7 +500,7 @@ class L2TriggerOPCUAServer:
                             actual_delay = await loop.run_in_executor(None, self.system.ctdbs[slot].set_channel_trigger_delay, ch, delay_ns)
             
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
-            return f"All active trigger delays set to {actual_delay:.3f} ns"
+            return f"OK: All active trigger delays set to {actual_delay:.3f} ns"
 
         await add_described_method("SetAllTriggerDelay", set_all_trigger_delay,
                                    inputs=[a("delay_ns", ua.VariantType.Double, "Delay in nanoseconds (0.0 to 5.0 ns) for all modules")])
@@ -512,7 +512,8 @@ class L2TriggerOPCUAServer:
             logger.info("Running health check on L2 Trigger System")
             async with self._lock:
                 health = await loop.run_in_executor(None, self.system.health_check)
-            return f"Health: {health['overall']}. Errors: {health['errors']}"
+            prefix = "OK" if health['overall'].upper() == "GOOD" else "ERROR"
+            return f"{prefix}: Health: {health['overall']}. Errors: {health['errors']}"
         
         await add_described_method("HealthCheck", health_check,
                                    outputs=[a("result", ua.VariantType.String, "Summary of system health and detected errors")])
@@ -525,7 +526,7 @@ class L2TriggerOPCUAServer:
             async with self._lock:
                 await loop.run_in_executor(None, self.system.set_mcf_enabled, enabled)
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
-            return f"MCF trigger propagation {'enabled' if enabled else 'disabled'}"
+            return f"OK: MCF trigger propagation {'enabled' if enabled else 'disabled'}"
 
         await add_described_method("SetMCFEnabled", set_mcf_enabled,
                                    inputs=[a("enabled", ua.VariantType.Boolean, "True to enable, False to disable")])
@@ -538,7 +539,7 @@ class L2TriggerOPCUAServer:
             async with self._lock:
                 await loop.run_in_executor(None, self.system.set_busy_glitch_filter_enabled, enabled)
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
-            return f"Busy glitch filter {'enabled' if enabled else 'disabled'}"
+            return f"OK: Busy glitch filter {'enabled' if enabled else 'disabled'}"
 
         await add_described_method("SetBusyGlitchFilterEnabled", set_busy_glitch_filter_enabled,
                                    inputs=[a("enabled", ua.VariantType.Boolean, "True to enable, False to disable")])
@@ -551,7 +552,7 @@ class L2TriggerOPCUAServer:
             async with self._lock:
                 await loop.run_in_executor(None, self.system.set_tib_trigger_busy_block_enabled, enabled)
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
-            return f"TIB trigger blocking {'enabled' if enabled else 'disabled'}"
+            return f"OK: TIB trigger blocking {'enabled' if enabled else 'disabled'}"
 
         await add_described_method("SetTIBTriggerBusyBlockEnabled", set_tib_trigger_busy_block_enabled,
                                    inputs=[a("enabled", ua.VariantType.Boolean, "True to enable, False to disable")])
@@ -564,7 +565,7 @@ class L2TriggerOPCUAServer:
             async with self._lock:
                 delay = await loop.run_in_executor(None, self.system.set_mcf_delay, delay)
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
-            return f"MCF delay set to {delay} ns"
+            return f"OK: MCF delay set to {delay} ns"
 
         await add_described_method("SetMCFDelay", set_mcf_delay,
                                    inputs=[a("delay", ua.VariantType.Double, "MCF delay in ns (0-75 ns with 5 ns resolution)")])
@@ -577,7 +578,7 @@ class L2TriggerOPCUAServer:
             async with self._lock:
                 threshold = await loop.run_in_executor(None, self.system.set_mcf_threshold, threshold)
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
-            return f"MCF threshold set to {threshold}"
+            return f"OK: MCF threshold set to {threshold}"
         
         await add_described_method("SetMCFThreshold", set_mcf_threshold,
                                    inputs=[a("threshold", ua.VariantType.Int16, "MCF threshold (0-512)")])
@@ -590,7 +591,7 @@ class L2TriggerOPCUAServer:
             async with self._lock:
                 deadtime = await loop.run_in_executor(None, self.system.set_l1_deadtime, deadtime)
             await self._do_poll_full(datetime.datetime.now(datetime.timezone.utc))
-            return f"L1 deadtime set to {deadtime} ns"
+            return f"OK: L1 deadtime set to {deadtime} ns"
 
         await add_described_method("SetL1Deadtime", set_l1_deadtime,
                                    inputs=[a("deadtime", ua.VariantType.Double, "L1 deadtime in ns (0-1275.0 ns with 5 ns resolution)")])
