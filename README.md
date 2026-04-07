@@ -54,27 +54,7 @@ make dummy
 
 The dummy mode simulates realistic hardware behavior including current readings (~300mA per enabled channel) and maintains internal state.
 
-### 3. Pre-Configure Hardware (Optional)
-
-If you need to set hardware parameters before starting the server, use the direct controller. For example, to set MCF threshold to 20 and disable triggers on the last 5 channels of slot 21:
-
-```bash
-python3 l2trig_direct_client.py << 'EOF'
-mcfthreshold 20
-trig 296 off
-trig 297 off
-trig 298 off
-trig 299 off
-trig 300 off
-exit
-EOF
-```
-
-**Note:** Module numbering is sequential: slot 21, channels 11-15 = modules 296-300.
-
-See "Pre-Configuring Hardware" section below for more details.
-
-### 4. Start the OPC UA Server
+### 3. Start the OPC UA Server
 
 ```bash
 python3 l2trig_asyncua_server.py
@@ -100,8 +80,8 @@ The direct controller (`l2trig_direct_client.py`) provides low-level access to t
 **Interactive mode:**
 ```bash
 python3 l2trig_direct_client.py
-l2trig> mcfthreshold 20
-l2trig> trig 296 off
+l2trig> mcfthr 20
+l2trig> trig 21 12 off
 l2trig> exit
 ```
 
@@ -110,77 +90,48 @@ l2trig> exit
 python3 l2trig_direct_client.py config.txt
 ```
 
-**Piped commands (for automation):**
+**Piped commands (for automation in server startup script, for example):**
 ```bash
 python3 l2trig_direct_client.py << 'EOF'
-mcfthreshold 20
-mcfdelay 25.0
-trig 296 off
-trig 297 off
-trig 298 off
-trig 299 off
-trig 300 off
-allpower off
-exit
-EOF
-```
-
-### Common Pre-Configuration Scenarios
-
-**Disable triggers on unused channels:**
-```bash
-# Disable last 5 channels of slot 21 (modules 296-300)
-python3 l2trig_direct_client.py << 'EOF'
-trig 296 off
-trig 297 off
-trig 298 off
-trig 299 off
-trig 300 off
-exit
-EOF
-```
-
-**Set MCF parameters and ensure clean state:**
-```bash
-python3 l2trig_direct_client.py << 'EOF'
-mcfthreshold 20
-mcfdelay 30.0
-deadtime 100.0
-allpower off
-alltrig off
-exit
-EOF
-```
-
-**Initialize current limits on specific boards:**
-```bash
-python3 l2trig_direct_client.py << 'EOF'
-limits 1 50.0 500.0
-limits 2 50.0 500.0
-exit
+allpower off    # Should presumably be the default on DTC start-up
+mcf on          # Enable the muon candidate flag
+mcfthr 20       # Set the muon threshold to 20 modules
+mcfdel 20       # Set the muon delay to 100 ns (5ns per digital code)
+allcurmin 200   # Set the minimum current to 97mA (0.485mA/step)
+allcurmax 1000  # Set the maximum current to 485mA
+trig 21 11 off  # Disable trigger on Slot 21 Channel 11
+trig 21 12 off
+trig 21 13 off
+trig 21 14 off
+trig 21 15 off
 EOF
 ```
 
 ### Available Commands
 
-The direct controller supports the same commands as the test client. Key commands:
+The direct controller operates with **raw digital codes** and **slot/channel** addresses. Key commands:
 
 ```
-allpower on/off          All module power
-power <module> on/off    Single module power (1-270)
-alltrig on/off           All trigger enables
-trig <module> on/off     Single module trigger
-delay <module> <ns>      Trigger delay (0-5 ns)
-alldelay <ns>            All module delays
-limits <board> <min> <max>  Current limits (mA)
-mcfthreshold <val>       MCF threshold (0-512)
-mcfdelay <ns>            MCF delay (0-75 ns)
-deadtime <ns>            L1 deadtime (0-1275 ns)
-mcf on/off               MCF enable
-glitch on/off            Busy glitch filter
-tibblock on/off          TIB trigger blocking
-summary                  Show system status
-exit                     Quit
+allpower on/off             All power channels on all slots
+power <slot> <ch> [on/off]  Single power channel (ch 1-15)
+alltrig on/off              All trigger enables on all slots
+trig <slot> <ch> [on/off]   Single trigger channel (ch 1-15)
+delay <slot> <ch> [val]     Trigger delay (37ps/step, 0-127)
+alldelay <val>              Set all trigger delays
+curmax <slot> [val]         Max current limit (0.485mA/step)
+allcurmax <val>             Set all max current limits
+curmin <slot> [val]         Min current limit (0.485mA/step)
+allcurmin <val>             Set all min current limits
+mcfthr [val]                MCF threshold (L1 counts)
+mcfdel [val]                MCF delay (5ns/step, 0-15)
+deadtime [val]              L1 deadtime (5ns/step, 0-255)
+mcf on/off                  MCF enable
+glitch on/off               Busy glitch filter
+tibblock on/off             TIB trigger blocking
+cur <slot> <ch>             Read channel current (code & mA)
+state                       Show L2CB control state
+help                        Show all commands
+exit                        Quit
 ```
 
 ---
