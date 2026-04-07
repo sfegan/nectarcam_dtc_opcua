@@ -405,6 +405,13 @@ def main():
                 print(f"Unexpected error: {e}")
 
 if __name__ == "__main__":
-    smc_open()
-    main()
-    smc_close()
+    try:
+        smc_open()
+    except Exception as e:
+        print(f"CRITICAL: Failed to initialize hardware interface: {e}")
+        sys.exit(1)
+
+    try:
+        main()
+    finally:
+        smc_close()

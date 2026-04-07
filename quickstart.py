@@ -16,6 +16,9 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
+import sys
+from l2trig_low_level import smc_open, smc_close
+
 def main():
     print("=" * 60)
     print("L2 Trigger System - Quick Start Example")
@@ -127,5 +130,14 @@ def main():
 
 
 if __name__ == "__main__":
-    # Run quick start
-    main()
+    try:
+        smc_open()
+    except Exception as e:
+        print(f"CRITICAL: Failed to initialize hardware interface: {e}")
+        sys.exit(1)
+
+    try:
+        # Run quick start
+        main()
+    finally:
+        smc_close()

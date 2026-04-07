@@ -1014,6 +1014,14 @@ async def main():
     return 0
 
 if __name__ == "__main__":
-    smc_open()
-    sys.exit(asyncio.run(main()))
-    smc_close()
+    _configure_logging("INFO", None)  # Pre-configure logging for potential startup errors
+    try:
+        smc_open()
+    except Exception as e:
+        logger.critical(f"Failed to initialize hardware interface: {e}")
+        sys.exit(1)
+
+    try:
+        sys.exit(asyncio.run(main()))
+    finally:
+        smc_close()

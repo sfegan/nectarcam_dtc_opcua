@@ -29,63 +29,48 @@
 
 #include "smc_ioctl_defines.h"
 
-#define MAGIC 	0xAA55A5FE
-
 typedef struct {
-	// file handle
-	unsigned int 	magic;
-	int 			bus_handle;
-} smcbus_driver_t;
+	int bus_handle;
+} smc_instance_t;
 
-static smcbus_driver_t driver_instance;
-
-static int smc_isValid()
-{
-	return (driver_instance.magic==MAGIC)?1:0;
-}
+static smc_instance_t bus_instance = { .bus_handle = -1 };
 
 // returns true, if bus is open
 int smc_isOpen()
 {
-	if (!smc_isValid()) return 0;
-	if (driver_instance.bus_handle<=0) return 0;
-	return 1;
+	return (bus_instance.bus_handle >= 0);
+}
+
+// returns default device name
+const char* smc_default_device(void)
+{
+	return SMCBUS_DEVICE;
 }
 
 // opening the device
 smc_driver_error_t smc_open(const char* devname)
 {
 	if (smc_isOpen()) smc_close();
-	memset(&driver_instance,0,sizeof(driver_instance));
-	driver_instance.magic=MAGIC;
-	smc_driver_error_t status=ERROR_NONE;
 
-	if (!devname) devname=SMCBUS_DEVICE;
+	if (!devname) devname = smc_default_device();
 
-	//printf("Opening device '%s'. \n", devname);
 	// open io memory device
-	driver_instance.bus_handle = open(devname, O_RDWR);
-	if(driver_instance.bus_handle < 1) {
-		fprintf(stderr,"Error opening device '%s'. Please check, if smc device driver is loaded.\n", devname);
-		status=ERROR_OPENING_DEVICE;
-		goto error_open_device;
+	int handle = open(devname, O_RDWR);
+	if (handle < 0) {
+		fprintf(stderr, "Error opening device '%s'. Please check, if smc device driver is loaded.\n", devname);
+		return ERROR_OPENING_DEVICE;
 	}
 
+	bus_instance.bus_handle = handle;
 	return ERROR_NONE;
-
-	close(driver_instance.bus_handle);
-	driver_instance.bus_handle=0;
-
-	error_open_device:
-
-	return status;
 }
 
 // close the device
 void smc_close()
 {
 	if (!smc_isOpen()) return;
-	close(driver_instance.bus_handle);
+	close(bus_instance.bus_handle);
+	bus_instance.bus_handle = -1;
 }
 
 // function checks, if bus is open and does halt the program if bus is not open
@@ -94,8 +79,7 @@ void smc_assertIsOpen()
 {
 	if (smc_isOpen()) return;
 
-	printf("### ERROR ### smc bus device not open! Internal program error!\n");
-
+	fprintf(stderr, "### ERROR ### smc bus device not open! Internal program error!\n");
 	exit(1);
 }
 
@@ -103,14 +87,13 @@ void smc_assertIsOpen()
 unsigned short smc_rd16(unsigned int _addr)
 {
 	ioctl_smc_rdwr_t cmd;
-	cmd.address=_addr;
-	int ret = ioctl(driver_instance.bus_handle, IOCTL_SMC_RD16, &cmd);
+	cmd.address = _addr;
+	int ret = ioctl(bus_instance.bus_handle, IOCTL_SMC_RD16, &cmd);
 	if (ret == 0) {
 		return cmd.value;
 	} else {
-		printf("### ERROR ### smc_rd16 error! Internal program error!\n");
+		fprintf(stderr, "### ERROR ### smc_rd16 error! Internal program error!\n");
 		exit(1);
-
 		return 0xDEAF;
 	}
 }
@@ -119,14 +102,13 @@ unsigned short smc_rd16(unsigned int _addr)
 unsigned int smc_rd32(unsigned int _addr)
 {
 	ioctl_smc_rdwr_t cmd;
-	cmd.address=_addr;
-	int ret = ioctl(driver_instance.bus_handle, IOCTL_SMC_RD32, &cmd);
+	cmd.address = _addr;
+	int ret = ioctl(bus_instance.bus_handle, IOCTL_SMC_RD32, &cmd);
 	if (ret == 0) {
 		return cmd.value;
 	} else {
-		printf("### ERROR ### smc_rd32 error! Internal program error!\n");
+		fprintf(stderr, "### ERROR ### smc_rd32 error! Internal program error!\n");
 		exit(1);
-
 		return 0xDEADBEAF;
 	}
 }
@@ -135,11 +117,11 @@ unsigned int smc_rd32(unsigned int _addr)
 void smc_wr16(unsigned int _addr, unsigned short _value)
 {
 	ioctl_smc_rdwr_t cmd;
-	cmd.address=_addr;
-	cmd.value=_value;
-	int ret = ioctl(driver_instance.bus_handle, IOCTL_SMC_WR16, &cmd);
+	cmd.address = _addr;
+	cmd.value = _value;
+	int ret = ioctl(bus_instance.bus_handle, IOCTL_SMC_WR16, &cmd);
 	if (ret != 0) {
-		printf("### ERROR ### smc_wr16 error! Internal program error!\n");
+		fprintf(stderr, "### ERROR ### smc_wr16 error! Internal program error!\n");
 		exit(1);
 	}
 }
@@ -148,11 +130,11 @@ void smc_wr16(unsigned int _addr, unsigned short _value)
 void smc_wr32(unsigned int _addr, unsigned int _value)
 {
 	ioctl_smc_rdwr_t cmd;
-	cmd.address=_addr;
+	cmd.address = _addr;
 	cmd.value = _value;
-	int ret = ioctl(driver_instance.bus_handle, IOCTL_SMC_WR32, &cmd);
+	int ret = ioctl(bus_instance.bus_handle, IOCTL_SMC_WR32, &cmd);
 	if (ret != 0) {
-		printf("### ERROR ### smc_wr32 error! Internal program error!\n");
+		fprintf(stderr, "### ERROR ### smc_wr32 error! Internal program error!\n");
 		exit(1);
 	}
 }

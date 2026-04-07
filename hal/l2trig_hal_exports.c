@@ -239,6 +239,11 @@ int smc_open_export(const char* devname)
     return smc_open(devname);
 }
 
+const char* smc_default_device_export()
+{
+    return smc_default_device();
+}
+
 void smc_close_export()
 {
     smc_close();

@@ -86,6 +86,9 @@ if _lib is None:
 _lib.smc_open_export.argtypes = [ctypes.c_char_p]
 _lib.smc_open_export.restype = c_int
 
+_lib.smc_default_device_export.argtypes = []
+_lib.smc_default_device_export.restype = ctypes.c_char_p
+
 _lib.smc_close_export.argtypes = []
 _lib.smc_close_export.restype = None
 
@@ -233,16 +236,17 @@ L1DEADTIME_MAX = L1DEADTIME_CODE_MAX * L1DEADTIME_CONVERSION_FACTOR  # Max L1 de
 
 # --- SMC open / close ---
 
-def smc_open(devname: Optional[str] = None) -> int:
-    """Open SMC device and return file descriptor.
+def smc_open(devname: Optional[str] = None) -> None:
+    """Open SMC device.
 
-    Passing None or an empty string uses a null pointer for the device name.
+    Passing None or an empty string uses the default device.
     """
     c_devname = None if not devname else devname.encode("utf-8")
     status = _lib.smc_open_export(c_devname)
-    if status < 0:
+    if status != 0:
+        if not devname:
+            devname = _lib.smc_default_device_export().decode("utf-8")
         raise RuntimeError(f"Failed to open SMC device '{devname}'")
-    return status
 
 def smc_close() -> None:
     """Close SMC device"""

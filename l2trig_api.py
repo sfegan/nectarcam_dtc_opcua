@@ -766,6 +766,7 @@ class L2TriggerSystem:
 
 def example_usage():
     """Example usage of the L2 trigger system API"""
+    import sys
     
     # Configure logging
     logging.basicConfig(
@@ -773,57 +774,67 @@ def example_usage():
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
     
-    # Initialize system
-    system = L2TriggerSystem()
+    # Initialize hardware
+    try:
+        hal.smc_open()
+    except Exception as e:
+        print(f"CRITICAL: Failed to initialize hardware interface: {e}")
+        sys.exit(1)
+
+    try:
+        # Initialize system
+        system = L2TriggerSystem()
     
-    # Get L2CB status
-    l2cb = system.get_l2cb_status()
-    print(f"L2CB Firmware: 0x{l2cb.firmware_version:04X}")
-    print(f"Timestamp: {l2cb.timestamp}")
-    
-    # Get status of all boards
-    print("\n=== Getting status of all boards ===")
-    all_status = system.get_all_status()
-    
-    for slot, status in all_status.items():
-        print(f"\nSlot {slot}:")
-        print(f"  Firmware: 0x{status.firmware_version:04X}")
-        print(f"  CTDB Current: {status.ctdb_current_ma:.2f} mA")
-        print(f"  Total Channel Current: {status.total_current_ma:.2f} mA")
-        print(f"  Current Limits: {status.current_limit_min_ma:.1f} - {status.current_limit_max_ma:.1f} mA")
+        # Get L2CB status
+        l2cb = system.get_l2cb_status()
+        print(f"L2CB Firmware: 0x{l2cb.firmware_version:04X}")
+        print(f"Timestamp: {l2cb.timestamp}")
         
-        if status.has_errors:
-            print(f"  ERRORS:")
-            for ch in status.channels_with_errors:
-                print(f"    Ch{ch.channel}: {ch.state.value} ({ch.current_ma:.2f} mA)")
+        # Get status of all boards
+        print("\n=== Getting status of all boards ===")
+        all_status = system.get_all_status()
         
-        # Show enabled channels
-        enabled = [ch.channel for ch in status.power_channels if ch.enabled]
-        if enabled:
-            print(f"  Enabled channels: {enabled}")
-    
-    # Control specific channel
-    print("\n=== Controlling power ===")
-    system.set_channel_power_enabled(slot=1, channel=5, enabled=True)
-    
-    # Set current limits
-    system.ctdbs[1].set_current_limits(min_ma=100, max_ma=2000)
-    
-    # Get trigger status
-    print("\n=== Trigger Configuration ===")
-    trigger_status = system.ctdbs[1].get_trigger_status()
-    for trig in trigger_status[:5]:  # Show first 5
-        print(f"  Ch{trig.channel}: {'Enabled' if trig.enabled else 'Disabled'}, Delay={trig.delay_ns:.3f}ns")
-    
-    # Health check
-    print("\n=== Health Check ===")
-    health = system.health_check()
-    print(f"Overall: {health['overall']}")
-    if health['errors']:
-        print(f"Errors: {health['errors']}")
-    
-    # Example: Emergency shutdown (commented out for safety)
-    # system.emergency_shutdown()
+        for slot, status in all_status.items():
+            print(f"\nSlot {slot}:")
+            print(f"  Firmware: 0x{status.firmware_version:04X}")
+            print(f"  CTDB Current: {status.ctdb_current_ma:.2f} mA")
+            print(f"  Total Channel Current: {status.total_current_ma:.2f} mA")
+            print(f"  Current Limits: {status.current_limit_min_ma:.1f} - {status.current_limit_max_ma:.1f} mA")
+            
+            if status.has_errors:
+                print(f"  ERRORS:")
+                for ch in status.channels_with_errors:
+                    print(f"    Ch{ch.channel}: {ch.state.value} ({ch.current_ma:.2f} mA)")
+            
+            # Show enabled channels
+            enabled = [ch.channel for ch in status.power_channels if ch.enabled]
+            if enabled:
+                print(f"  Enabled channels: {enabled}")
+        
+        # Control specific channel
+        print("\n=== Controlling power ===")
+        system.set_channel_power_enabled(slot=1, channel=5, enabled=True)
+        
+        # Set current limits
+        system.ctdbs[1].set_current_limits(min_ma=100, max_ma=2000)
+        
+        # Get trigger status
+        print("\n=== Trigger Configuration ===")
+        trigger_status = system.ctdbs[1].get_trigger_status()
+        for trig in trigger_status[:5]:  # Show first 5
+            print(f"  Ch{trig.channel}: {'Enabled' if trig.enabled else 'Disabled'}, Delay={trig.delay_ns:.3f}ns")
+        
+        # Health check
+        print("\n=== Health Check ===")
+        health = system.health_check()
+        print(f"Overall: {health['overall']}")
+        if health['errors']:
+            print(f"Errors: {health['errors']}")
+        
+        # Example: Emergency shutdown (commented out for safety)
+        # system.emergency_shutdown()
+    finally:
+        hal.smc_close()
 
 
 if __name__ == "__main__":

@@ -29,6 +29,9 @@ typedef enum {
 // opening the device
 smc_driver_error_t smc_open(const char* devname);
 
+// returns default device name
+const char* smc_default_device(void);
+
 // close the device
 void smc_close();
 
@@ -39,19 +42,19 @@ int smc_isOpen();
 // --> early fail strategy
 void smc_assertIsOpen();
 
-// ********** ioctl based smc bus interface, replacement for seek, read, write interface
+// ********** ioctl based smc bus interface
 
-// reads 16bit word from smc memory location, thread safe
+// reads 16bit word from smc memory location
 unsigned short 	smc_rd16(unsigned int _addr);
 
-// reads 32bit word from smc memory location, thread safe
+// reads 32bit word from smc memory location
 unsigned int 	smc_rd32(unsigned int _addr);
 
-// writes 16bit word to smc memory location, thread safe
-void 	smc_wr16(unsigned int_addr, unsigned short _value);
+// writes 16bit word to smc memory location
+void 	smc_wr16(unsigned int _addr, unsigned short _value);
 
-// writes 32bit word to smc memory location, thread safe
-void 	smc_wr32(unsigned int_addr, unsigned int_value);
+// writes 32bit word to smc memory location
+void 	smc_wr32(unsigned int _addr, unsigned int _value);
 
 // ********** IODIRECT_* functions
 
@@ -79,4 +82,4 @@ static inline unsigned int IORD_32DIRECT(unsigned int base, unsigned int offset)
 }	// extern "C"
 #endif
 
-#endif /* INTLK4BUSDRIVER_H_ */
+#endif /* USER_SMC_BUS_DRIVER_H_ */

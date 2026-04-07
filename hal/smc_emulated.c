@@ -64,6 +64,7 @@
 
 #define MAX_L2CB_REGISTERS      256
 #define SMC_EMU_MAGIC           0x4C324342  /* "L2CB" */
+#define SMCBUS_EMU_DEVICE       "l2trig_emulator_state.dat"
 
 /* 
  * Persistent state structure mapped to file
@@ -280,11 +281,16 @@ static void handle_l1_delay_write(void)
     emulated_driver.state->delay_state.duration_us = 100;  /* Arbitrary delay */
 }
 
+const char* smc_default_device(void)
+{
+    return SMCBUS_EMU_DEVICE;
+}
+
 smc_driver_error_t smc_open(const char* devname)
 {
     if (emulated_driver.is_open) smc_close();
     
-    const char *filename = devname ? devname : "l2trig_emulator_state.dat";
+    const char *filename = devname ? devname : smc_default_device();
     int fd = open(filename, O_RDWR | O_CREAT, 0666);
     if (fd < 0) {
         fprintf(stderr, "[SMC_EMU] ERROR: Failed to open %s\n", filename);
