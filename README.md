@@ -317,27 +317,29 @@ All monitoring data is accessible through the OPC UA address space under `L2Trig
 
 ### Available Control Methods
 
-All control methods are located under the `L2Trigger` root object and return a status `String`. Boards and modules are indexed sequentially starting from one. For example, if all slots are enabled (1-9, 13-21), as is the default, then `board` must be given as 1-18 and `module` as 1-270.
+All control methods are located under the `L2Trigger` root object. Every method returns a `String` result that is prefixed with either **`OK:`** (for successful execution, including cases where input values were clamped to hardware limits) or **`ERROR:`** (if the operation failed or parameters were invalid).
+
+Boards and modules are indexed sequentially starting from one. For example, if all slots are enabled (1-9, 13-21), as is the default, then `board` must be given as 1-18 and `module` as 1-270.
 
 **Power Control:**
 - `EmergencyShutdown()` — Immediately disable all power
-- `SetAllPowerEnabled(enabled: Boolean)` — Ramp all modules on/off
-- `SetModulePowerEnabled(module: Int32, enabled: Boolean)` — Control single module (1-270)
-- `SetBoardCurrentLimits(board: Int32, min_ma: Double, max_ma: Double)` — Set safety limits
+- `SetAllPowerEnabled(enabled: Boolean)` — Ramp all modules on/off (True/False)
+- `SetModulePowerEnabled(module: Int32, enabled: Boolean)` — Set power on single module (True/False)
+- `SetBoardCurrentLimits(board: Int32, min_ma: Double, max_ma: Double)` — Set module current limits (0-1,986.075 mA)
 
 **Trigger Control:**
-- `SetAllTriggerEnabled(enabled: Boolean)` — Enable/disable all triggers
-- `SetModuleTriggerEnabled(module: Int32, enabled: Boolean)` — Control single module trigger
-- `SetAllTriggerDelay(delay_ns: Double)` — Set delay for all modules
-- `SetModuleTriggerDelay(module: Int32, delay_ns: Double)` — Set delay for single module (0-5 ns)
+- `SetAllTriggerEnabled(enabled: Boolean)` — Enable/disable triggers from all modules (True/False)
+- `SetModuleTriggerEnabled(module: Int32, enabled: Boolean)` — Enable/disable trigger from specific module (True/False)
+- `SetAllTriggerDelay(delay_ns: Double)` — Set trigger delay for all modules (0-4.74ns range in 37 ps steps)
+- `SetModuleTriggerDelay(module: Int32, delay_ns: Double)` — Set trigger delay for specific module (0-4.7 ns range in 37 ps steps)
 
 **L2CB Configuration:**
-- `SetMCFEnabled(enabled: Boolean)` — Enable MCF trigger propagation
-- `SetBusyGlitchFilterEnabled(enabled: Boolean)` — Enable busy glitch filter
-- `SetTIBTriggerBusyBlockEnabled(enabled: Boolean)` — Enable TIB trigger blocking
-- `SetMCFThreshold(threshold: Int16)` — Set MCF threshold (0-512)
-- `SetMCFDelay(delay_ns: Double)` — Set MCF delay (0-75 ns)
-- `SetL1Deadtime(deadtime_ns: Double)` — Set L1 deadtime (0-1275 ns)
+- `SetMCFEnabled(enabled: Boolean)` — Enable muon candidate flag (MCF) trigger propagation (True/False)
+- `SetBusyGlitchFilterEnabled(enabled: Boolean)` — Enable busy glitch filter (True/False)
+- `SetTIBTriggerBusyBlockEnabled(enabled: Boolean)` — Enable TIB trigger blocking (True/False)
+- `SetMCFThreshold(threshold: Int16)` — Set MCF threshold (0-512 modules)
+- `SetMCFDelay(delay_ns: Double)` — Set MCF delay (0-75 ns in 5 ns steps)
+- `SetL1Deadtime(deadtime_ns: Double)` — Set L1 deadtime (0-1275 ns in 5 ns steps)
 
 **System:**
 - `HealthCheck()` — Return system health summary string
