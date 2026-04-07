@@ -420,32 +420,3 @@ python3 -m pytest test_l2trig_system.py
 ```
 
 Build the HAL in dummy mode before running tests without hardware.
-
----
-
-## Troubleshooting
-
-**GUI won't connect:**
-- Verify server is running: `ps aux | grep l2trig_asyncua_server`
-- Check endpoint URL matches server configuration
-- Ensure firewall allows port 4840
-
-**Modules showing as "ERROR":**
-- Check physical hardware connections
-- Verify current limits are appropriate
-- Use `health` command in test client for details
-
-**Power ramp is too slow/fast:**
-- Adjust `--power-ramp-delay-ms` when starting server
-- Default 10ms = 2.7s for all 270 modules
-- Increase for gentler power-up, decrease for faster startup
-
-**"Immutable" modules won't respond:**
-- These channels are intentionally disabled (see `--immutable-channels`)
-- Use direct client to configure them when server is stopped
-- Or remove from immutable list when starting server
-
-**Getting "SPI transfer corruption" warnings:**
-- Only run ONE client at a time (GUI or test client, not both)
-- Never use direct client while server is running
-- Stop all clients and restart server if corruption occurs
