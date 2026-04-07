@@ -24,12 +24,14 @@ build:
 	@$(MAKE) -C hal DUMMY=$(DUMMY)
 
 dummy:
-	@echo "Building HAL library with DUMMY mode..."
-	@$(MAKE) -C hal DUMMY=1
+	@echo "Building HAL library with EMULATESMC mode..."
+	@$(MAKE) -C hal EMULATESMC=1
 
 clean:
 	@echo "Cleaning build artifacts..."
 	@$(MAKE) -C hal clean
+	rm -f l2trig_emulator_state.dat
+	rm -rf __pycache__
 
 install: build
 	@echo "Installing HAL library..."
