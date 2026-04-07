@@ -74,12 +74,31 @@ class OPCUAClient:
         """Start the asyncio event loop in a separate thread"""
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
-        self.loop.run_forever()
+        try:
+            self.loop.run_forever()
+        finally:
+            # Clean up pending tasks
+            try:
+                pending = asyncio.all_tasks(self.loop)
+                for task in pending:
+                    task.cancel()
+                
+                if pending:
+                    self.loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                
+                self.loop.run_until_complete(self.loop.shutdown_asyncgens())
+            except Exception as e:
+                print(f"Error during loop cleanup: {e}")
+            finally:
+                self.loop.close()
+                self.loop = None
     
     def run_async(self, coro):
         """Run a coroutine in the client's event loop"""
-        if not self.loop:
-            raise RuntimeError("Event loop not started")
+        if not self.loop or not self.loop.is_running():
+            if asyncio.iscoroutine(coro):
+                coro.close()
+            raise RuntimeError("Event loop not running")
         return asyncio.run_coroutine_threadsafe(coro, self.loop)
     
     async def connect(self, endpoint: str, root: str = "L2Trigger", monitoring: str = "Monitoring"):
@@ -134,16 +153,19 @@ class OPCUAClient:
     
     async def disconnect(self):
         """Disconnect from OPC UA server"""
-        if self.subscription:
-            try:
-                await self.subscription.delete()
-            except:
-                pass
-            self.subscription = None
-        
-        if self.client:
-            await self.client.disconnect()
+        try:
+            if self.subscription:
+                try:
+                    await self.subscription.delete()
+                except:
+                    pass
+                self.subscription = None
+            
+            if self.client:
+                await self.client.disconnect()
+        finally:
             self.is_connected = False
+            self.client = None
     
     async def call_method(self, method_name: str, *args):
         """Call a method on the server"""
@@ -1010,12 +1032,25 @@ class MainWindow:
     
     def on_close(self):
         """Handle window close"""
+        # 1. Disconnect if connected
         if self.opcua_client.is_connected:
-            self.opcua_client.run_async(self.opcua_client.disconnect())
-        
-        if self.opcua_client.loop:
+            try:
+                # Schedule disconnection and wait for it
+                future = self.opcua_client.run_async(self.opcua_client.disconnect())
+                # Timeout to prevent blocking indefinitely if server is unresponsive
+                future.result(timeout=2.0)
+            except Exception as e:
+                print(f"Disconnection failed during exit: {e}")
+
+        # 2. Stop the asyncio loop
+        if self.opcua_client.loop and self.opcua_client.loop.is_running():
             self.opcua_client.loop.call_soon_threadsafe(self.opcua_client.loop.stop)
+            
+            # 3. Wait for the background thread to finish
+            if self.opcua_client.thread and self.opcua_client.thread.is_alive():
+                self.opcua_client.thread.join(timeout=2.0)
         
+        # 4. Destroy the Tkinter window
         self.root.destroy()
 
 
