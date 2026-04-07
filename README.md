@@ -96,12 +96,12 @@ python3 l2trig_direct_client.py << 'EOF'
 allpower off    # Should presumably be the default on DTC start-up
 mcf on          # Enable the muon candidate flag
 mcfthr 20       # Set the muon threshold to 20 modules
-mcfdel 20       # Set the muon delay to 100 ns (5ns per digital code)
+mcfdel 15       # Set the muon delay to 75 ns (5ns per digital code)
 allcurmin 200   # Set the minimum current to 97mA (0.485mA/step)
 allcurmax 1000  # Set the maximum current to 485mA
 trig 21 11 off  # Disable trigger on Slot 21 Channel 11
-trig 21 12 off
-trig 21 13 off
+trig 21 12 off  # Alternatively, disable all five channels with: 
+trig 21 13 off  # trigmask 21 0x07FE
 trig 21 14 off
 trig 21 15 off
 EOF
@@ -109,7 +109,7 @@ EOF
 
 ### Available Commands
 
-The direct controller operates with **raw digital codes** and **slot/channel** addresses. Key commands:
+The direct controller operates with **raw digital codes** and **slot/channel** addresses (indexed from one). Key commands:
 
 ```
 allpower on/off             All power channels on all slots
