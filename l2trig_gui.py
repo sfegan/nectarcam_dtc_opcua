@@ -7,7 +7,6 @@ Copyright 2026, Stephen Fegan <sfegan@llr.in2p3.fr>
 Laboratoire Leprince-Ringuet, CNRS/IN2P3, Ecole Polytechnique, Institut Polytechnique de Paris
 """
 
-import sys
 import asyncio
 import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext, simpledialog

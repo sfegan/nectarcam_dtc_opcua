@@ -12,8 +12,6 @@ Laboratoire Leprince-Ringuet, CNRS/IN2P3, Ecole Polytechnique, Institut Polytech
 import sys
 import argparse
 import shlex
-import traceback
-from typing import List, Any
 
 # Try to import readline for better interactive experience
 try:

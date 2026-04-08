@@ -9,7 +9,7 @@ Laboratoire Leprince-Ringuet, CNRS/IN2P3, Ecole Polytechnique, Institut Polytech
 """
 
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional, Set, Tuple
+from typing import List, Dict, Optional, Tuple
 from datetime import datetime
 from enum import Enum
 import logging
