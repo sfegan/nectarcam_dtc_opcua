@@ -40,7 +40,7 @@ test_smc_emulation: test_smc_emulation.c $(HEADERS) $(TARGET_LIBRARY)
 	@echo "Built SMC emulation test executable"
 
 clean:
-	rm -f $(TARGET) test_smc_emulationg test_hal
+	rm -f $(TARGET) test_smc_emulation test_hal
 	@echo "Cleaned build artifacts"
 
 install: $(TARGET)
