@@ -34,7 +34,7 @@
 #ifdef __cplusplus
     #define CEXTERN extern "C"
 #else
-    #define CEXTERN
+    #define CEXTERN extern
 #endif
 
 typedef struct {
