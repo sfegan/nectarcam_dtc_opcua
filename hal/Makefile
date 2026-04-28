@@ -10,7 +10,7 @@ HEADERS = l2trig_hal.h bits.h
 
 # Output library
 TARGET_LIBRARY = libl2trig_hal.so
-TARGET = $(TARGET_LIBRARY)
+TARGET = $(TARGET_LIBRARY) l2trig_test_cli
 
 EMULATESMC ?= 0
 
@@ -34,6 +34,10 @@ all: $(TARGET)
 $(TARGET_LIBRARY): $(SOURCES) $(HEADERS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $(TARGET_LIBRARY) $(SOURCES)
 	@echo "Built $(TARGET_LIBRARY)"
+
+l2trig_test_cli: l2trig_test_cli.c $(HEADERS) $(TARGET_LIBRARY)
+	$(CC) $(CFLAGS) -o $@ $< -L. -ll2trig_hal -Wl,-rpath,.
+	@echo "Built l2trig_test_cli"
 
 test_smc_emulation: test_smc_emulation.c $(HEADERS) $(TARGET_LIBRARY)
 	$(CC) $(CFLAGS) -o $@ $< -L. -ll2trig_hal
