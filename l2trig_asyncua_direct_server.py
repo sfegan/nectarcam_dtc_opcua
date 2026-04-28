@@ -21,7 +21,7 @@ from asyncua import Server, ua
 from asyncua.common.methods import uamethod
 from asyncua.server.user_managers import UserManager, User, UserRole
 
-from l2trig_api import (
+from l2trig_api_direct import (
     L2TriggerSystem,
     CTDBStatus,
     VALID_SLOTS,

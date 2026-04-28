@@ -100,14 +100,14 @@ class OPCUAClient:
             raise RuntimeError("Event loop not running")
         return asyncio.run_coroutine_threadsafe(coro, self.loop)
     
-    async def connect(self, endpoint: str, root: str = "L2Trigger", monitoring: str = "Monitoring"):
+    async def connect(self, endpoint: str, root: str = "l2trig", monitoring: str = "Monitoring"):
         """Connect to OPC UA server"""
         try:
             self.client = Client(endpoint)
             await self.client.connect()
             
             # Get namespace index
-            uri = "http://cta.l2trigger.hal"
+            uri = "http://cta-observatory.org/nectarcam/l2trig/"
             self.namespace_idx = await self.client.get_namespace_index(uri)
             
             # Build path to root object
@@ -794,7 +794,7 @@ class MainWindow:
 
         ttk.Label(conn_frame, text="Endpoint:").pack(side=tk.LEFT, padx=5)
 
-        self.endpoint_var = tk.StringVar(value="opc.tcp://localhost:4840/l2trigger/")
+        self.endpoint_var = tk.StringVar(value="opc.tcp://localhost:4840/l2trig/")
         endpoint_entry = ttk.Entry(conn_frame, textvariable=self.endpoint_var, width=40)
         endpoint_entry.pack(side=tk.LEFT, padx=5)
 
