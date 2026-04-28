@@ -61,3 +61,4 @@ nc_lightsource_asyncua_server.py
 hal/test_smc_emulation
 l2trig_emulator_state.dat
 hal/l2trig_test_cli
+l2tcp_server/l2tcp_server

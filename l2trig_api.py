@@ -1,130 +1,61 @@
 """
 l2trig_api.py
 
-High-level async API for L2 Trigger System
-Provides business logic layer with proper error handling and type safety
+High-level async API for L2 Trigger System (TCP version)
+Communicates with the embedded C server via L2TCP protocol.
 
 Copyright 2026, Stephen Fegan <sfegan@llr.in2p3.fr>
 Laboratoire Leprince-Ringuet, CNRS/IN2P3, Ecole Polytechnique, Institut Polytechnique de Paris
 """
 
-from dataclasses import dataclass, field
-from typing import List, Dict, Optional, Tuple
-from datetime import datetime
-from enum import Enum
+import asyncio
+import struct
 import logging
-
-import l2trig_low_level as hal
+from dataclasses import dataclass, field
+from typing import List, Dict, Optional, Tuple, Set
+from enum import IntEnum
 
 # ============================================================================
-# Constants
+# Constants & Protocol Definitions
 # ============================================================================
 
 VALID_SLOTS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 13, 14, 15, 16, 17, 18, 19, 20, 21]
 CHANNELS_PER_SLOT = 15
+DEFAULT_PORT = 4242
 
-# ============================================================================
-# Logging
-# ============================================================================
+class L2TCPMsgType(IntEnum):
+    ACK                 = 0x00
+    ERROR               = 0xFF
+    SYS_SET_CONFIG      = 0x01
+    SYS_RAMP_POWER      = 0x02
+    SYS_EMERGENCY_OFF   = 0x03
+    L2CB_GET_STATE      = 0x10
+    L2CB_SET_MCF_EN     = 0x11
+    L2CB_SET_GLITCH_EN  = 0x12
+    L2CB_SET_TIB_BLOCK_EN = 0x13
+    L2CB_SET_MCF_THRESH = 0x14
+    L2CB_SET_MCF_DELAY  = 0x15
+    L2CB_SET_L1_DEADTIME = 0x16
+    CTDB_SET_CH_POWER   = 0x20
+    CTDB_SET_CH_TRIG    = 0x21
+    CTDB_SET_CH_DELAY   = 0x22
+    CTDB_SET_LIMITS     = 0x23
+    CTDB_GET_MONITORING = 0x30
+    CTDB_GET_CONFIG     = 0x31
+    BATCH_MONITOR_ALL   = 0x32
+
+# Struct formats (Little Endian)
+HEADER_FMT = "<BBH"  # Type, Seq, Len
+HEADER_SIZE = struct.calcsize(HEADER_FMT)
 
 logger = logging.getLogger(__name__)
 
+# ================= ===========================================================
+# Data Classes (Maintained for API compatibility)
 # ============================================================================
-# Data Classes
-# ============================================================================
-
-class ChannelState(Enum):
-    """Power channel state"""
-    OFF = "off"
-    ON = "on"
-    ERROR_OVER_CURRENT = "error_over_current"
-    ERROR_UNDER_CURRENT = "error_under_current"
-    ERROR_BOTH = "error_both"
-
-
-@dataclass
-class PowerChannel:
-    """Power status for a single channel"""
-    slot: int
-    channel: int
-    enabled: bool
-    current_ma: float
-    state: ChannelState
-    
-    @property
-    def has_error(self) -> bool:
-        """Check if channel has any error"""
-        return self.state in (
-            ChannelState.ERROR_OVER_CURRENT,
-            ChannelState.ERROR_UNDER_CURRENT,
-            ChannelState.ERROR_BOTH
-        )
-
-
-@dataclass
-class TriggerChannel:
-    """Trigger configuration for a single channel"""
-    slot: int
-    channel: int
-    enabled: bool
-    delay_ns: float
-
-
-@dataclass
-class CTDBMonitoringData:
-    """High-frequency monitoring data for one CTDB board"""
-    slot: int
-    ctdb_current_ma: float
-    channel_currents_ma: List[float]
-    over_current_errors: int
-    under_current_errors: int
-    power_enabled_mask: int
-    timestamp: datetime = field(default_factory=datetime.now)
-
-
-@dataclass
-class CTDBConfigData:
-    """Low-frequency configuration data for one CTDB board"""
-    slot: int
-    firmware_version: int
-    power_enabled_mask: int
-    current_limit_min_ma: float
-    current_limit_max_ma: float
-    timestamp: datetime = field(default_factory=datetime.now)
-
-
-@dataclass
-class CTDBStatus:
-    """Complete status for one CTDB board"""
-    slot: int
-    firmware_version: int
-    power_channels: List[PowerChannel]
-    ctdb_current_ma: float
-    current_limit_min_ma: float
-    current_limit_max_ma: float
-    over_current_errors: int
-    under_current_errors: int
-    timestamp: datetime = field(default_factory=datetime.now)
-    
-    @property
-    def has_errors(self) -> bool:
-        """Check if any channel has errors"""
-        return any(ch.has_error for ch in self.power_channels)
-    
-    @property
-    def channels_with_errors(self) -> List[PowerChannel]:
-        """Get list of channels with errors"""
-        return [ch for ch in self.power_channels if ch.has_error]
-    
-    @property
-    def total_current_ma(self) -> float:
-        """Total current of all enabled channels"""
-        return sum(ch.current_ma for ch in self.power_channels if ch.enabled)
-
 
 @dataclass
 class L2CBStatus:
-    """Status of the L2CB controller board"""
     firmware_version: int
     uptime: int
     mcf_enabled: bool
@@ -134,708 +65,205 @@ class L2CBStatus:
     mcf_delay_ns: float
     l1_deadtime_ns: float
 
+@dataclass
+class CTDBMonitoringData:
+    slot: int
+    ctdb_current_ma: float
+    channel_currents_ma: List[float]
+    over_current_errors: int
+    under_current_errors: int
+    power_enabled_mask: int
+
+@dataclass
+class CTDBConfigData:
+    slot: int
+    firmware_version: int
+    current_limit_min_ma: float
+    current_limit_max_ma: float
+    trig_enabled_mask: int
+    trig_delays_ns: List[float]
 
 # ============================================================================
-# CTDB Controller
-# ============================================================================
-
-class CTDBController:
-    """High-level controller for a single CTDB board"""
-    
-    def __init__(self, slot: int):
-        """
-        Initialize CTDB controller
-        
-        Args:
-            slot: Slot number (1-9, 13-21)
-        """
-        if slot not in VALID_SLOTS:
-            raise ValueError(f"Invalid slot {slot}. Valid slots: {VALID_SLOTS}")
-        
-        self.slot = slot
-        
-        self._last_status: Optional[CTDBStatus] = None
-        
-        # Cached configuration data
-        self._cached_config: Optional[CTDBConfigData] = None
-        self._cached_trigger_status: Optional[List[TriggerChannel]] = None
-    
-    def get_monitoring_data(self) -> CTDBMonitoringData:
-        """
-        Get high-frequency monitoring data (currents and errors)
-        """
-        # Get CTDB board current (channel 0)
-        ctdb_current = hal.get_power_current(self.slot, 0)
-        
-        # Get all channel currents
-        channel_currents = []
-        for ch in range(1, CHANNELS_PER_SLOT + 1):
-            current = hal.get_power_current(self.slot, ch)
-            channel_currents.append(current)
-        
-        # Get error vectors
-        over_current_errors = hal.get_over_current_errors(self.slot)
-        under_current_errors = hal.get_under_current_errors(self.slot)
-
-        # Get power enable register
-        power_enabled_mask = hal.get_power_enabled(self.slot)
-        
-        return CTDBMonitoringData(
-            slot=self.slot,
-            ctdb_current_ma=ctdb_current,
-            channel_currents_ma=channel_currents,
-            over_current_errors=over_current_errors,
-            under_current_errors=under_current_errors,
-            power_enabled_mask=power_enabled_mask
-        )
-
-    def get_configuration_data(self) -> CTDBConfigData:
-        """
-        Get low-frequency configuration data (firmware, limits, enable status)
-        """
-        # Get firmware version
-        fw_version = hal.get_ctdb_firmware_revision(self.slot)
-        
-        # Get power enable register
-        power_reg = hal.get_power_enabled(self.slot)
-        
-        # Get current limits
-        limit_min_raw = hal.get_power_current_min(self.slot)
-        limit_max_raw = hal.get_power_current_max(self.slot)
-        
-        config = CTDBConfigData(
-            slot=self.slot,
-            firmware_version=fw_version,
-            power_enabled_mask=power_reg,
-            current_limit_min_ma=hal.current_raw_to_ma(limit_min_raw),
-            current_limit_max_ma=hal.current_raw_to_ma(limit_max_raw)
-        )
-        self._cached_config = config
-        return config
-
-    def get_status(self) -> CTDBStatus:
-        """
-        Get complete status of this CTDB
-        
-        Returns:
-            CTDBStatus object with all current information
-        """
-        config = self.get_configuration_data()
-        monitoring = self.get_monitoring_data()
-        
-        channels = []
-        for i in range(CHANNELS_PER_SLOT):
-            ch = i + 1
-            enabled = bool(config.power_enabled_mask & (1 << ch))
-            current = monitoring.channel_currents_ma[i]
-            
-            # Determine state
-            has_over = bool(monitoring.over_current_errors & (1 << ch))
-            has_under = bool(monitoring.under_current_errors & (1 << ch))
-            
-            if has_over and has_under:
-                state = ChannelState.ERROR_BOTH
-            elif has_over:
-                state = ChannelState.ERROR_OVER_CURRENT
-            elif has_under:
-                state = ChannelState.ERROR_UNDER_CURRENT
-            elif enabled:
-                state = ChannelState.ON
-            else:
-                state = ChannelState.OFF
-            
-            channels.append(PowerChannel(
-                slot=self.slot,
-                channel=ch,
-                enabled=enabled,
-                current_ma=current,
-                state=state
-            ))
-        
-        status = CTDBStatus(
-            slot=self.slot,
-            firmware_version=config.firmware_version,
-            power_channels=channels,
-            ctdb_current_ma=monitoring.ctdb_current_ma,
-            current_limit_min_ma=config.current_limit_min_ma,
-            current_limit_max_ma=config.current_limit_max_ma,
-            over_current_errors=monitoring.over_current_errors,
-            under_current_errors=monitoring.under_current_errors
-        )
-        
-        self._last_status = status
-        return status
-    
-    def set_channel_power_enabled(self, channel: int, enabled: bool) -> None:
-        """
-        Enable or disable a single power channel
-        
-        Args:
-            channel: Channel number (1-15)
-            enabled: True to enable, False to disable
-        """
-        if not 1 <= channel <= CHANNELS_PER_SLOT:
-            raise ValueError(f"Channel must be 1-{CHANNELS_PER_SLOT}")
-        
-        hal.set_power_channel_enabled( 
-            self.slot, channel, enabled
-        )
-            
-        logger.debug(f"Slot {self.slot} Ch{channel}: Power {'enabled' if enabled else 'disabled'}")
-    
-    def set_all_power_enabled(self, enabled: bool) -> None:
-        """
-        Enable or disable all power channels
-        
-        Args:
-            enabled: True to enable all, False to disable all
-        """
-        value = 0xFFFE if enabled else 0x0000  # bits 1-15
-        
-        hal.set_power_enabled(self.slot, value)
-        
-        logger.debug(f"Slot {self.slot}: All channels {'enabled' if enabled else 'disabled'}")
-    
-    def set_some_power_enabled(self, channel_states: Dict[int, bool]) -> None:
-        """
-        Set multiple channels at once
-        
-        Args:
-            channel_states: Dict mapping channel number to enable state
-        """
-        # Read current state
-        power_reg = hal.get_power_enabled(self.slot)
-        
-        # Modify bits
-        for channel, enabled in channel_states.items():
-            if not 1 <= channel <= CHANNELS_PER_SLOT:
-                raise ValueError(f"Channel must be 1-{CHANNELS_PER_SLOT}")
-            
-            if enabled:
-                power_reg |= (1 << channel)
-            else:
-                power_reg &= ~(1 << channel)
-        
-        # Write back
-        hal.set_power_enabled(self.slot, power_reg)
-        
-        logger.debug(f"Slot {self.slot}: Set channels {channel_states}")
-    
-    def set_current_limits(self, min_ma: float, max_ma: float) -> Tuple[float, float]:
-        """
-        Set current limits for all channels
-        
-        Args:
-            min_ma: Minimum current in mA
-            max_ma: Maximum current in mA
-            
-        Returns:
-            Tuple[float, float]: Actual (min, max) current limits set after clipping/rounding
-        """
-
-        if min_ma < 0:
-            logger.warning(f"Requested under-current {min_ma} mA is negative, setting to 0")
-            min_ma = 0.0
-        if min_ma > hal.CURRENT_MAX:
-            logger.warning(f"Requested under-current {min_ma} mA exceeds max {hal.CURRENT_MAX:.1f} mA, setting to max")
-            min_ma = hal.CURRENT_MAX
-        if max_ma < min_ma  :
-            logger.warning(f"Requested over-current {max_ma} mA is less than requested minimum {min_ma} mA, setting to minimum")   
-            max_ma = min_ma
-        if max_ma > hal.CURRENT_MAX:
-            logger.warning(f"Requested over-current {max_ma} mA exceeds max {hal.CURRENT_MAX:.1f} mA, setting to max")
-            max_ma = hal.CURRENT_MAX
-
-        min_raw = hal.current_ma_to_raw(min_ma)
-        max_raw = hal.current_ma_to_raw(max_ma)
-        
-        hal.set_power_current_min(self.slot, min_raw)
-        hal.set_power_current_max(self.slot, max_raw)
-        
-        # Re-calculate actual values from raw to account for rounding/clipping
-        actual_min = hal.current_raw_to_ma(min_raw)
-        actual_max = hal.current_raw_to_ma(max_raw)
-
-        logger.debug(f"Slot {self.slot}: Current limits set to {actual_min:.1f}-{actual_max:.1f} mA (raw: {min_raw}-{max_raw})")
-    
-        return actual_min, actual_max
-
-    def get_trigger_status(self) -> List[TriggerChannel]:
-        """Get trigger configuration for all channels"""
-        # Get trigger enabled status
-        mask = hal.get_l1_trigger_enabled(self.slot)
-        
-        channels = []
-        for ch in range(1,CHANNELS_PER_SLOT+1):
-            enabled = bool(mask & (1 << ch))
-            
-            # Get delay
-            delay_raw = hal.get_l1_trigger_delay(self.slot, ch)
-            
-            channels.append(TriggerChannel(
-                slot=self.slot,
-                channel=ch,
-                enabled=enabled,
-                delay_ns=hal.delay_raw_to_ns(delay_raw)
-            ))
-        
-        return channels
-    
-    def set_channel_trigger_enabled(self, channel: int, enabled: bool) -> None:
-        """Set trigger enabled status for a channel"""
-        if not 1 <= channel <= CHANNELS_PER_SLOT:
-            raise ValueError(f"Channel must be 1-{CHANNELS_PER_SLOT}")
-        
-        hal.set_l1_trigger_channel_enabled( 
-            self.slot, channel, enabled
-        )
-        
-        logger.debug(f"Slot {self.slot} Trigger Ch{channel}: {'Enabled' if enabled else 'Disabled'}")
-
-    def set_all_trigger_enabled(self, enabled: bool) -> None:
-        """Set trigger enabled status for all channels on this board"""
-        mask = 0xFFFE if enabled else 0x0000
-        hal.set_l1_trigger_enabled(self.slot, mask)
-        logger.debug(f"Slot {self.slot}: All trigger channels {'enabled' if enabled else 'disabled'}")
-    
-    def set_some_trigger_enabled(self, channel_states: Dict[int, bool]) -> None:
-        """
-        Set multiple trigger channels at once
-        
-        Args:
-            channel_states: Dict mapping channel number to enable state
-        """
-        mask = hal.get_l1_trigger_enabled(self.slot)
-        for channel, enabled in channel_states.items():
-            if not 1 <= channel <= CHANNELS_PER_SLOT:
-                raise ValueError(f"Channel must be 1-{CHANNELS_PER_SLOT}")
-            if enabled:
-                mask |= (1 << channel)
-            else:
-                mask &= ~(1 << channel)
-        hal.set_l1_trigger_enabled(self.slot, mask)
-        logger.debug(f"Slot {self.slot}: Set trigger channels {channel_states}")
-
-    def set_channel_trigger_delay(self, channel: int, delay_ns: float) -> float:
-        """
-        Set trigger delay for a channel
-        
-        Returns:
-            float: Actual delay in nanoseconds set after clipping/rounding
-        """
-        if not 1 <= channel <= CHANNELS_PER_SLOT:
-            raise ValueError(f"Channel must be 1-{CHANNELS_PER_SLOT}")
-    
-        if delay_ns < 0:
-            logger.warning(f"Requested delay {delay_ns} ns is negative, setting to 0")
-            delay_ns = 0.0
-        elif delay_ns > hal.L1DELAY_MAX:
-            logger.warning(f"Requested delay {delay_ns} ns exceeds max {hal.L1DELAY_MAX:.1f} ns, setting to max")
-            delay_ns = hal.L1DELAY_MAX
-        
-        delay_raw = hal.delay_ns_to_raw(delay_ns)
-        
-        hal.set_l1_trigger_delay( 
-            self.slot, channel, delay_raw
-        )
-        
-        actual_delay = hal.delay_raw_to_ns(delay_raw)
-        logger.debug(f"Slot {self.slot} Trigger Ch{channel}: Delay set to {actual_delay:.3f} ns")
-        return actual_delay
-
-
-# ============================================================================
-# L2 Trigger System Controller
+# L2TriggerSystem (TCP Client)
 # ============================================================================
 
 class L2TriggerSystem:
-    """High-level controller for entire L2 trigger system"""
-    
-    def __init__(self, enabled_slots: Optional[List[int]] = None):
-        """
-        Initialize L2 trigger system
-        
-        Args:
-            enabled_slots: List of slots to control (default: all valid slots)
-        """
+    def __init__(self, host: str = "127.0.0.1", port: int = DEFAULT_PORT):
+        self.host = host
+        self.port = port
+        self.reader: Optional[asyncio.StreamReader] = None
+        self.writer: Optional[asyncio.StreamWriter] = None
+        self._seq = 0
+        self._lock = asyncio.Lock()
 
-        if enabled_slots is None:
-            enabled_slots = VALID_SLOTS
-        
-        # Validate slots
-        invalid_slots = set(enabled_slots) - set(VALID_SLOTS)
-        if invalid_slots:
-            raise ValueError(f"Invalid slots: {invalid_slots}")
-        
-        self.ctdbs = {
-            slot: CTDBController(slot) 
-            for slot in enabled_slots
-        }
+    async def connect(self):
+        """Establish connection to the embedded server"""
+        logger.info(f"Connecting to L2Trigger server at {self.host}:{self.port}")
+        self.reader, self.writer = await asyncio.open_connection(self.host, self.port)
 
-    def get_l2cb_status(self) -> L2CBStatus:
-        """Get status of the L2CB controller board"""
-        fw_version = hal.get_l2cb_firmware_revision()
-        uptime = hal.get_l2cb_timestamp()
-        control = hal.get_l2cb_control_state()
-        mcf_threshold = hal.get_l2cb_mcf_threshold()
-        mcf_delay = hal.get_l2cb_mcf_delay()
-        l1_deadtime = hal.get_l2cb_l1_deadtime()
+    async def disconnect(self):
+        """Close connection"""
+        if self.writer:
+            self.writer.close()
+            await self.writer.wait_closed()
+        self.reader = None
+        self.writer = None
 
+    def _next_seq(self) -> int:
+        self._seq = (self._seq + 1) & 0xFF
+        return self._seq
+
+    async def _send_recv(self, msg_type: L2TCPMsgType, payload: bytes = b"") -> Tuple[L2TCPMsgType, bytes]:
+        async with self._lock:
+            if not self.writer:
+                await self.connect()
+
+            seq = self._next_seq()
+            header = struct.pack(HEADER_FMT, msg_type, seq, len(payload))
+            self.writer.write(header + payload)
+            await self.writer.drain()
+
+            # Read response header
+            resp_hdr_data = await self.reader.readexactly(HEADER_SIZE)
+            rtype, rseq, rlen = struct.unpack(HEADER_FMT, resp_hdr_data)
+            
+            # Read payload
+            rpayload = b""
+            if rlen > 0:
+                rpayload = await self.reader.readexactly(rlen)
+
+            if rseq != seq:
+                raise RuntimeError(f"Sequence mismatch: expected {seq}, got {rseq}")
+
+            if rtype == L2TCPMsgType.ERROR:
+                code = rpayload[0]
+                msg = rpayload[1:].decode('ascii').strip('\x00')
+                raise RuntimeError(f"Server error {code}: {msg}")
+
+            return L2TCPMsgType(rtype), rpayload
+
+    # --- System Control ---
+
+    async def set_config(self, active_slots: List[int], immutable_masks: Dict[int, int]):
+        """Configure active slots and immutable channels"""
+        active_mask = 0
+        for s in active_slots:
+            active_mask |= (1 << s)
+        
+        imm_masks = [0] * 22
+        for s, m in immutable_masks.items():
+            if 1 <= s <= 21:
+                imm_masks[s] = m
+        
+        payload = struct.pack("<I" + "H" * 22, active_mask, *imm_masks)
+        await self._send_recv(L2TCPMsgType.SYS_SET_CONFIG, payload)
+
+    async def ramp_power(self, enable: bool):
+        """Trigger global power ramp"""
+        payload = struct.pack("<B", 1 if enable else 0)
+        await self._send_recv(L2TCPMsgType.SYS_RAMP_POWER, payload)
+
+    async def emergency_shutdown(self):
+        """Immediate global power off"""
+        await self._send_recv(L2TCPMsgType.SYS_EMERGENCY_OFF)
+
+    # --- L2CB Controls ---
+
+    async def get_l2cb_status(self) -> L2CBStatus:
+        _, data = await self._send_recv(L2TCPMsgType.L2CB_GET_STATE)
+        # fw(u16), ts(u64), ctrl(u16), thresh(u16), delay(u16), dt(u16)
+        fw, ts, ctrl, thresh, delay, dt = struct.unpack("<HQHHHH", data)
         return L2CBStatus(
-            firmware_version=fw_version,
-            uptime=uptime,
-            mcf_enabled=control["mcf_enabled"],
-            busy_glitch_filter_enabled=control["busy_glitch_filter_enabled"],
-            tib_trigger_busy_block_enabled=control["tib_trigger_busy_block_enabled"],
-            mcf_threshold=mcf_threshold,
-            mcf_delay_ns=hal.mcf_delay_raw_to_ns(mcf_delay),
-            l1_deadtime_ns=hal.l1_deadtime_raw_to_ns(l1_deadtime)
+            firmware_version=fw,
+            uptime=ts * 8, # convert to ns
+            mcf_enabled=bool(ctrl & 0x1),
+            busy_glitch_filter_enabled=bool(ctrl & 0x2),
+            tib_trigger_busy_block_enabled=bool(ctrl & 0x4),
+            mcf_threshold=thresh,
+            mcf_delay_ns=float(delay * 5),
+            l1_deadtime_ns=float(dt * 5)
         )
 
-    def set_mcf_enabled(self, enabled: bool) -> None:
-        """Enable or disable L2CB MCF trigger propagation"""
-        hal.set_l2cb_mcf_enabled(enabled)
-        logger.info(f"L2CB MCF trigger propagation {'enabled' if enabled else 'disabled'}")
+    async def set_mcf_enabled(self, enabled: bool):
+        await self._send_recv(L2TCPMsgType.L2CB_SET_MCF_EN, struct.pack("<H", 1 if enabled else 0))
 
-    def set_busy_glitch_filter_enabled(self, enabled: bool) -> None:
-        """Enable or disable L2CB busy glitch filter"""
-        hal.set_l2cb_busy_glitch_filter_enabled(enabled)
-        logger.info(f"L2CB busy glitch filter {'enabled' if enabled else 'disabled'}")
+    async def set_glitch_filter_enabled(self, enabled: bool):
+        await self._send_recv(L2TCPMsgType.L2CB_SET_GLITCH_EN, struct.pack("<H", 1 if enabled else 0))
 
-    def set_tib_trigger_busy_block_enabled(self, enabled: bool) -> None:
-        """Enable or disable L2CB TIB trigger blocking"""
-        hal.set_l2cb_tib_trigger_busy_block_enabled(enabled)
-        logger.info(f"L2CB TIB trigger blocking {'enabled' if enabled else 'disabled'}")
+    async def set_tib_block_enabled(self, enabled: bool):
+        await self._send_recv(L2TCPMsgType.L2CB_SET_TIB_BLOCK_EN, struct.pack("<H", 1 if enabled else 0))
 
-    def set_mcf_threshold(self, threshold: int) -> int:
-        """
-        Set L2CB MCF threshold
+    async def set_mcf_threshold(self, threshold: int):
+        await self._send_recv(L2TCPMsgType.L2CB_SET_MCF_THRESH, struct.pack("<H", threshold))
+
+    async def set_mcf_delay(self, delay_raw: int):
+        await self._send_recv(L2TCPMsgType.L2CB_SET_MCF_DELAY, struct.pack("<H", delay_raw))
+
+    async def set_l1_deadtime(self, deadtime_raw: int):
+        await self._send_recv(L2TCPMsgType.L2CB_SET_L1_DEADTIME, struct.pack("<H", deadtime_raw))
+
+    # --- CTDB Controls ---
+
+    async def set_channel_power_enabled(self, slot: int, channel: int, enabled: bool):
+        payload = struct.pack("<BBB", slot, channel, 1 if enabled else 0)
+        await self._send_recv(L2TCPMsgType.CTDB_SET_CH_POWER, payload)
+
+    async def set_channel_trigger_enabled(self, slot: int, channel: int, enabled: bool):
+        payload = struct.pack("<BBB", slot, channel, 1 if enabled else 0)
+        await self._send_recv(L2TCPMsgType.CTDB_SET_CH_TRIG, payload)
+
+    async def set_channel_trigger_delay(self, slot: int, channel: int, delay_raw: int):
+        payload = struct.pack("<BBH", slot, channel, delay_raw)
+        await self._send_recv(L2TCPMsgType.CTDB_SET_CH_DELAY, payload)
+
+    async def set_ctdb_limits(self, slot: int, min_raw: int, max_raw: int):
+        payload = struct.pack("<BHH", slot, min_raw, max_raw)
+        await self._send_recv(L2TCPMsgType.CTDB_SET_LIMITS, payload)
+
+    # --- Monitoring ---
+
+    def _parse_monitoring(self, data: bytes) -> CTDBMonitoringData:
+        # slot(u8), ctdb_curr(u16), ch_curr(u16*15), over(u16), under(u16), pwr(u16)
+        slot, ctdb_curr = struct.unpack_from("<BH", data, 0)
+        ch_curr = list(struct.unpack_from("<" + "H" * 15, data, 3))
+        over, under, pwr = struct.unpack_from("<HHH", data, 3 + 30)
         
-        Returns:
-            int: Actual threshold set after clipping
-        """
-        if threshold < 0:
-            logger.warning(f"Requested MCF threshold {threshold} is negative, setting to 0")
-            threshold = 0
-        elif threshold > hal.MCFTHRESHOLD_CODE_MAX:
-            logger.warning(f"Requested MCF threshold {threshold} exceeds max {hal.MCFTHRESHOLD_CODE_MAX}, setting to max")
-            threshold = hal.MCFTHRESHOLD_CODE_MAX
+        return CTDBMonitoringData(
+            slot=slot,
+            ctdb_current_ma=ctdb_curr * 0.485,
+            channel_currents_ma=[c * 0.485 for c in ch_curr],
+            over_current_errors=over,
+            under_current_errors=under,
+            power_enabled_mask=pwr
+        )
 
-        hal.set_l2cb_mcf_threshold(threshold)
-        logger.info(f"L2CB MCF threshold set to {threshold}")
-        return threshold
+    async def get_ctdb_monitoring(self, slot: int) -> CTDBMonitoringData:
+        _, data = await self._send_recv(L2TCPMsgType.CTDB_GET_MONITORING, struct.pack("<B", slot))
+        return self._parse_monitoring(data)
 
-    def set_mcf_delay(self, delay_ns: float) -> float:
-        """
-        Set L2CB MCF delay
+    async def get_all_monitoring(self) -> Dict[int, CTDBMonitoringData]:
+        _, data = await self._send_recv(L2TCPMsgType.BATCH_MONITOR_ALL)
+        count = data[0]
+        res = {}
+        offset = 1
+        mon_size = struct.calcsize("<BH" + "H" * 15 + "HHH")
+        for _ in range(count):
+            mon = self._parse_monitoring(data[offset:offset+mon_size])
+            res[mon.slot] = mon
+            offset += mon_size
+        return res
+
+    async def get_ctdb_config(self, slot: int) -> CTDBConfigData:
+        _, data = await self._send_recv(L2TCPMsgType.CTDB_GET_CONFIG, struct.pack("<B", slot))
+        # slot(u8), fw(u16), min(u16), max(u16), trig_mask(u16), trig_delays(u16*15)
+        slot, fw, cmin, cmax, tmask = struct.unpack_from("<BHHHH", data, 0)
+        tdelays = list(struct.unpack_from("<" + "H" * 15, data, 9))
         
-        Returns:
-            float: Actual delay in ns set after clipping/rounding
-        """
-        if delay_ns < 0:
-            logger.warning(f"Requested MCF delay {delay_ns} ns is negative, setting to 0")
-            delay_ns = 0
-        elif delay_ns > hal.MCFDELAY_MAX:
-            logger.warning(f"Requested MCF delay {delay_ns} ns exceeds max {hal.MCFDELAY_MAX} ns, setting to max")
-            delay_ns = hal.MCFDELAY_MAX
-        
-        raw = hal.mcf_delay_ns_to_raw(delay_ns)
-        hal.set_l2cb_mcf_delay(raw)
-        actual_delay = hal.mcf_delay_raw_to_ns(raw)
-        logger.info(f"L2CB MCF delay set to {actual_delay} ns")
-        return actual_delay
-    
-    def get_l1_deadtime(self) -> float:
-        """Get L2CB L1 deadtime in nanoseconds"""
-        return hal.l1_deadtime_raw_to_ns(hal.get_l2cb_l1_deadtime())
-    
-    def set_l1_deadtime(self, deadtime_ns: float) -> float:
-        """
-        Set L2CB L1 deadtime in nanoseconds
-        
-        Returns:
-            float: Actual deadtime in ns set after clipping/rounding
-        """
-        if deadtime_ns < 0:
-            logger.warning(f"Requested L1 deadtime {deadtime_ns} ns is negative, setting to 0")
-            deadtime_ns = 0
-        elif deadtime_ns > hal.L1DEADTIME_MAX:
-            logger.warning(f"Requested L1 deadtime {deadtime_ns} ns exceeds max {hal.L1DEADTIME_MAX} ns, setting to max")
-            deadtime_ns = hal.L1DEADTIME_MAX
-        
-        raw = hal.l1_deadtime_ns_to_raw(deadtime_ns)
-        hal.set_l2cb_l1_deadtime(raw)
-        actual_deadtime = hal.l1_deadtime_raw_to_ns(raw)
-        logger.info(f"L2CB L1 deadtime set to {actual_deadtime} ns")
-        return actual_deadtime
-
-    def get_all_monitoring_data(self) -> Dict[int, CTDBMonitoringData]:
-        """Get monitoring data for all CTDB boards"""
-        data = {}
-        for slot, ctdb in self.ctdbs.items():
-            try:
-                data[slot] = ctdb.get_monitoring_data()
-            except Exception as e:
-                logger.error(f"Error reading monitoring data from slot {slot}: {e}")
-        return data
-
-    def get_all_configuration_data(self) -> Dict[int, CTDBConfigData]:
-        """Get configuration data for all CTDB boards"""
-        data = {}
-        for slot, ctdb in self.ctdbs.items():
-            try:
-                data[slot] = ctdb.get_configuration_data()
-            except Exception as e:
-                logger.error(f"Error reading configuration data from slot {slot}: {e}")
-        return data
-
-    def get_all_trigger_status(self) -> Dict[int, List[TriggerChannel]]:
-        """Get trigger status for all CTDB boards"""
-        data = {}
-        for slot, ctdb in self.ctdbs.items():
-            try:
-                data[slot] = ctdb.get_trigger_status()
-            except Exception as e:
-                logger.error(f"Error reading trigger status from slot {slot}: {e}")
-        return data
-
-    def get_fast_data(self) -> Tuple[L2CBStatus, Dict[int, CTDBMonitoringData]]:
-        """Consolidated high-frequency data collection"""
-        l2cb = self.get_l2cb_status()
-        mon = self.get_all_monitoring_data()
-        return l2cb, mon
-
-    def get_slow_data(self) -> Tuple[Dict[int, CTDBConfigData], Dict[int, List[TriggerChannel]]]:
-        """Consolidated low-frequency data collection"""
-        config = self.get_all_configuration_data()
-        trigger = self.get_all_trigger_status()
-        return config, trigger
-
-    def get_full_data(self) -> Tuple[L2CBStatus, Dict[int, CTDBMonitoringData], 
-                                     Dict[int, CTDBConfigData], Dict[int, List[TriggerChannel]]]:
-        """Complete system data collection"""
-        l2cb, mon = self.get_fast_data()
-        config, trigger = self.get_slow_data()
-        return l2cb, mon, config, trigger
-
-    def get_all_status(self) -> Dict[int, CTDBStatus]:
-        """
-        Get status of all CTDB boards
-        
-        Returns:
-            Dict mapping slot number to CTDBStatus
-        """
-        result = {}
-        for slot, ctdb in self.ctdbs.items():
-            try:
-                result[slot] = ctdb.get_status()
-            except Exception as e:
-                logger.error(f"Error reading slot {slot}: {e}")
-        
-        return result
-    
-    def get_slot_status(self, slot: int) -> CTDBStatus:
-        """Get status of a specific slot"""
-        if slot not in self.ctdbs:
-            raise ValueError(f"Slot {slot} not enabled")
-        
-        return self.ctdbs[slot].get_status()
-    
-    def set_channel_power_enabled(self, slot: int, channel: int, enabled: bool) -> None:
-        """Set power for a specific slot/channel"""
-        if slot not in self.ctdbs:
-            raise ValueError(f"Slot {slot} not enabled")
-        
-        self.ctdbs[slot].set_channel_power_enabled(channel, enabled)
-    
-    def set_all_power_enabled(self, enabled: bool) -> None:
-        """Enable or disable all power channels on all boards"""
-        for ctdb in self.ctdbs.values():
-            try:
-                ctdb.set_all_power_enabled(enabled)
-            except Exception as e:
-                logger.error(f"Error setting power on slot {ctdb.slot}: {e}")
-        
-        logger.debug(f"All power channels {'enabled' if enabled else 'disabled'}")
-
-    def set_all_trigger_enabled(self, enabled: bool) -> None:
-        """Set trigger enabled status for all channels on all boards"""
-        for ctdb in self.ctdbs.values():
-            try:
-                ctdb.set_all_trigger_enabled(enabled)
-            except Exception as e:
-                logger.error(f"Error setting trigger enabled on slot {ctdb.slot}: {e}")
-        logger.debug(f"All trigger channels {'enabled' if enabled else 'disabled'}")
-
-    def set_all_trigger_delay(self, delay_ns: float) -> float:
-        """
-        Set trigger delay for all channels on all boards
-
-        Returns:
-            float: Actual delay in nanoseconds set after clipping/rounding (from last channel set)
-        """
-        actual_delay = delay_ns
-        for ctdb in self.ctdbs.values():
-            for ch in range(1, CHANNELS_PER_SLOT+1):
-                try:
-                    actual_delay = ctdb.set_channel_trigger_delay(ch, delay_ns)
-                except Exception as e:
-                    logger.error(f"Error setting trigger delay on slot {ctdb.slot} ch {ch}: {e}")
-        logger.debug(f"All trigger delays set to {actual_delay:.3f} ns")
-        return actual_delay
-
-    def emergency_shutdown(self) -> None:
-        """Emergency shutdown - turn off all power channels immediately"""
-        logger.warning("EMERGENCY SHUTDOWN initiated")
-
-        # Use low-level call for speed
-        hal.set_power_enabled_all(False)
-
-        logger.warning("EMERGENCY SHUTDOWN complete")
-
-    def set_current_limits_all(self, min_ma: float, max_ma: float) -> Tuple[float, float]:
-        """
-        Set current limits for all slots
-
-        Returns:
-            Tuple[float, float]: Actual (min, max) current limits set (from last slot set)
-        """
-        actual_min, actual_max = min_ma, max_ma
-        for ctdb in self.ctdbs.values():
-            try:
-                actual_min, actual_max = ctdb.set_current_limits(min_ma, max_ma)
-            except Exception as e:
-                logger.error(f"Error setting current limits on slot {ctdb.slot}: {e}")
-
-        logger.debug(f"Current limits set to {actual_min:.1f}-{actual_max:.1f} mA on all slots")
-        return actual_min, actual_max    
-    def get_slots_with_errors(self) -> List[int]:
-        """Get list of slots that have error conditions"""
-        all_status = self.get_all_status()
-        return [slot for slot, status in all_status.items() if status.has_errors]
-    
-    def health_check(self) -> Dict[str, any]:
-        """
-        Perform system health check
-        
-        Returns:
-            Dict with health information
-        """
-        health = {
-            "overall": "healthy",
-            "slots": {},
-            "errors": [],
-            "warnings": []
-        }
-        
-        try:
-            # Check L2CB
-            l2cb_status = self.get_l2cb_status()
-            health["l2cb_firmware"] = l2cb_status.firmware_version
-            
-            # Check all CTDBs
-            all_status = self.get_all_status()
-            
-            for slot, status in all_status.items():
-                slot_health = {
-                    "firmware": status.firmware_version,
-                    "ctdb_current_ma": status.ctdb_current_ma,
-                    "total_current_ma": status.total_current_ma,
-                    "errors": []
-                }
-                
-                if status.has_errors:
-                    health["overall"] = "degraded"
-                    for ch in status.channels_with_errors:
-                        error_msg = f"Ch{ch.channel}: {ch.state.value}"
-                        slot_health["errors"].append(error_msg)
-                        health["errors"].append(f"Slot {slot} {error_msg}")
-                
-                health["slots"][slot] = slot_health
-            
-        except Exception as e:
-            health["overall"] = "error"
-            health["errors"].append(f"Health check failed: {str(e)}")
-        
-        return health
-
-
-# ============================================================================
-# Example Usage
-# ============================================================================
-
-def example_usage():
-    """Example usage of the L2 trigger system API"""
-    import sys
-    
-    # Configure logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
-    
-    # Initialize hardware
-    try:
-        hal.smc_open()
-    except Exception as e:
-        print(f"CRITICAL: Failed to initialize hardware interface: {e}")
-        sys.exit(1)
-
-    try:
-        # Initialize system
-        system = L2TriggerSystem()
-    
-        # Get L2CB status
-        l2cb = system.get_l2cb_status()
-        print(f"L2CB Firmware: 0x{l2cb.firmware_version:04X}")
-        print(f"Timestamp: {l2cb.timestamp}")
-        
-        # Get status of all boards
-        print("\n=== Getting status of all boards ===")
-        all_status = system.get_all_status()
-        
-        for slot, status in all_status.items():
-            print(f"\nSlot {slot}:")
-            print(f"  Firmware: 0x{status.firmware_version:04X}")
-            print(f"  CTDB Current: {status.ctdb_current_ma:.2f} mA")
-            print(f"  Total Channel Current: {status.total_current_ma:.2f} mA")
-            print(f"  Current Limits: {status.current_limit_min_ma:.1f} - {status.current_limit_max_ma:.1f} mA")
-            
-            if status.has_errors:
-                print(f"  ERRORS:")
-                for ch in status.channels_with_errors:
-                    print(f"    Ch{ch.channel}: {ch.state.value} ({ch.current_ma:.2f} mA)")
-            
-            # Show enabled channels
-            enabled = [ch.channel for ch in status.power_channels if ch.enabled]
-            if enabled:
-                print(f"  Enabled channels: {enabled}")
-        
-        # Control specific channel
-        print("\n=== Controlling power ===")
-        system.set_channel_power_enabled(slot=1, channel=5, enabled=True)
-        
-        # Set current limits
-        system.ctdbs[1].set_current_limits(min_ma=100, max_ma=2000)
-        
-        # Get trigger status
-        print("\n=== Trigger Configuration ===")
-        trigger_status = system.ctdbs[1].get_trigger_status()
-        for trig in trigger_status[:5]:  # Show first 5
-            print(f"  Ch{trig.channel}: {'Enabled' if trig.enabled else 'Disabled'}, Delay={trig.delay_ns:.3f}ns")
-        
-        # Health check
-        print("\n=== Health Check ===")
-        health = system.health_check()
-        print(f"Overall: {health['overall']}")
-        if health['errors']:
-            print(f"Errors: {health['errors']}")
-        
-        # Example: Emergency shutdown (commented out for safety)
-        # system.emergency_shutdown()
-    finally:
-        hal.smc_close()
-
-
-if __name__ == "__main__":
-    example_usage()
+        return CTDBConfigData(
+            slot=slot,
+            firmware_version=fw,
+            current_limit_min_ma=cmin * 0.485,
+            current_limit_max_ma=cmax * 0.485,
+            trig_enabled_mask=tmask,
+            trig_delays_ns=[d * 0.037 for d in tdelays]
+        )
