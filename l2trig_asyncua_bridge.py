@@ -341,7 +341,9 @@ class L2TriggerBridgeServer:
         async def emergency_shutdown(parent_node):
             """Immediately disable all power channels."""
             logger.warning("Emergency shutdown called")
-            async with self._lock: await self.system.emergency_shutdown()
+            async with self._lock: 
+                await self.system.emergency_shutdown()
+                await self._do_poll_fast(datetime.datetime.now(datetime.timezone.utc))
             return "OK: Emergency shutdown complete"
         await add_described_method("EmergencyShutdown", emergency_shutdown)
 
@@ -349,7 +351,9 @@ class L2TriggerBridgeServer:
         async def set_all_power_enabled(parent_node, enabled: bool):
             """Global control to enable or disable power for all modules using a ramp."""
             logger.info(f"Setting all power to {enabled}")
-            async with self._lock: await self.system.ramp_power(enabled)
+            async with self._lock: 
+                await self.system.ramp_power(enabled)
+                await self._do_poll_fast(datetime.datetime.now(datetime.timezone.utc))
             return f"OK: All power {'enable' if enabled else 'disable'} ramp triggered"
         await add_described_method("SetAllPowerEnabled", set_all_power_enabled, inputs=[a("enabled", ua.VariantType.Boolean)])
 
@@ -360,7 +364,9 @@ class L2TriggerBridgeServer:
             except ValueError as e: return f"ERROR: {e}"
             if (slot, channel) in self.immutable_channels: return f"ERROR: Module {module} is immutable"
             logger.info(f"Setting power for module {module} to {enabled}")
-            async with self._lock: await self.system.set_channel_power_enabled(slot, channel, enabled)
+            async with self._lock: 
+                await self.system.set_channel_power_enabled(slot, channel, enabled)
+                await self._do_poll_fast(datetime.datetime.now(datetime.timezone.utc))
             return f"OK: Module {module} {'enabled' if enabled else 'disabled'}"
         await add_described_method("SetModulePowerEnabled", set_module_power, 
                                    inputs=[a("module", ua.VariantType.Int32), a("enabled", ua.VariantType.Boolean)])
@@ -370,7 +376,9 @@ class L2TriggerBridgeServer:
             """Configure current limits for an entire CTDB board."""
             if not 1 <= board <= len(self.active_slots): return f"ERROR: Board index {board} out of range"
             slot = self.active_slots[board - 1]
-            async with self._lock: await self.system.set_ctdb_limits(slot, current_ma_to_raw(min_ma), current_ma_to_raw(max_ma))
+            async with self._lock: 
+                await self.system.set_ctdb_limits(slot, current_ma_to_raw(min_ma), current_ma_to_raw(max_ma))
+                await self._do_poll_slow(datetime.datetime.now(datetime.timezone.utc))
             return f"OK: Board {board} limits set"
         await add_described_method("SetBoardCurrentLimits", set_board_current_limits,
                                    inputs=[a("board", ua.VariantType.Int32), a("min_ma", ua.VariantType.Double), a("max_ma", ua.VariantType.Double)])
@@ -381,7 +389,9 @@ class L2TriggerBridgeServer:
             try: slot, channel = self._module_to_slot_channel(module)
             except ValueError as e: return f"ERROR: {e}"
             if (slot, channel) in self.immutable_channels: return f"ERROR: Module {module} is immutable"
-            async with self._lock: await self.system.set_channel_trigger_enabled(slot, channel, enabled)
+            async with self._lock: 
+                await self.system.set_channel_trigger_enabled(slot, channel, enabled)
+                await self._do_poll_slow(datetime.datetime.now(datetime.timezone.utc))
             return f"OK: Module {module} trigger {'enabled' if enabled else 'disabled'}"
         await add_described_method("SetModuleTriggerEnabled", set_module_trigger_enabled,
                                    inputs=[a("module", ua.VariantType.Int32), a("enabled", ua.VariantType.Boolean)])
@@ -392,7 +402,9 @@ class L2TriggerBridgeServer:
             try: slot, channel = self._module_to_slot_channel(module)
             except ValueError as e: return f"ERROR: {e}"
             if (slot, channel) in self.immutable_channels: return f"ERROR: Module {module} is immutable"
-            async with self._lock: await self.system.set_channel_trigger_delay(slot, channel, delay_ns_to_raw(delay_ns))
+            async with self._lock: 
+                await self.system.set_channel_trigger_delay(slot, channel, delay_ns_to_raw(delay_ns))
+                await self._do_poll_slow(datetime.datetime.now(datetime.timezone.utc))
             return f"OK: Module {module} delay set"
         await add_described_method("SetModuleTriggerDelay", set_module_trigger_delay,
                                    inputs=[a("module", ua.VariantType.Int32), a("delay_ns", ua.VariantType.Double)])
@@ -405,6 +417,7 @@ class L2TriggerBridgeServer:
                     for ch in range(1, CHANNELS_PER_SLOT+1):
                         if (slot, ch) not in self.immutable_channels:
                             await self.system.set_channel_trigger_enabled(slot, ch, enabled)
+                await self._do_poll_slow(datetime.datetime.now(datetime.timezone.utc))
             return "OK: All triggers updated"
         await add_described_method("SetAllTriggerEnabled", set_all_trigger_enabled, inputs=[a("enabled", ua.VariantType.Boolean)])
 
@@ -417,42 +430,55 @@ class L2TriggerBridgeServer:
                     for ch in range(1, CHANNELS_PER_SLOT+1):
                         if (slot, ch) not in self.immutable_channels:
                             await self.system.set_channel_trigger_delay(slot, ch, raw)
+                await self._do_poll_slow(datetime.datetime.now(datetime.timezone.utc))
             return "OK: All delays updated"
         await add_described_method("SetAllTriggerDelay", set_all_trigger_delay, inputs=[a("delay_ns", ua.VariantType.Double)])
 
         @uamethod
         async def set_mcf_enabled(parent_node, enabled: bool):
-            async with self._lock: await self.system.set_mcf_enabled(enabled)
+            async with self._lock: 
+                await self.system.set_mcf_enabled(enabled)
+                await self._do_poll_fast(datetime.datetime.now(datetime.timezone.utc))
             return "OK"
         await add_described_method("SetMCFEnabled", set_mcf_enabled, inputs=[a("enabled", ua.VariantType.Boolean)])
 
         @uamethod
         async def set_busy_glitch_filter_enabled(parent_node, enabled: bool):
-            async with self._lock: await self.system.set_glitch_filter_enabled(enabled)
+            async with self._lock: 
+                await self.system.set_glitch_filter_enabled(enabled)
+                await self._do_poll_fast(datetime.datetime.now(datetime.timezone.utc))
             return "OK"
         await add_described_method("SetBusyGlitchFilterEnabled", set_busy_glitch_filter_enabled, inputs=[a("enabled", ua.VariantType.Boolean)])
 
         @uamethod
         async def set_tib_trigger_busy_block_enabled(parent_node, enabled: bool):
-            async with self._lock: await self.system.set_tib_block_enabled(enabled)
+            async with self._lock: 
+                await self.system.set_tib_block_enabled(enabled)
+                await self._do_poll_fast(datetime.datetime.now(datetime.timezone.utc))
             return "OK"
         await add_described_method("SetTIBTriggerBusyBlockEnabled", set_tib_trigger_busy_block_enabled, inputs=[a("enabled", ua.VariantType.Boolean)])
 
         @uamethod
         async def set_mcf_delay(parent_node, delay: float):
-            async with self._lock: await self.system.set_mcf_delay(mcf_delay_ns_to_raw(delay))
+            async with self._lock: 
+                await self.system.set_mcf_delay(mcf_delay_ns_to_raw(delay))
+                await self._do_poll_fast(datetime.datetime.now(datetime.timezone.utc))
             return "OK"
         await add_described_method("SetMCFDelay", set_mcf_delay, inputs=[a("delay", ua.VariantType.Double)])
 
         @uamethod
         async def set_mcf_threshold(parent_node, threshold: int):
-            async with self._lock: await self.system.set_mcf_threshold(threshold)
+            async with self._lock: 
+                await self.system.set_mcf_threshold(threshold)
+                await self._do_poll_fast(datetime.datetime.now(datetime.timezone.utc))
             return "OK"
         await add_described_method("SetMCFThreshold", set_mcf_threshold, inputs=[a("threshold", ua.VariantType.Int16)])
 
         @uamethod
         async def set_l1_deadtime(parent_node, deadtime: float):
-            async with self._lock: await self.system.set_l1_deadtime(l1_deadtime_ns_to_raw(deadtime))
+            async with self._lock: 
+                await self.system.set_l1_deadtime(l1_deadtime_ns_to_raw(deadtime))
+                await self._do_poll_fast(datetime.datetime.now(datetime.timezone.utc))
             return "OK"
         await add_described_method("SetL1Deadtime", set_l1_deadtime, inputs=[a("deadtime", ua.VariantType.Double)])
 
@@ -533,6 +559,29 @@ class L2TriggerBridgeServer:
         await self._set_var("ModuleTriggerEnabled", te, now, sc)
         await self._set_var("ModuleTriggerDelay", td, now, sc)
 
+    async def _do_poll_fast(self, now: datetime.datetime):
+        """Perform high-frequency polling and update variables"""
+        try:
+            l2cb = await self.system.get_l2cb_status()
+            mon = await self.system.get_all_monitoring()
+            self._connected = True
+            self._last_contact = time.monotonic()
+            await self._write_fast_data(l2cb, mon, now)
+        except Exception as e:
+            logger.error(f"Fast poll error: {e}")
+            self._connected = False
+            await self._write_fast_data(L2CBStatus(0,0,False,False,False,0,0,0), {}, now)
+
+    async def _do_poll_slow(self, now: datetime.datetime):
+        """Perform slow polling of configurations and update variables"""
+        try:
+            configs = {}
+            for slot in self.active_slots:
+                configs[slot] = await self.system.get_ctdb_config(slot)
+            await self._write_slow_data(configs, now)
+        except Exception as e:
+            logger.error(f"Slow poll error: {e}")
+
     async def _update_loop(self):
         logger.info("Update loop started")
         cycle = 0
@@ -541,24 +590,9 @@ class L2TriggerBridgeServer:
             try:
                 now_ts = datetime.datetime.now(datetime.timezone.utc)
                 async with self._lock:
-                    try:
-                        l2cb = await self.system.get_l2cb_status()
-                        mon = await self.system.get_all_monitoring()
-                        self._connected = True
-                        self._last_contact = time.monotonic()
-                        await self._write_fast_data(l2cb, mon, now_ts)
-                        
-                        if cycle % self.poll_ratio == 0:
-                            configs = {}
-                            for slot in self.active_slots:
-                                configs[slot] = await self.system.get_ctdb_config(slot)
-                            await self._write_slow_data(configs, now_ts)
-                    except Exception as e:
-                        logger.error(f"Hardware communication error: {e}")
-                        self._connected = False
-                        # Trigger status code update for all vars
-                        await self._write_fast_data(L2CBStatus(0,0,False,False,False,0,0,0), {}, now_ts)
-
+                    await self._do_poll_fast(now_ts)
+                    if cycle % self.poll_ratio == 0:
+                        await self._do_poll_slow(now_ts)
             except Exception as e:
                 logger.error(f"Error in update loop: {e}", exc_info=True)
             
@@ -586,24 +620,6 @@ class L2TriggerBridgeServer:
             await node.write_value(dv)
         except Exception as e: logger.error(f"Update {name} failed: {e}")
 
-    async def _cancel_power_ramp(self):
-        if self._power_ramp_task and not self._power_ramp_task.done():
-            self._power_ramp_task.cancel()
-            try: await self._power_ramp_task
-            except asyncio.CancelledError: pass
-        self._power_ramp_task = None
-
-    async def _ramp_power(self, enabled: bool):
-        logger.info(f"Ramping power to {enabled}")
-        try:
-            for ch in range(1, CHANNELS_PER_SLOT + 1):
-                for slot in self.active_slots:
-                    if (slot, ch) in self.immutable_channels: continue
-                    async with self._lock: await self.system.set_channel_power_enabled(slot, ch, enabled)
-                    if self.power_delay > 0: await asyncio.sleep(self.power_delay)
-        except Exception as e: logger.error(f"Ramp error: {e}")
-        finally: self._power_ramp_task = None
-
     async def start(self):
         await self.init()
         async with self.server:
@@ -619,7 +635,7 @@ class L2TriggerBridgeServer:
 
     async def stop(self):
         self._running = False
-        for t in [self._update_task, self._watchdog_task, self._power_ramp_task]:
+        for t in [self._update_task, self._watchdog_task]:
             if t: t.cancel()
         await self.system.disconnect()
 
