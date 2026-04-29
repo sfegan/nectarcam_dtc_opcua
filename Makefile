@@ -3,21 +3,26 @@
 .PHONY: all clean install uninstall test help dummy
 
 # Subdirectories to build
-SUBDIRS = hal
+SUBDIRS = hal l2tcp_server
 
 all: build
 
 build:
 	@echo "Building HAL library$(BUILD_SUFFIX)..."
 	@$(MAKE) -C hal
+	@echo "Building L2TCP Server..."
+	@$(MAKE) -C l2tcp_server
 
 dummy:
 	@echo "Building HAL library with EMULATESMC mode..."
 	@$(MAKE) -C hal EMULATESMC=1
+	@echo "Building L2TCP Server..."
+	@$(MAKE) -C l2tcp_server
 
 clean:
 	@echo "Cleaning build artifacts..."
 	@$(MAKE) -C hal clean
+	@$(MAKE) -C l2tcp_server clean
 	rm -f l2trig_emulator_state.dat
 	rm -rf __pycache__
 

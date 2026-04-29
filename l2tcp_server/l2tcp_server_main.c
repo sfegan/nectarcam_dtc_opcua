@@ -32,6 +32,7 @@ static struct {
     uint32_t active_slots_mask;
     uint16_t immutable_masks[L2TCP_MAX_SLOTS];
     int ramp_delay_ms;
+    int verbose;
     
     struct {
         int active;
@@ -61,9 +62,40 @@ static int is_ch_immutable(int slot, int ch) {
     return (g_server.immutable_masks[slot] & (1 << ch)) != 0;
 }
 
+static const char* msg_type_to_str(uint8_t type) {
+    switch (type) {
+        case L2TCP_MSG_ACK:                return "ACK";
+        case L2TCP_MSG_ERROR:              return "ERROR";
+        case L2TCP_MSG_SYS_SET_CONFIG:     return "SYS_SET_CONFIG";
+        case L2TCP_MSG_SYS_RAMP_POWER:     return "SYS_RAMP_POWER";
+        case L2TCP_MSG_SYS_EMERGENCY_OFF:  return "SYS_EMERGENCY_OFF";
+        case L2TCP_MSG_SYS_SET_ALL_TRIG_EN: return "SYS_SET_ALL_TRIG_EN";
+        case L2TCP_MSG_SYS_SET_ALL_TRIG_DELAY: return "SYS_SET_ALL_TRIG_DELAY";
+        case L2TCP_MSG_L2CB_GET_STATE:     return "L2CB_GET_STATE";
+        case L2TCP_MSG_L2CB_SET_MCF_EN:    return "L2CB_SET_MCF_EN";
+        case L2TCP_MSG_L2CB_SET_GLITCH_EN: return "L2CB_SET_GLITCH_EN";
+        case L2TCP_MSG_L2CB_SET_TIB_BLOCK_EN: return "L2CB_SET_TIB_BLOCK_EN";
+        case L2TCP_MSG_L2CB_SET_MCF_THRESH: return "L2CB_SET_MCF_THRESH";
+        case L2TCP_MSG_L2CB_SET_MCF_DELAY:  return "L2CB_SET_MCF_DELAY";
+        case L2TCP_MSG_L2CB_SET_L1_DEADTIME: return "L2CB_SET_L1_DEADTIME";
+        case L2TCP_MSG_CTDB_SET_CH_POWER:  return "CTDB_SET_CH_POWER";
+        case L2TCP_MSG_CTDB_SET_CH_TRIG:   return "CTDB_SET_CH_TRIG";
+        case L2TCP_MSG_CTDB_SET_CH_DELAY:  return "CTDB_SET_CH_DELAY";
+        case L2TCP_MSG_CTDB_SET_LIMITS:    return "CTDB_SET_LIMITS";
+        case L2TCP_MSG_CTDB_GET_MONITORING: return "CTDB_GET_MONITORING";
+        case L2TCP_MSG_CTDB_GET_CONFIG:     return "CTDB_GET_CONFIG";
+        case L2TCP_MSG_BATCH_MONITOR_ALL:   return "BATCH_MONITOR_ALL";
+        default: return "UNKNOWN";
+    }
+}
+
 static void send_error(uint8_t seq, uint8_t code, const char *msg) {
     l2tcp_header_t resp_hdr;
     l2tcp_payload_error_t resp_err;
+
+    if (g_server.verbose > 0) {
+        printf("  -> Error: %d (%s)\n", code, msg);
+    }
 
     resp_hdr.type = L2TCP_MSG_ERROR;
     resp_hdr.seq = seq;
@@ -78,6 +110,9 @@ static void send_error(uint8_t seq, uint8_t code, const char *msg) {
 }
 
 static void send_ack(uint8_t seq) {
+    if (g_server.verbose > 0) {
+        printf("  -> ACK\n");
+    }
     l2tcp_header_t resp_hdr = { L2TCP_MSG_ACK, seq, 0 };
     send(g_server.client_fd, &resp_hdr, sizeof(resp_hdr), 0);
 }
@@ -161,6 +196,13 @@ static void process_ramp() {
 
 /* --- Command Processing --- */
 
+static int is_polling_msg(uint8_t type) {
+    return (type == L2TCP_MSG_L2CB_GET_STATE ||
+            type == L2TCP_MSG_CTDB_GET_MONITORING ||
+            type == L2TCP_MSG_BATCH_MONITOR_ALL ||
+            type == L2TCP_MSG_CTDB_GET_CONFIG);
+}
+
 static void handle_request() {
     l2tcp_header_t hdr;
     ssize_t n = recv(g_server.client_fd, &hdr, sizeof(hdr), 0);
@@ -180,6 +222,31 @@ static void handle_request() {
     if (hdr.len > 0) {
         n = recv(g_server.client_fd, buffer, hdr.len, MSG_WAITALL);
         if (n != hdr.len) return;
+    }
+
+    int show_msg = g_server.verbose > 1 || (g_server.verbose > 0 && !is_polling_msg(hdr.type));
+
+    if (show_msg) {
+        printf("REQ: %s (seq: %d, len: %d)", msg_type_to_str(hdr.type), hdr.seq, hdr.len);
+        switch (hdr.type) {
+            case L2TCP_MSG_SYS_SET_CONFIG: printf(" mask: 0x%08x", ((l2tcp_payload_sys_config_t*)buffer)->active_slots_mask); break;
+            case L2TCP_MSG_SYS_RAMP_POWER: printf(" en: %d", ((l2tcp_payload_ramp_t*)buffer)->enable); break;
+            case L2TCP_MSG_SYS_SET_ALL_TRIG_EN:
+            case L2TCP_MSG_SYS_SET_ALL_TRIG_DELAY:
+            case L2TCP_MSG_L2CB_SET_MCF_EN:
+            case L2TCP_MSG_L2CB_SET_GLITCH_EN:
+            case L2TCP_MSG_L2CB_SET_TIB_BLOCK_EN:
+            case L2TCP_MSG_L2CB_SET_MCF_THRESH:
+            case L2TCP_MSG_L2CB_SET_MCF_DELAY:
+            case L2TCP_MSG_L2CB_SET_L1_DEADTIME: printf(" val: %d", ((l2tcp_payload_u16_t*)buffer)->value); break;
+            case L2TCP_MSG_CTDB_SET_CH_POWER:
+            case L2TCP_MSG_CTDB_SET_CH_TRIG: printf(" S%dC%d en: %d", ((l2tcp_payload_ch_ctrl_t*)buffer)->slot, ((l2tcp_payload_ch_ctrl_t*)buffer)->channel, ((l2tcp_payload_ch_ctrl_t*)buffer)->enable); break;
+            case L2TCP_MSG_CTDB_SET_CH_DELAY: printf(" S%dC%d delay: %d", ((l2tcp_payload_ch_delay_t*)buffer)->slot, ((l2tcp_payload_ch_delay_t*)buffer)->channel, ((l2tcp_payload_ch_delay_t*)buffer)->delay); break;
+            case L2TCP_MSG_CTDB_SET_LIMITS: printf(" S%d min: %d, max: %d", ((l2tcp_payload_ctdb_limits_t*)buffer)->slot, ((l2tcp_payload_ctdb_limits_t*)buffer)->curr_limit_min, ((l2tcp_payload_ctdb_limits_t*)buffer)->curr_limit_max); break;
+            case L2TCP_MSG_CTDB_GET_MONITORING:
+            case L2TCP_MSG_CTDB_GET_CONFIG: printf(" slot: %d", buffer[0]); break;
+        }
+        printf("\n");
     }
 
     switch (hdr.type) {
@@ -239,6 +306,35 @@ static void handle_request() {
             send_ack(hdr.seq);
             break;
         }
+        case L2TCP_MSG_SYS_SET_ALL_TRIG_EN: {
+            uint16_t enable = ((l2tcp_payload_u16_t*)buffer)->value;
+            for (int s = 0; s < L2TCP_MAX_SLOTS; s++) {
+                if (!is_slot_active(s)) continue;
+                uint16_t current_mask = cta_l2cb_getL1TriggerEnabled(s);
+                uint16_t immutable_mask = g_server.immutable_masks[s];
+                uint16_t new_mask;
+                if (enable) {
+                    new_mask = current_mask | (0xFFFE & ~immutable_mask);
+                } else {
+                    new_mask = current_mask & (0x0001 | immutable_mask);
+                }
+                cta_l2cb_setL1TriggerEnabled(s, new_mask);
+            }
+            send_ack(hdr.seq);
+            break;
+        }
+        case L2TCP_MSG_SYS_SET_ALL_TRIG_DELAY: {
+            uint16_t delay = ((l2tcp_payload_u16_t*)buffer)->value;
+            for (int s = 0; s < L2TCP_MAX_SLOTS; s++) {
+                if (!is_slot_active(s)) continue;
+                for (int ch = 1; ch <= 15; ch++) {
+                    if (is_ch_immutable(s, ch)) continue;
+                    cta_l2cb_setL1TriggerDelay(s, ch, delay);
+                }
+            }
+            send_ack(hdr.seq);
+            break;
+        }
         case L2TCP_MSG_L2CB_GET_STATE: {
             l2tcp_header_t resp_hdr = { L2TCP_MSG_L2CB_GET_STATE, hdr.seq, sizeof(l2tcp_payload_l2cb_state_t) };
             l2tcp_payload_l2cb_state_t resp;
@@ -250,6 +346,9 @@ static void handle_request() {
             resp.mcf_threshold = cta_l2cb_getMCFThreshold();
             resp.mcf_delay = cta_l2cb_getMCFDelay();
             resp.l1_deadtime = cta_l2cb_getL1Deadtime();
+            
+            if (g_server.verbose > 1) printf("  -> L2CB STATE (fw: 0x%04x, ts: %llu)\n", resp.fw_rev, (unsigned long long)resp.timestamp);
+            
             send(g_server.client_fd, &resp_hdr, sizeof(resp_hdr), 0);
             send(g_server.client_fd, &resp, sizeof(resp), 0);
             break;
@@ -337,6 +436,9 @@ static void handle_request() {
                 cta_ctdb_getOverCurrentErrors(slot, &resp.over_curr_mask);
                 cta_ctdb_getUnderCurrentErrors(slot, &resp.under_curr_mask);
                 cta_ctdb_getPowerEnabled(slot, &resp.pwr_enabled_mask);
+
+                if (g_server.verbose > 1) printf("  -> MONITORING S%d\n", slot);
+
                 send(g_server.client_fd, &resp_hdr, sizeof(resp_hdr), 0);
                 send(g_server.client_fd, &resp, sizeof(resp), 0);
             }
@@ -347,6 +449,9 @@ static void handle_request() {
             for (int s = 0; s < L2TCP_MAX_SLOTS; s++) if (is_slot_active(s)) count++;
             
             l2tcp_header_t resp_hdr = { L2TCP_MSG_BATCH_MONITOR_ALL, hdr.seq, 1 + count * sizeof(l2tcp_payload_monitoring_t) };
+
+            if (g_server.verbose > 1) printf("  -> BATCH MONITOR (%d slots)\n", count);
+
             send(g_server.client_fd, &resp_hdr, sizeof(resp_hdr), 0);
             uint8_t u8_count = (uint8_t)count;
             send(g_server.client_fd, &u8_count, 1, 0);
@@ -378,6 +483,9 @@ static void handle_request() {
                 cta_ctdb_getPowerCurrentMax(slot, &resp.curr_limit_max);
                 resp.trig_enabled_mask = cta_l2cb_getL1TriggerEnabled(slot);
                 for (int i = 0; i < 15; i++) resp.trig_delays[i] = cta_l2cb_getL1TriggerDelay(slot, i + 1);
+
+                if (g_server.verbose > 1) printf("  -> CONFIG S%d\n", slot);
+
                 send(g_server.client_fd, &resp_hdr, sizeof(resp_hdr), 0);
                 send(g_server.client_fd, &resp, sizeof(resp), 0);
             }
@@ -396,11 +504,12 @@ int main(int argc, char **argv) {
     int port = L2TCP_PORT;
 
     int opt;
-    while ((opt = getopt(argc, argv, "p:d:s:")) != -1) {
+    while ((opt = getopt(argc, argv, "p:d:s:v")) != -1) {
         switch (opt) {
             case 'p': port = atoi(optarg); break;
             case 'd': g_server.ramp_delay_ms = atoi(optarg); break;
             case 's': smc_open(optarg); break;
+            case 'v': g_server.verbose++; break;
         }
     }
     

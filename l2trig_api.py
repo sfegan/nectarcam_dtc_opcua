@@ -29,6 +29,8 @@ class L2TCPMsgType(IntEnum):
     SYS_SET_CONFIG      = 0x01
     SYS_RAMP_POWER      = 0x02
     SYS_EMERGENCY_OFF   = 0x03
+    SYS_SET_ALL_TRIG_EN = 0x04
+    SYS_SET_ALL_TRIG_DELAY = 0x05
     L2CB_GET_STATE      = 0x10
     L2CB_SET_MCF_EN     = 0x11
     L2CB_SET_GLITCH_EN  = 0x12
@@ -172,6 +174,16 @@ class L2TriggerSystem:
     async def emergency_shutdown(self):
         """Immediate global power off"""
         await self._send_recv(L2TCPMsgType.SYS_EMERGENCY_OFF)
+
+    async def set_all_trigger_enabled(self, enabled: bool):
+        """Global control to enable or disable trigger for all modules"""
+        payload = struct.pack("<H", 1 if enabled else 0)
+        await self._send_recv(L2TCPMsgType.SYS_SET_ALL_TRIG_EN, payload)
+
+    async def set_all_trigger_delay(self, delay_raw: int):
+        """Apply uniform trigger delay to all modules"""
+        payload = struct.pack("<H", delay_raw)
+        await self._send_recv(L2TCPMsgType.SYS_SET_ALL_TRIG_DELAY, payload)
 
     # --- L2CB Controls ---
 

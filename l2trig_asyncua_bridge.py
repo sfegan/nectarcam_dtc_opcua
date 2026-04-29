@@ -443,10 +443,7 @@ class L2TriggerBridgeServer:
             """Enable or disable triggers for all modules."""
             async with self._lock:
                 if not await self._ensure_connected(): return "ERROR: Device not connected"
-                for slot in self.active_slots:
-                    for ch in range(1, CHANNELS_PER_SLOT+1):
-                        if (slot, ch) not in self.immutable_channels:
-                            await self.system.set_channel_trigger_enabled(slot, ch, enabled)
+                await self.system.set_all_trigger_enabled(enabled)
                 await self._do_poll_slow(datetime.datetime.now(datetime.timezone.utc))
             return "OK: All triggers updated"
         await add_described_method("SetAllTriggerEnabled", set_all_trigger_enabled, inputs=[a("enabled", ua.VariantType.Boolean)])
@@ -457,10 +454,7 @@ class L2TriggerBridgeServer:
             raw = delay_ns_to_raw(delay_ns)
             async with self._lock:
                 if not await self._ensure_connected(): return "ERROR: Device not connected"
-                for slot in self.active_slots:
-                    for ch in range(1, CHANNELS_PER_SLOT+1):
-                        if (slot, ch) not in self.immutable_channels:
-                            await self.system.set_channel_trigger_delay(slot, ch, raw)
+                await self.system.set_all_trigger_delay(raw)
                 await self._do_poll_slow(datetime.datetime.now(datetime.timezone.utc))
             return "OK: All delays updated"
         await add_described_method("SetAllTriggerDelay", set_all_trigger_delay, inputs=[a("delay_ns", ua.VariantType.Double)])
