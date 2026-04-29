@@ -193,7 +193,33 @@ static void handle_request() {
             }
             g_server.active_slots_mask = validated_mask;
             memcpy(g_server.immutable_masks, p->immutable_masks, sizeof(g_server.immutable_masks));
-            printf("Configured active slots mask: 0x%08x\n", g_server.active_slots_mask);
+            
+            printf("Configured active slots: ");
+            int first_slot = 1;
+            for (int s = 0; s < 32; s++) {
+                if (g_server.active_slots_mask & (1 << s)) {
+                    printf("%s%d", first_slot ? "" : ", ", s);
+                    first_slot = 0;
+                }
+            }
+            if (first_slot) printf("none");
+            printf(" (mask: 0x%08x)\n", g_server.active_slots_mask);
+
+            printf("Immutable channels: ");
+            int first_imm = 1;
+            for (int s = 0; s < L2TCP_MAX_SLOTS; s++) {
+                if (g_server.active_slots_mask & (1 << s)) {
+                    for (int ch = 1; ch <= 15; ch++) {
+                        if (g_server.immutable_masks[s] & (1 << ch)) {
+                            printf("%sS%dC%d", first_imm ? "" : ", ", s, ch);
+                            first_imm = 0;
+                        }
+                    }
+                }
+            }
+            if (first_imm) printf("none");
+            printf("\n");
+
             send_ack(hdr.seq);
             break;
         }
