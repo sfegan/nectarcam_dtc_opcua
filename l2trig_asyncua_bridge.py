@@ -192,6 +192,8 @@ class L2TriggerBridgeServer:
         self._running = False
         self._lock = asyncio.Lock()
         self._need_slow_poll = False
+        self._last_fast_poll_time: Optional[datetime.datetime] = None
+        self._last_slow_poll_time: Optional[datetime.datetime] = None
         
         # Stats
         self._powered_count = 0
@@ -506,18 +508,18 @@ class L2TriggerBridgeServer:
             return "OK"
         await add_described_method("SetL1Deadtime", set_l1_deadtime, inputs=[a("deadtime", ua.VariantType.Double)])
 
-    async def _write_fast_data(self, l2cb: L2CBStatus, monitoring: Dict[int, CTDBMonitoringData], now: datetime.datetime):
+    async def _write_fast_data(self, l2cb: L2CBStatus, monitoring: Dict[int, CTDBMonitoringData], timestamp: datetime.datetime, now: datetime.datetime):
         sc = self._get_status_code()
         # device_state always has Good status as the server is authoritative
         await self._set_var("device_state", 1 if self._connected else 0, now, ua.StatusCode(ua.StatusCodes.Good))
-        await self._set_var("CrateFirmwareRevision", l2cb.firmware_version, now, sc)
-        await self._set_var("CrateUpTime", l2cb.uptime, now, sc)
-        await self._set_var("CrateMCFEnabled", l2cb.mcf_enabled, now, sc)
-        await self._set_var("CrateBusyGlitchFilterEnabled", l2cb.busy_glitch_filter_enabled, now, sc)
-        await self._set_var("CrateTIBTriggerBusyBlockEnabled", l2cb.tib_trigger_busy_block_enabled, now, sc)
-        await self._set_var("CrateMCFThreshold", l2cb.mcf_threshold, now, sc)
-        await self._set_var("CrateMCFDelay", l2cb.mcf_delay_ns, now, sc)
-        await self._set_var("CrateL1Deadtime", l2cb.l1_deadtime_ns, now, sc)
+        await self._set_var("CrateFirmwareRevision", l2cb.firmware_version, timestamp, sc)
+        await self._set_var("CrateUpTime", l2cb.uptime, timestamp, sc)
+        await self._set_var("CrateMCFEnabled", l2cb.mcf_enabled, timestamp, sc)
+        await self._set_var("CrateBusyGlitchFilterEnabled", l2cb.busy_glitch_filter_enabled, timestamp, sc)
+        await self._set_var("CrateTIBTriggerBusyBlockEnabled", l2cb.tib_trigger_busy_block_enabled, timestamp, sc)
+        await self._set_var("CrateMCFThreshold", l2cb.mcf_threshold, timestamp, sc)
+        await self._set_var("CrateMCFDelay", l2cb.mcf_delay_ns, timestamp, sc)
+        await self._set_var("CrateL1Deadtime", l2cb.l1_deadtime_ns, timestamp, sc)
 
         bc, bcs, bhe = [], [], []
         mc, ms, mpe = [], [], []
@@ -550,15 +552,15 @@ class L2TriggerBridgeServer:
                 for _ in range(CHANNELS_PER_SLOT): mc.append(0.0); mpe.append(False); ms.append("offline")
         
         self._powered_count = powered_count
-        await self._set_var("CrateNumPoweredModules", powered_count, now, sc)
-        await self._set_var("BoardCurrent", bc, now, sc)
-        await self._set_var("BoardCurrentSum", bcs, now, sc)
-        await self._set_var("BoardHasErrors", bhe, now, sc)
-        await self._set_var("ModuleCurrent", mc, now, sc)
-        await self._set_var("ModuleState", ms, now, sc)
-        await self._set_var("ModulePowerEnabled", mpe, now, sc)
+        await self._set_var("CrateNumPoweredModules", powered_count, timestamp, sc)
+        await self._set_var("BoardCurrent", bc, timestamp, sc)
+        await self._set_var("BoardCurrentSum", bcs, timestamp, sc)
+        await self._set_var("BoardHasErrors", bhe, timestamp, sc)
+        await self._set_var("ModuleCurrent", mc, timestamp, sc)
+        await self._set_var("ModuleState", ms, timestamp, sc)
+        await self._set_var("ModulePowerEnabled", mpe, timestamp, sc)
 
-    async def _write_slow_data(self, configs: Dict[int, CTDBConfigData], now: datetime.datetime):
+    async def _write_slow_data(self, configs: Dict[int, CTDBConfigData], timestamp: datetime.datetime):
         sc = self._get_status_code()
         bf, bmin, bmax = [], [], []
         te, td = [], []
@@ -577,18 +579,18 @@ class L2TriggerBridgeServer:
                 for _ in range(CHANNELS_PER_SLOT): te.append(False); td.append(0.0)
         
         self._enabled_count = enabled_count
-        await self._set_var("CrateNumTriggerEnabledModules", enabled_count, now, sc)
-        await self._set_var("BoardFirmwareRevision", bf, now, sc)
-        await self._set_var("BoardCurrentLimitMin", bmin, now, sc)
-        await self._set_var("BoardCurrentLimitMax", bmax, now, sc)
-        await self._set_var("ModuleTriggerEnabled", te, now, sc)
-        await self._set_var("ModuleTriggerDelay", td, now, sc)
+        await self._set_var("CrateNumTriggerEnabledModules", enabled_count, timestamp, sc)
+        await self._set_var("BoardFirmwareRevision", bf, timestamp, sc)
+        await self._set_var("BoardCurrentLimitMin", bmin, timestamp, sc)
+        await self._set_var("BoardCurrentLimitMax", bmax, timestamp, sc)
+        await self._set_var("ModuleTriggerEnabled", te, timestamp, sc)
+        await self._set_var("ModuleTriggerDelay", td, timestamp, sc)
 
     async def _do_poll_fast(self, now: datetime.datetime):
         """Perform high-frequency polling and update variables"""
         if not await self._ensure_connected():
-            await self._write_fast_data(L2CBStatus(0,0,False,False,False,0,0,0), {}, now)
-            await self._write_slow_data({}, now)
+            await self._write_fast_data(L2CBStatus(0,0,False,False,False,0,0,0), {}, self._last_fast_poll_time, now)
+            await self._write_slow_data({}, self._last_slow_poll_time)
             return
 
         try:
@@ -596,32 +598,42 @@ class L2TriggerBridgeServer:
             mon = await self.system.get_all_monitoring()
             self._connected = True
             self._last_contact = time.monotonic()
-            await self._write_fast_data(l2cb, mon, now)
+            self._last_fast_poll_time = now
+            await self._write_fast_data(l2cb, mon, self._last_fast_poll_time, now)
         except Exception as e:
             logger.error(f"Fast poll error: {e}")
             self._connected = False
-            await self._write_fast_data(L2CBStatus(0,0,False,False,False,0,0,0), {}, now)
-            await self._write_slow_data({}, now)
+            await self._write_fast_data(L2CBStatus(0,0,False,False,False,0,0,0), {}, self._last_fast_poll_time, now)
+            await self._write_slow_data({}, self._last_slow_poll_time)
 
     async def _do_poll_slow(self, now: datetime.datetime):
         """Perform slow polling of configurations and update variables"""
         if not await self._ensure_connected():
-            await self._write_slow_data({}, now)
+            await self._write_slow_data({}, self._last_slow_poll_time)
             return
 
         try:
             configs = {}
             for slot in self.active_slots:
                 configs[slot] = await self.system.get_ctdb_config(slot)
-            await self._write_slow_data(configs, now)
+            self._last_slow_poll_time = now
+            await self._write_slow_data(configs, self._last_slow_poll_time)
         except Exception as e:
             logger.error(f"Slow poll error: {e}")
-            await self._write_slow_data({}, now)
+            await self._write_slow_data({}, self._last_slow_poll_time)
 
     async def _update_loop(self):
         logger.info("Update loop started")
         cycle = 0
         next_poll = time.monotonic()
+        
+        # Initialize poll timestamps
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+        if self._last_fast_poll_time is None:
+            self._last_fast_poll_time = now_utc
+        if self._last_slow_poll_time is None:
+            self._last_slow_poll_time = now_utc
+            
         while self._running:
             try:
                 now_ts = datetime.datetime.now(datetime.timezone.utc)
