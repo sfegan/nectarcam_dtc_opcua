@@ -191,6 +191,7 @@ class L2TriggerBridgeServer:
         self._watchdog_task: Optional[asyncio.Task] = None
         self._running = False
         self._lock = asyncio.Lock()
+        self._need_slow_poll = False
         
         # Stats
         self._powered_count = 0
@@ -229,6 +230,7 @@ class L2TriggerBridgeServer:
             await self.system.set_config(self.active_slots, self._immutable_masks)
             logger.info("TCP server connected and configured")
             self._connected = True
+            self._need_slow_poll = True
             self._reconnect_delay = 1.0
             return True
         except Exception as e:
@@ -367,7 +369,6 @@ class L2TriggerBridgeServer:
             async with self._lock: 
                 if not await self._ensure_connected(): return "ERROR: Device not connected"
                 await self.system.emergency_shutdown()
-                await self._do_poll_fast(datetime.datetime.now(datetime.timezone.utc))
             return "OK: Emergency shutdown complete"
         await add_described_method("EmergencyShutdown", emergency_shutdown)
 
@@ -378,7 +379,6 @@ class L2TriggerBridgeServer:
             async with self._lock: 
                 if not await self._ensure_connected(): return "ERROR: Device not connected"
                 await self.system.ramp_power(enabled)
-                await self._do_poll_fast(datetime.datetime.now(datetime.timezone.utc))
             return f"OK: All power {'enable' if enabled else 'disable'} ramp triggered"
         await add_described_method("SetAllPowerEnabled", set_all_power_enabled, inputs=[a("enabled", ua.VariantType.Boolean)])
 
@@ -392,7 +392,6 @@ class L2TriggerBridgeServer:
             async with self._lock: 
                 if not await self._ensure_connected(): return "ERROR: Device not connected"
                 await self.system.set_channel_power_enabled(slot, channel, enabled)
-                await self._do_poll_fast(datetime.datetime.now(datetime.timezone.utc))
             return f"OK: Module {module} {'enabled' if enabled else 'disabled'}"
         await add_described_method("SetModulePowerEnabled", set_module_power, 
                                    inputs=[a("module", ua.VariantType.Int32), a("enabled", ua.VariantType.Boolean)])
@@ -405,7 +404,7 @@ class L2TriggerBridgeServer:
             async with self._lock: 
                 if not await self._ensure_connected(): return "ERROR: Device not connected"
                 await self.system.set_ctdb_limits(slot, current_ma_to_raw(min_ma), current_ma_to_raw(max_ma))
-                await self._do_poll_slow(datetime.datetime.now(datetime.timezone.utc))
+                self._need_slow_poll = True
             return f"OK: Board {board} limits set"
         await add_described_method("SetBoardCurrentLimits", set_board_current_limits,
                                    inputs=[a("board", ua.VariantType.Int32), a("min_ma", ua.VariantType.Double), a("max_ma", ua.VariantType.Double)])
@@ -419,7 +418,7 @@ class L2TriggerBridgeServer:
             async with self._lock: 
                 if not await self._ensure_connected(): return "ERROR: Device not connected"
                 await self.system.set_channel_trigger_enabled(slot, channel, enabled)
-                await self._do_poll_slow(datetime.datetime.now(datetime.timezone.utc))
+                self._need_slow_poll = True
             return f"OK: Module {module} trigger {'enabled' if enabled else 'disabled'}"
         await add_described_method("SetModuleTriggerEnabled", set_module_trigger_enabled,
                                    inputs=[a("module", ua.VariantType.Int32), a("enabled", ua.VariantType.Boolean)])
@@ -433,7 +432,7 @@ class L2TriggerBridgeServer:
             async with self._lock: 
                 if not await self._ensure_connected(): return "ERROR: Device not connected"
                 await self.system.set_channel_trigger_delay(slot, channel, delay_ns_to_raw(delay_ns))
-                await self._do_poll_slow(datetime.datetime.now(datetime.timezone.utc))
+                self._need_slow_poll = True
             return f"OK: Module {module} delay set"
         await add_described_method("SetModuleTriggerDelay", set_module_trigger_delay,
                                    inputs=[a("module", ua.VariantType.Int32), a("delay_ns", ua.VariantType.Double)])
@@ -444,7 +443,7 @@ class L2TriggerBridgeServer:
             async with self._lock:
                 if not await self._ensure_connected(): return "ERROR: Device not connected"
                 await self.system.set_all_trigger_enabled(enabled)
-                await self._do_poll_slow(datetime.datetime.now(datetime.timezone.utc))
+                self._need_slow_poll = True
             return "OK: All triggers updated"
         await add_described_method("SetAllTriggerEnabled", set_all_trigger_enabled, inputs=[a("enabled", ua.VariantType.Boolean)])
 
@@ -455,7 +454,7 @@ class L2TriggerBridgeServer:
             async with self._lock:
                 if not await self._ensure_connected(): return "ERROR: Device not connected"
                 await self.system.set_all_trigger_delay(raw)
-                await self._do_poll_slow(datetime.datetime.now(datetime.timezone.utc))
+                self._need_slow_poll = True
             return "OK: All delays updated"
         await add_described_method("SetAllTriggerDelay", set_all_trigger_delay, inputs=[a("delay_ns", ua.VariantType.Double)])
 
@@ -464,7 +463,6 @@ class L2TriggerBridgeServer:
             async with self._lock: 
                 if not await self._ensure_connected(): return "ERROR: Device not connected"
                 await self.system.set_mcf_enabled(enabled)
-                await self._do_poll_fast(datetime.datetime.now(datetime.timezone.utc))
             return "OK"
         await add_described_method("SetMCFEnabled", set_mcf_enabled, inputs=[a("enabled", ua.VariantType.Boolean)])
 
@@ -473,7 +471,6 @@ class L2TriggerBridgeServer:
             async with self._lock: 
                 if not await self._ensure_connected(): return "ERROR: Device not connected"
                 await self.system.set_glitch_filter_enabled(enabled)
-                await self._do_poll_fast(datetime.datetime.now(datetime.timezone.utc))
             return "OK"
         await add_described_method("SetBusyGlitchFilterEnabled", set_busy_glitch_filter_enabled, inputs=[a("enabled", ua.VariantType.Boolean)])
 
@@ -482,7 +479,6 @@ class L2TriggerBridgeServer:
             async with self._lock: 
                 if not await self._ensure_connected(): return "ERROR: Device not connected"
                 await self.system.set_tib_block_enabled(enabled)
-                await self._do_poll_fast(datetime.datetime.now(datetime.timezone.utc))
             return "OK"
         await add_described_method("SetTIBTriggerBusyBlockEnabled", set_tib_trigger_busy_block_enabled, inputs=[a("enabled", ua.VariantType.Boolean)])
 
@@ -491,7 +487,6 @@ class L2TriggerBridgeServer:
             async with self._lock: 
                 if not await self._ensure_connected(): return "ERROR: Device not connected"
                 await self.system.set_mcf_delay(mcf_delay_ns_to_raw(delay))
-                await self._do_poll_fast(datetime.datetime.now(datetime.timezone.utc))
             return "OK"
         await add_described_method("SetMCFDelay", set_mcf_delay, inputs=[a("delay", ua.VariantType.Double)])
 
@@ -500,7 +495,6 @@ class L2TriggerBridgeServer:
             async with self._lock: 
                 if not await self._ensure_connected(): return "ERROR: Device not connected"
                 await self.system.set_mcf_threshold(threshold)
-                await self._do_poll_fast(datetime.datetime.now(datetime.timezone.utc))
             return "OK"
         await add_described_method("SetMCFThreshold", set_mcf_threshold, inputs=[a("threshold", ua.VariantType.Int16)])
 
@@ -509,7 +503,6 @@ class L2TriggerBridgeServer:
             async with self._lock: 
                 if not await self._ensure_connected(): return "ERROR: Device not connected"
                 await self.system.set_l1_deadtime(l1_deadtime_ns_to_raw(deadtime))
-                await self._do_poll_fast(datetime.datetime.now(datetime.timezone.utc))
             return "OK"
         await add_described_method("SetL1Deadtime", set_l1_deadtime, inputs=[a("deadtime", ua.VariantType.Double)])
 
@@ -595,7 +588,7 @@ class L2TriggerBridgeServer:
         """Perform high-frequency polling and update variables"""
         if not await self._ensure_connected():
             await self._write_fast_data(L2CBStatus(0,0,False,False,False,0,0,0), {}, now)
-            # await self._write_slow_data({}, now)
+            await self._write_slow_data({}, now)
             return
 
         try:
@@ -608,7 +601,7 @@ class L2TriggerBridgeServer:
             logger.error(f"Fast poll error: {e}")
             self._connected = False
             await self._write_fast_data(L2CBStatus(0,0,False,False,False,0,0,0), {}, now)
-            # await self._write_slow_data({}, now)
+            await self._write_slow_data({}, now)
 
     async def _do_poll_slow(self, now: datetime.datetime):
         """Perform slow polling of configurations and update variables"""
@@ -634,8 +627,9 @@ class L2TriggerBridgeServer:
                 now_ts = datetime.datetime.now(datetime.timezone.utc)
                 async with self._lock:
                     await self._do_poll_fast(now_ts)
-                    if cycle % self.poll_ratio == 0:
+                    if self._need_slow_poll or cycle % self.poll_ratio == 0:
                         await self._do_poll_slow(now_ts)
+                        self._need_slow_poll = False
             except Exception as e:
                 logger.error(f"Error in update loop: {e}", exc_info=True)
             
