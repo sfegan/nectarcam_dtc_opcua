@@ -118,29 +118,35 @@ class L2TriggerSystem:
             if not self.writer:
                 await self.connect()
 
-            seq = self._next_seq()
-            header = struct.pack(HEADER_FMT, msg_type, seq, len(payload))
-            self.writer.write(header + payload)
-            await self.writer.drain()
+            try:
+                seq = self._next_seq()
+                header = struct.pack(HEADER_FMT, msg_type, seq, len(payload))
+                self.writer.write(header + payload)
+                await self.writer.drain()
 
-            # Read response header
-            resp_hdr_data = await self.reader.readexactly(HEADER_SIZE)
-            rtype, rseq, rlen = struct.unpack(HEADER_FMT, resp_hdr_data)
-            
-            # Read payload
-            rpayload = b""
-            if rlen > 0:
-                rpayload = await self.reader.readexactly(rlen)
+                # Read response header
+                resp_hdr_data = await self.reader.readexactly(HEADER_SIZE)
+                rtype, rseq, rlen = struct.unpack(HEADER_FMT, resp_hdr_data)
+                
+                # Read payload
+                rpayload = b""
+                if rlen > 0:
+                    rpayload = await self.reader.readexactly(rlen)
 
-            if rseq != seq:
-                raise RuntimeError(f"Sequence mismatch: expected {seq}, got {rseq}")
+                if rseq != seq:
+                    raise RuntimeError(f"Sequence mismatch: expected {seq}, got {rseq}")
 
-            if rtype == L2TCPMsgType.ERROR:
-                code = rpayload[0]
-                msg = rpayload[1:].decode('ascii').strip('\x00')
-                raise RuntimeError(f"Server error {code}: {msg}")
+                if rtype == L2TCPMsgType.ERROR:
+                    code = rpayload[0]
+                    msg = rpayload[1:].decode('ascii').strip('\x00')
+                    raise RuntimeError(f"Server error {code}: {msg}")
 
-            return L2TCPMsgType(rtype), rpayload
+                return L2TCPMsgType(rtype), rpayload
+            except (asyncio.IncompleteReadError, ConnectionError, OSError):
+                # Connection lost or broken, reset state so we try to reconnect next time
+                self.reader = None
+                self.writer = None
+                raise
 
     # --- System Control ---
 

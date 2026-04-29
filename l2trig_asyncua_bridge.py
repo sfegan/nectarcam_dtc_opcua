@@ -137,12 +137,14 @@ class L2TriggerBridgeServer:
                  opcua_users: dict = None,
                  poll_interval: float = 1.0,
                  poll_ratio: int = 10,
+                 reconnection_backoff_interval: float = 30.0,
                  enabled_slots: Optional[List[int]] = None,
                  immutable_channels: Optional[Set[Tuple[int, int]]] = None):
         
         self.device_host = device_host
         self.device_port = device_port
         self.variable_lifetime = variable_lifetime
+        self.reconnection_backoff_interval = reconnection_backoff_interval
         self.endpoint = opcua_endpoint
         self.namespace_uri = opcua_namespace
         self.opcua_root = opcua_root or self._DEFAULT_ROOT
@@ -166,6 +168,13 @@ class L2TriggerBridgeServer:
             for ch in range(1, CHANNELS_PER_SLOT + 1):
                 self._module_is_mutable.append((slot, ch) not in self.immutable_channels)
 
+        # Configure TCP server configuration mask
+        self._immutable_masks = {}
+        for slot, ch in self.immutable_channels:
+            if slot not in self._immutable_masks:
+                self._immutable_masks[slot] = 0
+            self._immutable_masks[slot] |= (1 << ch)
+
         # OPC UA server
         self.server = Server()
         self.namespace_idx = None
@@ -174,6 +183,8 @@ class L2TriggerBridgeServer:
         # Connection tracking
         self._connected = False
         self._last_contact: Optional[float] = None
+        self._next_reconnect: float = 0.0
+        self._reconnect_delay: float = 1.0
         
         # Tasks
         self._update_task: Optional[asyncio.Task] = None
@@ -204,6 +215,29 @@ class L2TriggerBridgeServer:
             return ua.StatusCode(ua.StatusCodes.UncertainLastUsableValue)
         return ua.StatusCode(ua.StatusCodes.BadNoCommunication)
 
+    async def _ensure_connected(self):
+        """Ensure TCP connection is established and configured"""
+        if self.system.writer and not self.system.writer.transport.is_closing():
+            return True
+            
+        now = time.monotonic()
+        if now < self._next_reconnect:
+            return False
+            
+        try:
+            await self.system.connect()
+            await self.system.set_config(self.active_slots, self._immutable_masks)
+            logger.info("TCP server connected and configured")
+            self._connected = True
+            self._reconnect_delay = 1.0
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to connect to TCP server: {e}")
+            self._connected = False
+            self._next_reconnect = now + self._reconnect_delay
+            self._reconnect_delay = min(self._reconnect_delay * 2, self.reconnection_backoff_interval)
+            return False
+
     async def init(self):
         if self.opcua_users:
             creds = self.opcua_users
@@ -221,19 +255,8 @@ class L2TriggerBridgeServer:
 
         self.namespace_idx = await self.server.register_namespace(self.namespace_uri)
 
-        # Configure TCP server with active slots and immutable channels
-        immutable_masks = {}
-        for slot, ch in self.immutable_channels:
-            if slot not in immutable_masks:
-                immutable_masks[slot] = 0
-            immutable_masks[slot] |= (1 << ch)
-        
-        try:
-            await self.system.connect()
-            await self.system.set_config(self.active_slots, immutable_masks)
-            logger.info("TCP server configured with active slots and immutable channels")
-        except Exception as e:
-            logger.error(f"Failed to configure TCP server: {e}")
+        # Initial connection attempt
+        await self._ensure_connected()
         
         await self._create_address_space()
         
@@ -342,6 +365,7 @@ class L2TriggerBridgeServer:
             """Immediately disable all power channels."""
             logger.warning("Emergency shutdown called")
             async with self._lock: 
+                if not await self._ensure_connected(): return "ERROR: Device not connected"
                 await self.system.emergency_shutdown()
                 await self._do_poll_fast(datetime.datetime.now(datetime.timezone.utc))
             return "OK: Emergency shutdown complete"
@@ -352,6 +376,7 @@ class L2TriggerBridgeServer:
             """Global control to enable or disable power for all modules using a ramp."""
             logger.info(f"Setting all power to {enabled}")
             async with self._lock: 
+                if not await self._ensure_connected(): return "ERROR: Device not connected"
                 await self.system.ramp_power(enabled)
                 await self._do_poll_fast(datetime.datetime.now(datetime.timezone.utc))
             return f"OK: All power {'enable' if enabled else 'disable'} ramp triggered"
@@ -365,6 +390,7 @@ class L2TriggerBridgeServer:
             if (slot, channel) in self.immutable_channels: return f"ERROR: Module {module} is immutable"
             logger.info(f"Setting power for module {module} to {enabled}")
             async with self._lock: 
+                if not await self._ensure_connected(): return "ERROR: Device not connected"
                 await self.system.set_channel_power_enabled(slot, channel, enabled)
                 await self._do_poll_fast(datetime.datetime.now(datetime.timezone.utc))
             return f"OK: Module {module} {'enabled' if enabled else 'disabled'}"
@@ -377,6 +403,7 @@ class L2TriggerBridgeServer:
             if not 1 <= board <= len(self.active_slots): return f"ERROR: Board index {board} out of range"
             slot = self.active_slots[board - 1]
             async with self._lock: 
+                if not await self._ensure_connected(): return "ERROR: Device not connected"
                 await self.system.set_ctdb_limits(slot, current_ma_to_raw(min_ma), current_ma_to_raw(max_ma))
                 await self._do_poll_slow(datetime.datetime.now(datetime.timezone.utc))
             return f"OK: Board {board} limits set"
@@ -390,6 +417,7 @@ class L2TriggerBridgeServer:
             except ValueError as e: return f"ERROR: {e}"
             if (slot, channel) in self.immutable_channels: return f"ERROR: Module {module} is immutable"
             async with self._lock: 
+                if not await self._ensure_connected(): return "ERROR: Device not connected"
                 await self.system.set_channel_trigger_enabled(slot, channel, enabled)
                 await self._do_poll_slow(datetime.datetime.now(datetime.timezone.utc))
             return f"OK: Module {module} trigger {'enabled' if enabled else 'disabled'}"
@@ -403,6 +431,7 @@ class L2TriggerBridgeServer:
             except ValueError as e: return f"ERROR: {e}"
             if (slot, channel) in self.immutable_channels: return f"ERROR: Module {module} is immutable"
             async with self._lock: 
+                if not await self._ensure_connected(): return "ERROR: Device not connected"
                 await self.system.set_channel_trigger_delay(slot, channel, delay_ns_to_raw(delay_ns))
                 await self._do_poll_slow(datetime.datetime.now(datetime.timezone.utc))
             return f"OK: Module {module} delay set"
@@ -413,6 +442,7 @@ class L2TriggerBridgeServer:
         async def set_all_trigger_enabled(parent_node, enabled: bool):
             """Enable or disable triggers for all modules."""
             async with self._lock:
+                if not await self._ensure_connected(): return "ERROR: Device not connected"
                 for slot in self.active_slots:
                     for ch in range(1, CHANNELS_PER_SLOT+1):
                         if (slot, ch) not in self.immutable_channels:
@@ -426,6 +456,7 @@ class L2TriggerBridgeServer:
             """Apply uniform trigger delay to all modules."""
             raw = delay_ns_to_raw(delay_ns)
             async with self._lock:
+                if not await self._ensure_connected(): return "ERROR: Device not connected"
                 for slot in self.active_slots:
                     for ch in range(1, CHANNELS_PER_SLOT+1):
                         if (slot, ch) not in self.immutable_channels:
@@ -437,6 +468,7 @@ class L2TriggerBridgeServer:
         @uamethod
         async def set_mcf_enabled(parent_node, enabled: bool):
             async with self._lock: 
+                if not await self._ensure_connected(): return "ERROR: Device not connected"
                 await self.system.set_mcf_enabled(enabled)
                 await self._do_poll_fast(datetime.datetime.now(datetime.timezone.utc))
             return "OK"
@@ -445,6 +477,7 @@ class L2TriggerBridgeServer:
         @uamethod
         async def set_busy_glitch_filter_enabled(parent_node, enabled: bool):
             async with self._lock: 
+                if not await self._ensure_connected(): return "ERROR: Device not connected"
                 await self.system.set_glitch_filter_enabled(enabled)
                 await self._do_poll_fast(datetime.datetime.now(datetime.timezone.utc))
             return "OK"
@@ -453,6 +486,7 @@ class L2TriggerBridgeServer:
         @uamethod
         async def set_tib_trigger_busy_block_enabled(parent_node, enabled: bool):
             async with self._lock: 
+                if not await self._ensure_connected(): return "ERROR: Device not connected"
                 await self.system.set_tib_block_enabled(enabled)
                 await self._do_poll_fast(datetime.datetime.now(datetime.timezone.utc))
             return "OK"
@@ -461,6 +495,7 @@ class L2TriggerBridgeServer:
         @uamethod
         async def set_mcf_delay(parent_node, delay: float):
             async with self._lock: 
+                if not await self._ensure_connected(): return "ERROR: Device not connected"
                 await self.system.set_mcf_delay(mcf_delay_ns_to_raw(delay))
                 await self._do_poll_fast(datetime.datetime.now(datetime.timezone.utc))
             return "OK"
@@ -469,6 +504,7 @@ class L2TriggerBridgeServer:
         @uamethod
         async def set_mcf_threshold(parent_node, threshold: int):
             async with self._lock: 
+                if not await self._ensure_connected(): return "ERROR: Device not connected"
                 await self.system.set_mcf_threshold(threshold)
                 await self._do_poll_fast(datetime.datetime.now(datetime.timezone.utc))
             return "OK"
@@ -477,6 +513,7 @@ class L2TriggerBridgeServer:
         @uamethod
         async def set_l1_deadtime(parent_node, deadtime: float):
             async with self._lock: 
+                if not await self._ensure_connected(): return "ERROR: Device not connected"
                 await self.system.set_l1_deadtime(l1_deadtime_ns_to_raw(deadtime))
                 await self._do_poll_fast(datetime.datetime.now(datetime.timezone.utc))
             return "OK"
@@ -561,6 +598,10 @@ class L2TriggerBridgeServer:
 
     async def _do_poll_fast(self, now: datetime.datetime):
         """Perform high-frequency polling and update variables"""
+        if not await self._ensure_connected():
+            await self._write_fast_data(L2CBStatus(0,0,False,False,False,0,0,0), {}, now)
+            return
+
         try:
             l2cb = await self.system.get_l2cb_status()
             mon = await self.system.get_all_monitoring()
@@ -574,6 +615,9 @@ class L2TriggerBridgeServer:
 
     async def _do_poll_slow(self, now: datetime.datetime):
         """Perform slow polling of configurations and update variables"""
+        if not await self._ensure_connected():
+            return
+
         try:
             configs = {}
             for slot in self.active_slots:
@@ -679,6 +723,7 @@ def main():
                    help="OPC UA username:password (disables anonymous access)")
     p.add_argument("--poll-interval", type=float, default=1.0, help="Polling interval in seconds")
     p.add_argument("--poll-ratio", type=int, default=10, help="Ratio of fast to slow polling cycles")
+    p.add_argument("--reconnection-backoff-interval", type=float, default=30.0, help="Maximum delay between reconnection attempts (seconds)")
     p.add_argument("--timeout-us", type=int, default=10000, help="Hardware timeout in microseconds (passed to TCP server)")
     p.add_argument("--slots", help="Comma-separated list of slots to enable; if omitted, all slots are enabled")
     p.add_argument("--immutable-channels", default="S21C11,S21C12,S21C13,S21C14,S21C15",
@@ -731,6 +776,7 @@ def main():
         opcua_users=opcua_users,
         poll_interval=args.poll_interval,
         poll_ratio=args.poll_ratio,
+        reconnection_backoff_interval=args.reconnection_backoff_interval,
         enabled_slots=enabled_slots,
         immutable_channels=immutable_channels
     )
