@@ -639,25 +639,55 @@ class L2TriggerBridgeServer:
             if t: t.cancel()
         await self.system.disconnect()
 
+def _parse_immutable_channels(inactive_str: str) -> Set[Tuple[int, int]]:
+    """Parse comma-separated list of inactive slot/channel pairs (e.g. S1C1,S18C15)"""
+    import re
+    inactive = set()
+    if not inactive_str:
+        return inactive
+    parts = inactive_str.split(",")
+    for part in parts:
+        part = part.strip().upper()
+        if not part:
+            continue
+        m = re.match(r"S(\d+)C(\d+)", part)
+        if m:
+            slot = int(m.group(1))
+            chan = int(m.group(2))
+            inactive.add((slot, chan))
+        else:
+            logger.warning(f"Invalid inactive channel format: {part}")
+    return inactive
+
 def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--device-host", default="127.0.0.1")
-    p.add_argument("--device-port", type=int, default=DEFAULT_PORT)
-    p.add_argument("--variable-lifetime", type=float, default=10.0)
+    p = argparse.ArgumentParser(
+        description="L2 Trigger System OPC UA Bridge",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+    p.add_argument("--device-host", default="127.0.0.1", help="Host or IP of the TCP bridge server")
+    p.add_argument("--device-port", type=int, default=DEFAULT_PORT, help="Port of the TCP bridge server")
+    p.add_argument("--variable-lifetime", type=float, default=10.0, help="Lifetime of variables after connection loss (seconds)")
     p.add_argument("--opcua-endpoint", default="opc.tcp://0.0.0.0:4840/l2trig/",
                    help="OPC UA server endpoint URL")
     p.add_argument("--opcua-namespace", default="http://cta-observatory.org/nectarcam/l2trig/",
                    help="OPC UA namespace URI")
     p.add_argument("--opcua-root", default="l2trig", metavar="PATH",
                    help="Root object path in the OPC UA address space (default: l2trig). Dot-separated components create nested browse levels.")
+    p.add_argument("--monitoring-path", default="Monitoring",
+                   help="Name of the monitoring object under the root")
     p.add_argument("--opcua-user", default=None, metavar="USER:PASS",
                    help="OPC UA username:password (disables anonymous access)")
-    p.add_argument("--poll-interval", type=float, default=1.0)
-    p.add_argument("--poll-ratio", type=int, default=10)
-    p.add_argument("--slots")
-    p.add_argument("--log-level", default="INFO")
+    p.add_argument("--poll-interval", type=float, default=1.0, help="Polling interval in seconds")
+    p.add_argument("--poll-ratio", type=int, default=10, help="Ratio of fast to slow polling cycles")
+    p.add_argument("--timeout-us", type=int, default=10000, help="Hardware timeout in microseconds (passed to TCP server)")
+    p.add_argument("--slots", help="Comma-separated list of slots to enable; if omitted, all slots are enabled")
+    p.add_argument("--immutable-channels", default="S21C11,S21C12,S21C13,S21C14,S21C15",
+                   help="Comma-separated list of inactive slot/channel pairs whose state should not be modified (e.g. S1C1,S18C15)")
+    p.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+                   help="Set the logging level")
+    p.add_argument("--log-file", help="Optional log file path")
     args = p.parse_args()
-    _configure_logging(args.log_level, None)
+    _configure_logging(args.log_level, args.log_file)
     
     opcua_users = {}
     if args.opcua_user:
@@ -667,7 +697,28 @@ def main():
         user, _, pw = args.opcua_user.partition(":")
         opcua_users[user] = pw
 
-    enabled_slots = [int(s) for s in args.slots.split(",")] if args.slots else None
+    enabled_slots = None
+    if args.slots:
+        try:
+            enabled_slots = [int(s.strip()) for s in args.slots.split(",")]
+        except ValueError:
+            logger.error(f"Invalid slots argument: {args.slots}")
+            return 1
+
+    immutable_channels = _parse_immutable_channels(args.immutable_channels)
+
+    # Validate inactive channels
+    if enabled_slots is not None:
+        active_slots_set = set(enabled_slots)
+    else:
+        active_slots_set = set(VALID_SLOTS)
+
+    invalid_inactive = [(s, c) for (s, c) in immutable_channels 
+                        if s not in active_slots_set or not (1 <= c <= CHANNELS_PER_SLOT)]
+
+    if invalid_inactive:
+        logger.info(f"Ignoring invalid inactive channels: {invalid_inactive}")
+        immutable_channels = immutable_channels - set(invalid_inactive)
     
     server = L2TriggerBridgeServer(
         device_host=args.device_host,
@@ -676,10 +727,12 @@ def main():
         opcua_endpoint=args.opcua_endpoint,
         opcua_namespace=args.opcua_namespace,
         opcua_root=args.opcua_root,
+        monitoring_path=args.monitoring_path,
         opcua_users=opcua_users,
         poll_interval=args.poll_interval,
         poll_ratio=args.poll_ratio,
-        enabled_slots=enabled_slots
+        enabled_slots=enabled_slots,
+        immutable_channels=immutable_channels
     )
     asyncio.run(server.start())
 
