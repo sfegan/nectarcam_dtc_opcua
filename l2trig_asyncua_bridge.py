@@ -521,7 +521,8 @@ class L2TriggerBridgeServer:
 
     async def _write_fast_data(self, l2cb: L2CBStatus, monitoring: Dict[int, CTDBMonitoringData], now: datetime.datetime):
         sc = self._get_status_code()
-        await self._set_var("device_state", 1 if self._connected else 0, now, sc)
+        # device_state always has Good status as the server is authoritative
+        await self._set_var("device_state", 1 if self._connected else 0, now, ua.StatusCode(ua.StatusCodes.Good))
         await self._set_var("CrateFirmwareRevision", l2cb.firmware_version, now, sc)
         await self._set_var("CrateUpTime", l2cb.uptime, now, sc)
         await self._set_var("CrateMCFEnabled", l2cb.mcf_enabled, now, sc)
@@ -600,6 +601,7 @@ class L2TriggerBridgeServer:
         """Perform high-frequency polling and update variables"""
         if not await self._ensure_connected():
             await self._write_fast_data(L2CBStatus(0,0,False,False,False,0,0,0), {}, now)
+            # await self._write_slow_data({}, now)
             return
 
         try:
@@ -612,10 +614,12 @@ class L2TriggerBridgeServer:
             logger.error(f"Fast poll error: {e}")
             self._connected = False
             await self._write_fast_data(L2CBStatus(0,0,False,False,False,0,0,0), {}, now)
+            # await self._write_slow_data({}, now)
 
     async def _do_poll_slow(self, now: datetime.datetime):
         """Perform slow polling of configurations and update variables"""
         if not await self._ensure_connected():
+            await self._write_slow_data({}, now)
             return
 
         try:
@@ -625,6 +629,7 @@ class L2TriggerBridgeServer:
             await self._write_slow_data(configs, now)
         except Exception as e:
             logger.error(f"Slow poll error: {e}")
+            await self._write_slow_data({}, now)
 
     async def _update_loop(self):
         logger.info("Update loop started")
