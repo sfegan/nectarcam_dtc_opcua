@@ -74,6 +74,7 @@ static const char* msg_type_to_str(uint8_t type) {
         case L2TCP_MSG_SYS_EMERGENCY_OFF:  return "SYS_EMERGENCY_OFF";
         case L2TCP_MSG_SYS_SET_ALL_TRIG_EN: return "SYS_SET_ALL_TRIG_EN";
         case L2TCP_MSG_SYS_SET_ALL_TRIG_DELAY: return "SYS_SET_ALL_TRIG_DELAY";
+        case L2TCP_MSG_KEEPALIVE:          return "KEEPALIVE";
         case L2TCP_MSG_L2CB_GET_STATE:     return "L2CB_GET_STATE";
         case L2TCP_MSG_L2CB_SET_MCF_EN:    return "L2CB_SET_MCF_EN";
         case L2TCP_MSG_L2CB_SET_GLITCH_EN: return "L2CB_SET_GLITCH_EN";
@@ -518,6 +519,10 @@ static void handle_request() {
                 send(g_server.client_fd, &resp_hdr, sizeof(resp_hdr), 0);
                 send(g_server.client_fd, &resp, sizeof(resp), 0);
             }
+            break;
+        }
+        case L2TCP_MSG_KEEPALIVE: {
+            send_ack(hdr.seq);
             break;
         }
         default:

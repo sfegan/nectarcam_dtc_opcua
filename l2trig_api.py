@@ -31,6 +31,7 @@ class L2TCPMsgType(IntEnum):
     SYS_EMERGENCY_OFF   = 0x03
     SYS_SET_ALL_TRIG_EN = 0x04
     SYS_SET_ALL_TRIG_DELAY = 0x05
+    SYS_KEEPALIVE       = 0x06
     L2CB_GET_STATE      = 0x10
     L2CB_SET_MCF_EN     = 0x11
     L2CB_SET_GLITCH_EN  = 0x12
@@ -183,6 +184,10 @@ class L2TriggerSystem:
                 raise
 
     # --- System Control ---
+
+    async def keepalive(self):
+        """Send keepalive message to keep connection alive"""
+        await self._send_recv(L2TCPMsgType.SYS_KEEPALIVE)
 
     async def set_config(self, active_slots: List[int], immutable_masks: Dict[int, int]):
         """Configure active slots and immutable channels"""
