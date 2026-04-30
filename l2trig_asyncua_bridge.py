@@ -197,7 +197,7 @@ class L2TriggerBridgeServer:
         self._watchdog_task: Optional[asyncio.Task] = None
         self._running = False
         self._lock = asyncio.Lock()
-        self._need_slow_poll = False
+        self._poll_event = asyncio.Event()
         self._last_fast_poll_time: Optional[datetime.datetime] = None
         self._last_slow_poll_time: Optional[datetime.datetime] = None
         
@@ -240,7 +240,7 @@ class L2TriggerBridgeServer:
                        self.tcp_connect_timeout, self.tcp_recv_timeout)
             self._connected = True
             self._last_contact = now
-            self._need_slow_poll = True
+            self._poll_event.set()
             self._reconnect_delay = 1.0
             return True
         except asyncio.TimeoutError as e:
@@ -420,7 +420,7 @@ class L2TriggerBridgeServer:
             async with self._lock: 
                 if not await self._ensure_connected(): return "ERROR: Device not connected"
                 await self.system.set_ctdb_limits(slot, current_ma_to_raw(min_ma), current_ma_to_raw(max_ma))
-                self._need_slow_poll = True
+                self._poll_event.set()
             return f"OK: Board {board} limits set"
         await add_described_method("SetBoardCurrentLimits", set_board_current_limits,
                                    inputs=[a("board", ua.VariantType.Int32), a("min_ma", ua.VariantType.Double), a("max_ma", ua.VariantType.Double)])
@@ -434,7 +434,7 @@ class L2TriggerBridgeServer:
             async with self._lock: 
                 if not await self._ensure_connected(): return "ERROR: Device not connected"
                 await self.system.set_channel_trigger_enabled(slot, channel, enabled)
-                self._need_slow_poll = True
+                self._poll_event.set()
             return f"OK: Module {module} trigger {'enabled' if enabled else 'disabled'}"
         await add_described_method("SetModuleTriggerEnabled", set_module_trigger_enabled,
                                    inputs=[a("module", ua.VariantType.Int32), a("enabled", ua.VariantType.Boolean)])
@@ -448,7 +448,7 @@ class L2TriggerBridgeServer:
             async with self._lock: 
                 if not await self._ensure_connected(): return "ERROR: Device not connected"
                 await self.system.set_channel_trigger_delay(slot, channel, delay_ns_to_raw(delay_ns))
-                self._need_slow_poll = True
+                self._poll_event.set()
             return f"OK: Module {module} delay set"
         await add_described_method("SetModuleTriggerDelay", set_module_trigger_delay,
                                    inputs=[a("module", ua.VariantType.Int32), a("delay_ns", ua.VariantType.Double)])
@@ -459,7 +459,7 @@ class L2TriggerBridgeServer:
             async with self._lock:
                 if not await self._ensure_connected(): return "ERROR: Device not connected"
                 await self.system.set_all_trigger_enabled(enabled)
-                self._need_slow_poll = True
+                self._poll_event.set()
             return "OK: All triggers updated"
         await add_described_method("SetAllTriggerEnabled", set_all_trigger_enabled, inputs=[a("enabled", ua.VariantType.Boolean)])
 
@@ -470,7 +470,7 @@ class L2TriggerBridgeServer:
             async with self._lock:
                 if not await self._ensure_connected(): return "ERROR: Device not connected"
                 await self.system.set_all_trigger_delay(raw)
-                self._need_slow_poll = True
+                self._poll_event.set()
             return "OK: All delays updated"
         await add_described_method("SetAllTriggerDelay", set_all_trigger_delay, inputs=[a("delay_ns", ua.VariantType.Double)])
 
@@ -653,9 +653,9 @@ class L2TriggerBridgeServer:
                 now_ts = datetime.datetime.now(datetime.timezone.utc)
                 async with self._lock:
                     await self._do_poll_fast(now_ts)
-                    if self._need_slow_poll or cycle % self.poll_ratio == 0:
+                    if self._poll_event.is_set() or cycle % self.poll_ratio == 0:
                         await self._do_poll_slow(now_ts)
-                        self._need_slow_poll = False
+                        self._poll_event.clear()
             except Exception as e:
                 logger.error(f"Error in update loop: {e}", exc_info=True)
             
