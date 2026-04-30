@@ -175,10 +175,12 @@ static void start_ramp(int enable) {
             cta_ctdb_getOverCurrentErrors(s, &over);
             cta_ctdb_getUnderCurrentErrors(s, &under);
             uint16_t err_mask = (over | under);
-            if (err_mask) {
+            /* Only reset errors in non-immutable channels */
+            uint16_t resetable_err_mask = err_mask & ~g_server.immutable_masks[s];
+            if (resetable_err_mask) {
                 uint16_t pwr;
                 cta_ctdb_getPowerEnabled(s, &pwr);
-                cta_ctdb_setPowerEnabled(s, pwr & ~err_mask);
+                cta_ctdb_setPowerEnabled(s, pwr & ~resetable_err_mask);
             }
         }
     }
