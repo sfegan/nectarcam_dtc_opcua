@@ -147,8 +147,7 @@ class L2TriggerSystem:
                     )
                 except asyncio.TimeoutError:
                     logger.error(f"Header recv timeout after {self.recv_timeout}s")
-                    self.reader = None
-                    self.writer = None
+                    await self.disconnect()
                     raise RuntimeError(f"Server response timeout after {self.recv_timeout}s")
                 
                 rtype, rseq, rlen = struct.unpack(HEADER_FMT, resp_hdr_data)
@@ -163,8 +162,7 @@ class L2TriggerSystem:
                         )
                     except asyncio.TimeoutError:
                         logger.error(f"Payload recv timeout after {self.recv_timeout}s")
-                        self.reader = None
-                        self.writer = None
+                        await self.disconnect()
                         raise RuntimeError(f"Server payload timeout after {self.recv_timeout}s")
 
                 if rseq != seq:
@@ -179,8 +177,7 @@ class L2TriggerSystem:
             except (asyncio.IncompleteReadError, ConnectionError, OSError) as e:
                 # Connection lost or broken, reset state so we try to reconnect next time
                 logger.error(f"Connection error: {e}")
-                self.reader = None
-                self.writer = None
+                await self.disconnect()
                 raise
 
     # --- System Control ---
