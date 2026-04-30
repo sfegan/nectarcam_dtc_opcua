@@ -247,7 +247,7 @@ static void handle_request() {
 
     uint8_t buffer[4096];
     if (hdr.len > sizeof(buffer)) {
-        send_error(hdr.seq, 1, "Payload too large");
+        send_error(hdr.seq, L2TCP_ERR_PAYLOAD_TOO_LARGE, "Payload too large");
         return;
     }
 
@@ -341,7 +341,7 @@ static void handle_request() {
         case L2TCP_MSG_SYS_RAMP_POWER: {
             l2tcp_payload_ramp_t *p = (l2tcp_payload_ramp_t *)buffer;
             if (g_server.active_slots_mask == 0) {
-                send_error(hdr.seq, 3, "No active slots configured");
+                send_error(hdr.seq, L2TCP_ERR_MALFORMED_PAYLOAD, "No active slots configured");
             } else {
                 start_ramp(p->enable);
                 send_ack(hdr.seq, show_msg);
@@ -428,7 +428,7 @@ static void handle_request() {
         case L2TCP_MSG_CTDB_SET_CH_POWER: {
             l2tcp_payload_ch_ctrl_t *p = (l2tcp_payload_ch_ctrl_t *)buffer;
             if (!is_slot_active(p->slot)) {
-                send_error(hdr.seq, 4, "Slot not active");
+                send_error(hdr.seq, L2TCP_ERR_INVALID_PARAMETER, "Slot not active");
             } else {
                 handle_ch_power(p->slot, p->channel, p->enable);
                 send_ack(hdr.seq, show_msg);
@@ -438,9 +438,9 @@ static void handle_request() {
         case L2TCP_MSG_CTDB_SET_CH_TRIG: {
             l2tcp_payload_ch_ctrl_t *p = (l2tcp_payload_ch_ctrl_t *)buffer;
             if (!is_slot_active(p->slot)) {
-                send_error(hdr.seq, 4, "Slot not active");
+                send_error(hdr.seq, L2TCP_ERR_INVALID_PARAMETER, "Slot not active");
             } else if (is_ch_immutable(p->slot, p->channel)) {
-                send_error(hdr.seq, 5, "Channel is immutable");
+                send_error(hdr.seq, L2TCP_ERR_INVALID_PARAMETER, "Channel is immutable");
             } else {
                 cta_l2cb_setL1TriggerChannelEnabled(p->slot, p->channel, p->enable);
                 send_ack(hdr.seq, show_msg);
@@ -450,9 +450,9 @@ static void handle_request() {
         case L2TCP_MSG_CTDB_SET_CH_DELAY: {
             l2tcp_payload_ch_delay_t *p = (l2tcp_payload_ch_delay_t *)buffer;
             if (!is_slot_active(p->slot)) {
-                send_error(hdr.seq, 4, "Slot not active");
+                send_error(hdr.seq, L2TCP_ERR_INVALID_PARAMETER, "Slot not active");
             } else if (is_ch_immutable(p->slot, p->channel)) {
-                send_error(hdr.seq, 5, "Channel is immutable");
+                send_error(hdr.seq, L2TCP_ERR_INVALID_PARAMETER, "Channel is immutable");
             } else {
                 cta_l2cb_setL1TriggerDelay(p->slot, p->channel, p->delay);
                 send_ack(hdr.seq, show_msg);
@@ -462,7 +462,7 @@ static void handle_request() {
         case L2TCP_MSG_CTDB_SET_LIMITS: {
             l2tcp_payload_ctdb_limits_t *p = (l2tcp_payload_ctdb_limits_t *)buffer;
             if (!is_slot_active(p->slot)) {
-                send_error(hdr.seq, 4, "Slot not active");
+                send_error(hdr.seq, L2TCP_ERR_INVALID_PARAMETER, "Slot not active");
             } else {
                 cta_ctdb_setPowerCurrentMin(p->slot, p->curr_limit_min);
                 cta_ctdb_setPowerCurrentMax(p->slot, p->curr_limit_max);
@@ -473,7 +473,7 @@ static void handle_request() {
         case L2TCP_MSG_CTDB_GET_MONITORING: {
             uint8_t slot = buffer[0];
             if (!is_slot_active(slot)) {
-                send_error(hdr.seq, 4, "Slot not active");
+                send_error(hdr.seq, L2TCP_ERR_INVALID_PARAMETER, "Slot not active");
             } else {
                 l2tcp_header_t resp_hdr = { L2TCP_MSG_CTDB_GET_MONITORING, hdr.seq, sizeof(l2tcp_payload_monitoring_t) };
                 l2tcp_payload_monitoring_t resp;
@@ -522,7 +522,7 @@ static void handle_request() {
         case L2TCP_MSG_CTDB_GET_CONFIG: {
             uint8_t slot = buffer[0];
             if (!is_slot_active(slot)) {
-                send_error(hdr.seq, 4, "Slot not active");
+                send_error(hdr.seq, L2TCP_ERR_INVALID_PARAMETER, "Slot not active");
             } else {
                 l2tcp_header_t resp_hdr = { L2TCP_MSG_CTDB_GET_CONFIG, hdr.seq, sizeof(l2tcp_payload_config_t) };
                 l2tcp_payload_config_t resp;
@@ -547,7 +547,7 @@ static void handle_request() {
             break;
         }
         default:
-            send_error(hdr.seq, 2, "Unknown command");
+            send_error(hdr.seq, L2TCP_ERR_UNKNOWN_COMMAND, "Unknown command");
             break;
     }
 }

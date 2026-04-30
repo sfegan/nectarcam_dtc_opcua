@@ -57,6 +57,16 @@ typedef enum {
     L2TCP_MSG_BATCH_MONITOR_ALL       = 0x32
 } l2tcp_msg_type_t;
 
+/* --- Error Codes --- */
+
+typedef enum {
+    L2TCP_ERR_PAYLOAD_TOO_LARGE       = 1,
+    L2TCP_ERR_UNKNOWN_COMMAND         = 2,
+    L2TCP_ERR_MALFORMED_PAYLOAD       = 3,
+    L2TCP_ERR_INVALID_PARAMETER       = 4,
+    L2TCP_ERR_HARDWARE_ERROR          = 5
+} l2tcp_error_code_t;
+
 /* --- Protocol Header --- */
 
 #pragma pack(push, 1)
