@@ -90,18 +90,30 @@ class CTDBConfigData:
 # ============================================================================
 
 class L2TriggerSystem:
-    def __init__(self, host: str = "127.0.0.1", port: int = DEFAULT_PORT):
+    def __init__(self, host: str = "127.0.0.1", port: int = DEFAULT_PORT, 
+                 connect_timeout: float = 5.0, recv_timeout: float = 5.0):
         self.host = host
         self.port = port
         self.reader: Optional[asyncio.StreamReader] = None
         self.writer: Optional[asyncio.StreamWriter] = None
         self._seq = 0
         self._lock = asyncio.Lock()
+        self.connect_timeout = connect_timeout
+        self.recv_timeout = recv_timeout
 
     async def connect(self):
         """Establish connection to the embedded server"""
-        logger.info(f"Connecting to L2Trigger server at {self.host}:{self.port}")
-        self.reader, self.writer = await asyncio.open_connection(self.host, self.port)
+        logger.info(f"Connecting to L2Trigger server at {self.host}:{self.port} (timeout: {self.connect_timeout}s)")
+        try:
+            self.reader, self.writer = await asyncio.wait_for(
+                asyncio.open_connection(self.host, self.port),
+                timeout=self.connect_timeout
+            )
+        except asyncio.TimeoutError:
+            logger.error(f"Connection timeout after {self.connect_timeout}s")
+            self.reader = None
+            self.writer = None
+            raise RuntimeError(f"Connection timeout to {self.host}:{self.port}")
 
     async def disconnect(self):
         """Close connection"""
@@ -126,14 +138,33 @@ class L2TriggerSystem:
                 self.writer.write(header + payload)
                 await self.writer.drain()
 
-                # Read response header
-                resp_hdr_data = await self.reader.readexactly(HEADER_SIZE)
+                # Read response header with timeout
+                try:
+                    resp_hdr_data = await asyncio.wait_for(
+                        self.reader.readexactly(HEADER_SIZE),
+                        timeout=self.recv_timeout
+                    )
+                except asyncio.TimeoutError:
+                    logger.error(f"Header recv timeout after {self.recv_timeout}s")
+                    self.reader = None
+                    self.writer = None
+                    raise RuntimeError(f"Server response timeout after {self.recv_timeout}s")
+                
                 rtype, rseq, rlen = struct.unpack(HEADER_FMT, resp_hdr_data)
                 
-                # Read payload
+                # Read payload with timeout
                 rpayload = b""
                 if rlen > 0:
-                    rpayload = await self.reader.readexactly(rlen)
+                    try:
+                        rpayload = await asyncio.wait_for(
+                            self.reader.readexactly(rlen),
+                            timeout=self.recv_timeout
+                        )
+                    except asyncio.TimeoutError:
+                        logger.error(f"Payload recv timeout after {self.recv_timeout}s")
+                        self.reader = None
+                        self.writer = None
+                        raise RuntimeError(f"Server payload timeout after {self.recv_timeout}s")
 
                 if rseq != seq:
                     raise RuntimeError(f"Sequence mismatch: expected {seq}, got {rseq}")
@@ -144,8 +175,9 @@ class L2TriggerSystem:
                     raise RuntimeError(f"Server error {code}: {msg}")
 
                 return L2TCPMsgType(rtype), rpayload
-            except (asyncio.IncompleteReadError, ConnectionError, OSError):
+            except (asyncio.IncompleteReadError, ConnectionError, OSError) as e:
                 # Connection lost or broken, reset state so we try to reconnect next time
+                logger.error(f"Connection error: {e}")
                 self.reader = None
                 self.writer = None
                 raise

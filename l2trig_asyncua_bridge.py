@@ -138,6 +138,8 @@ class L2TriggerBridgeServer:
                  poll_interval: float = 1.0,
                  poll_ratio: int = 10,
                  reconnection_backoff_interval: float = 30.0,
+                 tcp_connect_timeout: float = 5.0,
+                 tcp_recv_timeout: float = 5.0,
                  enabled_slots: Optional[List[int]] = None,
                  immutable_channels: Optional[Set[Tuple[int, int]]] = None):
         
@@ -159,8 +161,12 @@ class L2TriggerBridgeServer:
                             for ch in range(1, CHANNELS_PER_SLOT + 1) 
                             if (slot, ch) not in self.immutable_channels)
 
-        # TCP API client
-        self.system = L2TriggerSystem(host=device_host, port=device_port)
+        # TCP API client with configurable timeouts
+        self.tcp_connect_timeout = tcp_connect_timeout
+        self.tcp_recv_timeout = tcp_recv_timeout
+        self.system = L2TriggerSystem(host=device_host, port=device_port,
+                                      connect_timeout=tcp_connect_timeout,
+                                      recv_timeout=tcp_recv_timeout)
         
         # Pre-calculate ModuleIsMutable vector
         self._module_is_mutable = []
@@ -230,11 +236,19 @@ class L2TriggerBridgeServer:
         try:
             await self.system.connect()
             await self.system.set_config(self.active_slots, self._immutable_masks)
-            logger.info("TCP server connected and configured")
+            logger.info("TCP server connected and configured (connect: %0.1fs, recv: %0.1fs timeout)",
+                       self.tcp_connect_timeout, self.tcp_recv_timeout)
             self._connected = True
+            self._last_contact = now
             self._need_slow_poll = True
             self._reconnect_delay = 1.0
             return True
+        except asyncio.TimeoutError as e:
+            logger.warning(f"TCP connection timeout: {e} (connect: {self.tcp_connect_timeout}s)")
+            self._connected = False
+            self._next_reconnect = now + self._reconnect_delay
+            self._reconnect_delay = min(self._reconnect_delay * 2, self.reconnection_backoff_interval)
+            return False
         except Exception as e:
             logger.warning(f"Failed to connect to TCP server: {e}")
             self._connected = False
@@ -715,6 +729,7 @@ def main():
     )
     p.add_argument("--device-host", default="127.0.0.1", help="Host or IP of the TCP bridge server")
     p.add_argument("--device-port", type=int, default=DEFAULT_PORT, help="Port of the TCP bridge server")
+    p.add_argument("--device-timeout", type=float, default=5.0, help="TCP connection and receive timeout in seconds")
     p.add_argument("--variable-lifetime", type=float, default=10.0, help="Lifetime of variables after connection loss (seconds)")
     p.add_argument("--opcua-endpoint", default="opc.tcp://0.0.0.0:4840/l2trig/",
                    help="OPC UA server endpoint URL")
@@ -729,7 +744,6 @@ def main():
     p.add_argument("--poll-interval", type=float, default=1.0, help="Polling interval in seconds")
     p.add_argument("--poll-ratio", type=int, default=10, help="Ratio of fast to slow polling cycles")
     p.add_argument("--reconnection-backoff-interval", type=float, default=30.0, help="Maximum delay between reconnection attempts (seconds)")
-    p.add_argument("--timeout-us", type=int, default=10000, help="Hardware timeout in microseconds (passed to TCP server)")
     p.add_argument("--slots", help="Comma-separated list of slots to enable; if omitted, all slots are enabled")
     p.add_argument("--immutable-channels", default="S21C11,S21C12,S21C13,S21C14,S21C15",
                    help="Comma-separated list of inactive slot/channel pairs whose state should not be modified (e.g. S1C1,S18C15)")
@@ -782,6 +796,8 @@ def main():
         poll_interval=args.poll_interval,
         poll_ratio=args.poll_ratio,
         reconnection_backoff_interval=args.reconnection_backoff_interval,
+        tcp_connect_timeout=args.device_timeout,
+        tcp_recv_timeout=args.device_timeout,
         enabled_slots=enabled_slots,
         immutable_channels=immutable_channels
     )
