@@ -113,8 +113,8 @@ static void send_error(uint8_t seq, uint8_t code, const char *msg) {
     send(g_server.client_fd, &resp_err, sizeof(resp_err), 0);
 }
 
-static void send_ack(uint8_t seq) {
-    if (g_server.verbose > 0) {
+static void send_ack(uint8_t seq, int show_msg) {
+    if (g_server.verbose > 0 && show_msg) {
         printf("  -> ACK\n");
     }
     l2tcp_header_t resp_hdr = { L2TCP_MSG_ACK, seq, 0 };
@@ -201,7 +201,8 @@ static void process_ramp() {
 /* --- Command Processing --- */
 
 static int is_polling_msg(uint8_t type) {
-    return (type == L2TCP_MSG_L2CB_GET_STATE ||
+    return (type == L2TCP_MSG_KEEPALIVE ||
+            type == L2TCP_MSG_L2CB_GET_STATE ||
             type == L2TCP_MSG_CTDB_GET_MONITORING ||
             type == L2TCP_MSG_BATCH_MONITOR_ALL ||
             type == L2TCP_MSG_CTDB_GET_CONFIG);
@@ -317,7 +318,7 @@ static void handle_request() {
             if (first_imm) printf("none");
             printf("\n");
 
-            send_ack(hdr.seq);
+            send_ack(hdr.seq, show_msg);
             break;
         }
         case L2TCP_MSG_SYS_RAMP_POWER: {
@@ -326,14 +327,14 @@ static void handle_request() {
                 send_error(hdr.seq, 3, "No active slots configured");
             } else {
                 start_ramp(p->enable);
-                send_ack(hdr.seq);
+                send_ack(hdr.seq, show_msg);
             }
             break;
         }
         case L2TCP_MSG_SYS_EMERGENCY_OFF: {
             cta_ctdb_setPowerEnabledToAll(0);
             g_server.ramp.active = 0;
-            send_ack(hdr.seq);
+            send_ack(hdr.seq, show_msg);
             break;
         }
         case L2TCP_MSG_SYS_SET_ALL_TRIG_EN: {
@@ -350,7 +351,7 @@ static void handle_request() {
                 }
                 cta_l2cb_setL1TriggerEnabled(s, new_mask);
             }
-            send_ack(hdr.seq);
+            send_ack(hdr.seq, show_msg);
             break;
         }
         case L2TCP_MSG_SYS_SET_ALL_TRIG_DELAY: {
@@ -362,7 +363,7 @@ static void handle_request() {
                     cta_l2cb_setL1TriggerDelay(s, ch, delay);
                 }
             }
-            send_ack(hdr.seq);
+            send_ack(hdr.seq, show_msg);
             break;
         }
         case L2TCP_MSG_L2CB_GET_STATE: {
@@ -385,27 +386,27 @@ static void handle_request() {
         }
         case L2TCP_MSG_L2CB_SET_MCF_EN:
             cta_l2cb_setMCFEnabled(((l2tcp_payload_u16_t*)buffer)->value);
-            send_ack(hdr.seq);
+            send_ack(hdr.seq, show_msg);
             break;
         case L2TCP_MSG_L2CB_SET_GLITCH_EN:
             cta_l2cb_setBusyGlitchFilterEnabled(((l2tcp_payload_u16_t*)buffer)->value);
-            send_ack(hdr.seq);
+            send_ack(hdr.seq, show_msg);
             break;
         case L2TCP_MSG_L2CB_SET_TIB_BLOCK_EN:
             cta_l2cb_setTIBTriggerBusyBlockEnabled(((l2tcp_payload_u16_t*)buffer)->value);
-            send_ack(hdr.seq);
+            send_ack(hdr.seq, show_msg);
             break;
         case L2TCP_MSG_L2CB_SET_MCF_THRESH:
             cta_l2cb_setMCFThreshold(((l2tcp_payload_u16_t*)buffer)->value);
-            send_ack(hdr.seq);
+            send_ack(hdr.seq, show_msg);
             break;
         case L2TCP_MSG_L2CB_SET_MCF_DELAY:
             cta_l2cb_setMCFDelay(((l2tcp_payload_u16_t*)buffer)->value);
-            send_ack(hdr.seq);
+            send_ack(hdr.seq, show_msg);
             break;
         case L2TCP_MSG_L2CB_SET_L1_DEADTIME:
             cta_l2cb_setL1Deadtime(((l2tcp_payload_u16_t*)buffer)->value);
-            send_ack(hdr.seq);
+            send_ack(hdr.seq, show_msg);
             break;
         case L2TCP_MSG_CTDB_SET_CH_POWER: {
             l2tcp_payload_ch_ctrl_t *p = (l2tcp_payload_ch_ctrl_t *)buffer;
@@ -413,7 +414,7 @@ static void handle_request() {
                 send_error(hdr.seq, 4, "Slot not active");
             } else {
                 handle_ch_power(p->slot, p->channel, p->enable);
-                send_ack(hdr.seq);
+                send_ack(hdr.seq, show_msg);
             }
             break;
         }
@@ -425,7 +426,7 @@ static void handle_request() {
                 send_error(hdr.seq, 5, "Channel is immutable");
             } else {
                 cta_l2cb_setL1TriggerChannelEnabled(p->slot, p->channel, p->enable);
-                send_ack(hdr.seq);
+                send_ack(hdr.seq, show_msg);
             }
             break;
         }
@@ -437,7 +438,7 @@ static void handle_request() {
                 send_error(hdr.seq, 5, "Channel is immutable");
             } else {
                 cta_l2cb_setL1TriggerDelay(p->slot, p->channel, p->delay);
-                send_ack(hdr.seq);
+                send_ack(hdr.seq, show_msg);
             }
             break;
         }
@@ -448,7 +449,7 @@ static void handle_request() {
             } else {
                 cta_ctdb_setPowerCurrentMin(p->slot, p->curr_limit_min);
                 cta_ctdb_setPowerCurrentMax(p->slot, p->curr_limit_max);
-                send_ack(hdr.seq);
+                send_ack(hdr.seq, show_msg);
             }
             break;
         }
@@ -522,7 +523,7 @@ static void handle_request() {
             break;
         }
         case L2TCP_MSG_KEEPALIVE: {
-            send_ack(hdr.seq);
+            send_ack(hdr.seq, show_msg);
             break;
         }
         default:

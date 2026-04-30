@@ -18,6 +18,7 @@ def print_help():
     print("  config_default           - Activate all valid slots and set default immutable channels")
     print("  ramp <0|1>               - Trigger global power ramp")
     print("  emergency                - Trigger emergency shutdown")
+    print("  keepalive <0|1>          - Toggle keepalive on/off (1=on, 0=off)")
     
     print("\nL2CB (Global) Commands:")
     print("  l2cb                     - Get L2CB status (Firmware, Uptime, Control bits, Params)")
@@ -41,7 +42,7 @@ def print_help():
     print("  help                     - Show this help")
     print("  quit                     - Exit")
 
-async def run_cli(host, port):
+async def run_cli(host, port, keepalive_enabled):
     system = L2TriggerSystem(host, port)
     try:
         await system.connect()
@@ -49,6 +50,27 @@ async def run_cli(host, port):
     except Exception as e:
         print(f"Failed to connect: {e}")
         return
+
+    # Keepalive state and task
+    keepalive_state = {"enabled": keepalive_enabled, "task": None}
+    
+    async def keepalive_loop():
+        """Background task to send keepalive messages every second"""
+        while keepalive_state["enabled"]:
+            try:
+                await asyncio.sleep(1.0)
+                if keepalive_state["enabled"]:
+                    await system.keepalive()
+            except Exception as e:
+                print(f"Keepalive error: {e}")
+                # Don't break the loop, just continue
+    
+    # Start keepalive task if enabled
+    if keepalive_enabled:
+        keepalive_state["task"] = asyncio.create_task(keepalive_loop())
+        print("Keepalive enabled (1s interval)")
+    else:
+        print("Keepalive disabled")
 
     print_help()
     
@@ -86,6 +108,27 @@ async def run_cli(host, port):
             elif cmd == "emergency":
                 await system.emergency_shutdown()
                 print("Emergency shutdown sent.")
+            
+            elif cmd == "keepalive":
+                val = int(parts[1])
+                was_enabled = keepalive_state["enabled"]
+                keepalive_state["enabled"] = (val == 1)
+                
+                if not was_enabled and keepalive_state["enabled"]:
+                    # Starting keepalive
+                    keepalive_state["task"] = asyncio.create_task(keepalive_loop())
+                    print("Keepalive enabled (1s interval)")
+                elif was_enabled and not keepalive_state["enabled"]:
+                    # Stopping keepalive
+                    if keepalive_state["task"]:
+                        keepalive_state["task"].cancel()
+                        try:
+                            await keepalive_state["task"]
+                        except asyncio.CancelledError:
+                            pass
+                    print("Keepalive disabled")
+                else:
+                    print(f"Keepalive already {'enabled' if keepalive_state['enabled'] else 'disabled'}")
 
             elif cmd == "l2cb":
                 s = await system.get_l2cb_status()
@@ -166,12 +209,25 @@ async def run_cli(host, port):
         except Exception as e:
             print(f"Error: {e}")
 
+    # Cleanup keepalive task
+    keepalive_state["enabled"] = False
+    if keepalive_state["task"]:
+        keepalive_state["task"].cancel()
+        try:
+            await keepalive_state["task"]
+        except asyncio.CancelledError:
+            pass
+
     await system.disconnect()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=4242)
+    parser.add_argument("--keepalive", action="store_true", default=True, 
+                        help="Enable keepalive messages (default: on)")
+    parser.add_argument("--no-keepalive", action="store_false", dest="keepalive",
+                        help="Disable keepalive messages")
     args = parser.parse_args()
     
-    asyncio.run(run_cli(args.host, args.port))
+    asyncio.run(run_cli(args.host, args.port, args.keepalive))
