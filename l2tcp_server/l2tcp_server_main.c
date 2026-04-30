@@ -93,6 +93,22 @@ static const char* msg_type_to_str(uint8_t type) {
     }
 }
 
+static int send_all(const void *buf, size_t len) {
+    if (g_server.client_fd == -1) return -1;
+    ssize_t n = send(g_server.client_fd, buf, len, 0);
+    if (n != (ssize_t)len) {
+        if (n < 0) {
+            printf("Send error: %s, closing connection\n", strerror(errno));
+        } else {
+            printf("Partial send (%zd/%zu), closing connection\n", n, len);
+        }
+        close(g_server.client_fd);
+        g_server.client_fd = -1;
+        return -1;
+    }
+    return 0;
+}
+
 static void send_error(uint8_t seq, uint8_t code, const char *msg) {
     l2tcp_header_t resp_hdr;
     l2tcp_payload_error_t resp_err;
@@ -109,8 +125,9 @@ static void send_error(uint8_t seq, uint8_t code, const char *msg) {
     strncpy(resp_err.message, msg, sizeof(resp_err.message) - 1);
     resp_err.message[sizeof(resp_err.message) - 1] = '\0';
 
-    send(g_server.client_fd, &resp_hdr, sizeof(resp_hdr), 0);
-    send(g_server.client_fd, &resp_err, sizeof(resp_err), 0);
+    if (send_all(&resp_hdr, sizeof(resp_hdr)) == 0) {
+        send_all(&resp_err, sizeof(resp_err));
+    }
 }
 
 static void send_ack(uint8_t seq, int show_msg) {
@@ -118,7 +135,7 @@ static void send_ack(uint8_t seq, int show_msg) {
         printf("  -> ACK\n");
     }
     l2tcp_header_t resp_hdr = { L2TCP_MSG_ACK, seq, 0 };
-    send(g_server.client_fd, &resp_hdr, sizeof(resp_hdr), 0);
+    send_all(&resp_hdr, sizeof(resp_hdr));
 }
 
 /* --- Power Logic --- */
@@ -379,11 +396,11 @@ static void handle_request() {
             resp.l1_deadtime = cta_l2cb_getL1Deadtime();
             
             if (g_server.verbose > 1) printf("  -> L2CB STATE (fw: 0x%04x, ts: %llu)\n", resp.fw_rev, (unsigned long long)resp.timestamp);
-            
-            send(g_server.client_fd, &resp_hdr, sizeof(resp_hdr), 0);
-            send(g_server.client_fd, &resp, sizeof(resp), 0);
-            break;
-        }
+
+            if (send_all(&resp_hdr, sizeof(resp_hdr)) == 0) {
+                send_all(&resp, sizeof(resp));
+            }
+            break;        }
         case L2TCP_MSG_L2CB_SET_MCF_EN:
             cta_l2cb_setMCFEnabled(((l2tcp_payload_u16_t*)buffer)->value);
             send_ack(hdr.seq, show_msg);
@@ -470,8 +487,9 @@ static void handle_request() {
 
                 if (g_server.verbose > 1) printf("  -> MONITORING S%d\n", slot);
 
-                send(g_server.client_fd, &resp_hdr, sizeof(resp_hdr), 0);
-                send(g_server.client_fd, &resp, sizeof(resp), 0);
+                if (send_all(&resp_hdr, sizeof(resp_hdr)) == 0) {
+                    send_all(&resp, sizeof(resp));
+                }
             }
             break;
         }
@@ -483,20 +501,21 @@ static void handle_request() {
 
             if (g_server.verbose > 1) printf("  -> BATCH MONITOR (%d slots)\n", count);
 
-            send(g_server.client_fd, &resp_hdr, sizeof(resp_hdr), 0);
-            uint8_t u8_count = (uint8_t)count;
-            send(g_server.client_fd, &u8_count, 1, 0);
-
-            for (int s = 0; s < L2TCP_MAX_SLOTS; s++) {
-                if (!is_slot_active(s)) continue;
-                l2tcp_payload_monitoring_t resp;
-                resp.slot = (uint8_t)s;
-                cta_ctdb_getPowerCurrent(s, 0, &resp.ctdb_curr);
-                for (int i = 0; i < 15; i++) cta_ctdb_getPowerCurrent(s, i + 1, &resp.ch_curr[i]);
-                cta_ctdb_getOverCurrentErrors(s, &resp.over_curr_mask);
-                cta_ctdb_getUnderCurrentErrors(s, &resp.under_curr_mask);
-                cta_ctdb_getPowerEnabled(s, &resp.pwr_enabled_mask);
-                send(g_server.client_fd, &resp, sizeof(resp), 0);
+            if (send_all(&resp_hdr, sizeof(resp_hdr)) == 0) {
+                uint8_t u8_count = (uint8_t)count;
+                if (send_all(&u8_count, 1) == 0) {
+                    for (int s = 0; s < L2TCP_MAX_SLOTS; s++) {
+                        if (!is_slot_active(s)) continue;
+                        l2tcp_payload_monitoring_t resp;
+                        resp.slot = (uint8_t)s;
+                        cta_ctdb_getPowerCurrent(s, 0, &resp.ctdb_curr);
+                        for (int i = 0; i < 15; i++) cta_ctdb_getPowerCurrent(s, i + 1, &resp.ch_curr[i]);
+                        cta_ctdb_getOverCurrentErrors(s, &resp.over_curr_mask);
+                        cta_ctdb_getUnderCurrentErrors(s, &resp.under_curr_mask);
+                        cta_ctdb_getPowerEnabled(s, &resp.pwr_enabled_mask);
+                        if (send_all(&resp, sizeof(resp)) != 0) break;
+                    }
+                }
             }
             break;
         }
@@ -517,8 +536,9 @@ static void handle_request() {
 
                 if (g_server.verbose > 1) printf("  -> CONFIG S%d\n", slot);
 
-                send(g_server.client_fd, &resp_hdr, sizeof(resp_hdr), 0);
-                send(g_server.client_fd, &resp, sizeof(resp), 0);
+                if (send_all(&resp_hdr, sizeof(resp_hdr)) == 0) {
+                    send_all(&resp, sizeof(resp));
+                }
             }
             break;
         }
