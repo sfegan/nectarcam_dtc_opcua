@@ -22,6 +22,7 @@
 #include <netinet/in.h>
 #include <sys/select.h>
 #include <time.h>
+#include <signal.h>
 
 #include "l2tcp_protocol.h"
 #include "../hal/l2trig_hal.h"
@@ -554,6 +555,13 @@ static void handle_request() {
 
 /* --- Main Loop --- */
 
+static int g_running = 1;
+
+static void signal_handler(int sig) {
+    (void)sig;
+    g_running = 0;
+}
+
 int main(int argc, char **argv) {
     g_server.ramp_delay_ms = 100;      /* Default: 100ms ramp delay */
     g_server.client_timeout_ms = 60000; /* Default: 60s client inactivity timeout */
@@ -590,9 +598,21 @@ int main(int argc, char **argv) {
     listen(g_server.listen_fd, 1);
     g_server.client_fd = -1;
 
+    /* Setup signal handlers for graceful shutdown */
+    struct sigaction sa;
+    sa.sa_handler = signal_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+    sigaction(SIGINT, &sa, NULL);
+    sigaction(SIGTERM, &sa, NULL);
+
+    /* Ignore SIGPIPE to handle client disconnects gracefully during send */
+    sa.sa_handler = SIG_IGN;
+    sigaction(SIGPIPE, &sa, NULL);
+
     printf("L2TCP Server listening on port %d, ramp delay %d ms\n", port, g_server.ramp_delay_ms);
 
-    while (1) {
+    while (g_running) {
         fd_set fds;
         FD_ZERO(&fds);
         FD_SET(g_server.listen_fd, &fds);
