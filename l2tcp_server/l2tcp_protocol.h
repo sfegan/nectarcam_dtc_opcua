@@ -20,7 +20,8 @@
 
 #define L2TCP_PORT 4242
 #define L2TCP_MAX_CHANNELS 15
-#define L2TCP_MAX_SLOTS 22
+#define L2TCP_MIN_SLOT 1
+#define L2TCP_MAX_SLOT 22
 
 /* --- Message Types --- */
 

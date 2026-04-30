@@ -31,7 +31,7 @@
 
 static struct {
     uint32_t active_slots_mask;
-    uint16_t immutable_masks[L2TCP_MAX_SLOTS];
+    uint16_t immutable_masks[L2TCP_MAX_SLOT]; // index 0 unused, slots 1-22 used
     int ramp_delay_ms;
     int verbose;
     int client_timeout_ms;   /* Timeout for client inactivity (default 60s) */
@@ -56,12 +56,12 @@ static void get_now(struct timespec *ts) {
 }
 
 static int is_slot_active(int slot) {
-    if (slot < 0 || slot >= 32) return 0;
+    if (slot < L2TCP_MIN_SLOT || slot > L2TCP_MAX_SLOT) return 0;
     return (g_server.active_slots_mask & (1 << slot)) != 0;
 }
 
 static int is_ch_immutable(int slot, int ch) {
-    if (slot < 0 || slot >= L2TCP_MAX_SLOTS) return 1;
+    if (slot < L2TCP_MIN_SLOT || slot > L2TCP_MAX_SLOT) return 1;
     if (ch < 1 || ch > 15) return 1;
     return (g_server.immutable_masks[slot] & (1 << ch)) != 0;
 }
@@ -169,7 +169,7 @@ static void start_ramp(int enable) {
 
     if (enable) {
         /* Pre-sweep: Reset channels in error before starting timed ramp */
-        for (int s = 0; s < L2TCP_MAX_SLOTS; s++) {
+        for (int s = L2TCP_MIN_SLOT; s <= L2TCP_MAX_SLOT; s++) {
             if (!is_slot_active(s)) continue;
             uint16_t over, under;
             cta_ctdb_getOverCurrentErrors(s, &over);
@@ -196,7 +196,7 @@ static void process_ramp() {
     }
 
     /* Process one channel index across ALL slots */
-    for (int s = 0; s < L2TCP_MAX_SLOTS; s++) {
+    for (int s = L2TCP_MIN_SLOT; s <= L2TCP_MAX_SLOT; s++) {
         if (!is_slot_active(s)) continue;
         if (is_ch_immutable(s, g_server.ramp.current_ch)) continue;
         cta_ctdb_setPowerChannelEnabled(s, g_server.ramp.current_ch, g_server.ramp.enable);
@@ -301,18 +301,13 @@ static void handle_request() {
     switch (hdr.type) {
         case L2TCP_MSG_SYS_SET_CONFIG: {
             l2tcp_payload_sys_config_t *p = (l2tcp_payload_sys_config_t *)buffer;
-            uint32_t validated_mask = 0;
-            for (int s = 0; s < 32; s++) {
-                if ((p->active_slots_mask & (1 << s)) && cta_l2cb_isValidSLot(s)) {
-                    validated_mask |= (1 << s);
-                }
-            }
+            uint32_t validated_mask = p->active_slots_mask & cta_l2cb_validSlotMask();
             g_server.active_slots_mask = validated_mask;
             memcpy(g_server.immutable_masks, p->immutable_masks, sizeof(g_server.immutable_masks));
             
             printf("Configured active slots: ");
             int first_slot = 1;
-            for (int s = 0; s < 32; s++) {
+            for (int s = L2TCP_MIN_SLOT; s <= L2TCP_MAX_SLOT; s++) {
                 if (g_server.active_slots_mask & (1 << s)) {
                     printf("%s%d", first_slot ? "" : ", ", s);
                     first_slot = 0;
@@ -323,7 +318,7 @@ static void handle_request() {
 
             printf("Immutable channels: ");
             int first_imm = 1;
-            for (int s = 0; s < L2TCP_MAX_SLOTS; s++) {
+            for (int s = L2TCP_MIN_SLOT; s <= L2TCP_MAX_SLOT; s++) {
                 if (g_server.active_slots_mask & (1 << s)) {
                     for (int ch = 1; ch <= 15; ch++) {
                         if (g_server.immutable_masks[s] & (1 << ch)) {
@@ -357,7 +352,7 @@ static void handle_request() {
         }
         case L2TCP_MSG_SYS_SET_ALL_TRIG_EN: {
             uint16_t enable = ((l2tcp_payload_u16_t*)buffer)->value;
-            for (int s = 0; s < L2TCP_MAX_SLOTS; s++) {
+            for (int s = L2TCP_MIN_SLOT; s <= L2TCP_MAX_SLOT; s++) {
                 if (!is_slot_active(s)) continue;
                 uint16_t current_mask = cta_l2cb_getL1TriggerEnabled(s);
                 uint16_t immutable_mask = g_server.immutable_masks[s];
@@ -374,7 +369,7 @@ static void handle_request() {
         }
         case L2TCP_MSG_SYS_SET_ALL_TRIG_DELAY: {
             uint16_t delay = ((l2tcp_payload_u16_t*)buffer)->value;
-            for (int s = 0; s < L2TCP_MAX_SLOTS; s++) {
+            for (int s = L2TCP_MIN_SLOT; s <= L2TCP_MAX_SLOT; s++) {
                 if (!is_slot_active(s)) continue;
                 for (int ch = 1; ch <= 15; ch++) {
                     if (is_ch_immutable(s, ch)) continue;
@@ -496,7 +491,7 @@ static void handle_request() {
         }
         case L2TCP_MSG_BATCH_MONITOR_ALL: {
             int count = 0;
-            for (int s = 0; s < L2TCP_MAX_SLOTS; s++) if (is_slot_active(s)) count++;
+            for (int s = L2TCP_MIN_SLOT; s <= L2TCP_MAX_SLOT; s++) if (is_slot_active(s)) count++;
             
             l2tcp_header_t resp_hdr = { L2TCP_MSG_BATCH_MONITOR_ALL, hdr.seq, 1 + count * sizeof(l2tcp_payload_monitoring_t) };
 
@@ -505,7 +500,7 @@ static void handle_request() {
             if (send_all(&resp_hdr, sizeof(resp_hdr)) == 0) {
                 uint8_t u8_count = (uint8_t)count;
                 if (send_all(&u8_count, 1) == 0) {
-                    for (int s = 0; s < L2TCP_MAX_SLOTS; s++) {
+                    for (int s = L2TCP_MIN_SLOT; s <= L2TCP_MAX_SLOT; s++) {
                         if (!is_slot_active(s)) continue;
                         l2tcp_payload_monitoring_t resp;
                         resp.slot = (uint8_t)s;

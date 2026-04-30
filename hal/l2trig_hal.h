@@ -134,6 +134,12 @@ inline static int cta_l2cb_isValidSLot(int _slot)
 	return 0;
 }
 
+inline static uint32_t cta_l2cb_validSlotMask()
+{
+	return (1U<<1) | (1U<<2) | (1U<<3) | (1U<<4) | (1U<<5) | (1U<<6) | (1U<<7) | (1U<<8) | (1U<<9)
+		| (1U<<13) | (1U<<14) | (1U<<15) | (1U<<16) | (1U<<17) | (1U<<18) | (1U<<19) | (1U<<20) | (1U<<21);
+}
+
 // reads timestamp value
 // for internal use only
 static inline uint64_t cta_l2cb_readTimestamp(void)
