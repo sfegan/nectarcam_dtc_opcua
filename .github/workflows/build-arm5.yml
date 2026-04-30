@@ -27,19 +27,30 @@ jobs:
         cd l2tcp_server
         arm-926ejs-linux-gnueabi-gcc -std=gnu99 -march=armv5te -I../hal -static -o l2tcp_server l2tcp_server_main.c ../hal/smc.c ../hal/l2trig_hal.c
 
-    - name: Verify binary
-      run: file l2tcp_server/l2tcp_server
+    - name: Compile l2trig_direct_client
+      run: |
+        cd hal
+        arm-926ejs-linux-gnueabi-gcc -std=gnu99 -march=armv5te -I. -static -o l2trig_direct_client l2trig_direct_client.c smc.c l2trig_hal.c l2trig_hal_exports.c
 
-    - name: Upload artifact
+    - name: Verify binaries
+      run: |
+        file l2tcp_server/l2tcp_server
+        file hal/l2trig_direct_client
+
+    - name: Upload artifacts
       uses: actions/upload-artifact@v7
       with:
-        name: l2tcp_server-arm5
-        path: l2tcp_server/l2tcp_server
+        name: nectarcam-l2trig-arm5
+        path: |
+          l2tcp_server/l2tcp_server
+          hal/l2trig_direct_client
 
     - name: Release
       uses: softprops/action-gh-release@v3
       if: startsWith(github.ref, 'refs/tags/')
       with:
-        files: l2tcp_server/l2tcp_server
+        files: |
+          l2tcp_server/l2tcp_server
+          hal/l2trig_direct_client
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
