@@ -33,6 +33,8 @@ static struct {
     uint16_t immutable_masks[L2TCP_MAX_SLOTS];
     int ramp_delay_ms;
     int verbose;
+    int client_timeout_ms;   /* Timeout for client inactivity (default 60s) */
+    int recv_timeout_ms;     /* Timeout for recv() operations (default 1s) */
     
     struct {
         int active;
@@ -43,6 +45,7 @@ static struct {
 
     int listen_fd;
     int client_fd;
+    struct timespec last_activity_ts;  /* Track last client activity */
 } g_server;
 
 /* --- Helpers --- */
@@ -207,11 +210,21 @@ static void handle_request() {
     l2tcp_header_t hdr;
     ssize_t n = recv(g_server.client_fd, &hdr, sizeof(hdr), 0);
     if (n <= 0) {
+        if (n < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                printf("Header recv timeout, closing connection to avoid desynchronization\n");
+            } else {
+                printf("Header recv error: %s, closing connection\n", strerror(errno));
+            }
+        }
         close(g_server.client_fd);
         g_server.client_fd = -1;
         printf("Client disconnected\n");
         return;
     }
+    
+    /* Update last activity timestamp */
+    get_now(&g_server.last_activity_ts);
 
     uint8_t buffer[4096];
     if (hdr.len > sizeof(buffer)) {
@@ -221,7 +234,23 @@ static void handle_request() {
 
     if (hdr.len > 0) {
         n = recv(g_server.client_fd, buffer, hdr.len, MSG_WAITALL);
-        if (n != hdr.len) return;
+        if (n < 0) {
+            /* recv timeout or error on payload - close connection */
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                printf("Payload recv timeout, closing connection\n");
+            } else {
+                printf("Payload recv error: %s, closing connection\n", strerror(errno));
+            }
+            close(g_server.client_fd);
+            g_server.client_fd = -1;
+            return;
+        }
+        if (n != hdr.len) {
+            printf("Incomplete payload: received %zd bytes, expected %d bytes, closing connection\n", n, hdr.len);
+            close(g_server.client_fd);
+            g_server.client_fd = -1;
+            return;
+        }
     }
 
     int show_msg = g_server.verbose > 1 || (g_server.verbose > 0 && !is_polling_msg(hdr.type));
@@ -500,16 +529,20 @@ static void handle_request() {
 /* --- Main Loop --- */
 
 int main(int argc, char **argv) {
-    g_server.ramp_delay_ms = 100; /* Default */
+    g_server.ramp_delay_ms = 100;      /* Default: 100ms ramp delay */
+    g_server.client_timeout_ms = 60000; /* Default: 60s client inactivity timeout */
+    g_server.recv_timeout_ms = 1000;    /* Default: 1s recv timeout */
     int port = L2TCP_PORT;
 
     int opt;
-    while ((opt = getopt(argc, argv, "p:d:s:v")) != -1) {
+    while ((opt = getopt(argc, argv, "p:d:s:v:c:r:")) != -1) {
         switch (opt) {
             case 'p': port = atoi(optarg); break;
             case 'd': g_server.ramp_delay_ms = atoi(optarg); break;
             case 's': smc_open(optarg); break;
             case 'v': g_server.verbose++; break;
+            case 'c': g_server.client_timeout_ms = atoi(optarg); break;
+            case 'r': g_server.recv_timeout_ms = atoi(optarg); break;
         }
     }
     
@@ -559,16 +592,39 @@ int main(int argc, char **argv) {
                 close(new_fd);
             } else {
                 g_server.client_fd = new_fd;
+                
+                /* Set socket receive timeout */
+                struct timeval tv;
+                tv.tv_sec = g_server.recv_timeout_ms / 1000;
+                tv.tv_usec = (g_server.recv_timeout_ms % 1000) * 1000;
+                setsockopt(g_server.client_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+                
                 /* Reset configuration on new client connection */
                 g_server.active_slots_mask = 0;
                 memset(g_server.immutable_masks, 0, sizeof(g_server.immutable_masks));
                 g_server.ramp.active = 0;
-                printf("Client connected - configuration reset\n");
+                get_now(&g_server.last_activity_ts);
+                printf("Client connected - configuration reset (inactivity timeout: %dms, recv timeout: %dms)\n",
+                       g_server.client_timeout_ms, g_server.recv_timeout_ms);
             }
         }
 
-        if (g_server.client_fd != -1 && FD_ISSET(g_server.client_fd, &fds)) {
-            handle_request();
+        if (g_server.client_fd != -1) {
+            /* Check for client inactivity timeout */
+            struct timespec now;
+            get_now(&now);
+            
+            long elapsed_ms = (now.tv_sec - g_server.last_activity_ts.tv_sec) * 1000 +
+                             (now.tv_nsec - g_server.last_activity_ts.tv_nsec) / 1000000;
+            
+            if (elapsed_ms > g_server.client_timeout_ms) {
+                printf("Client inactivity timeout (%ldms > %dms), closing connection\n",
+                       elapsed_ms, g_server.client_timeout_ms);
+                close(g_server.client_fd);
+                g_server.client_fd = -1;
+            } else if (FD_ISSET(g_server.client_fd, &fds)) {
+                handle_request();
+            }
         }
 
         process_ramp();
