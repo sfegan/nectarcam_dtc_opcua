@@ -535,7 +535,7 @@ int main(int argc, char **argv) {
     int port = L2TCP_PORT;
 
     int opt;
-    while ((opt = getopt(argc, argv, "p:d:s:v:c:r:")) != -1) {
+    while ((opt = getopt(argc, argv, "p:d:s:vc:r:")) != -1) {
         switch (opt) {
             case 'p': port = atoi(optarg); break;
             case 'd': g_server.ramp_delay_ms = atoi(optarg); break;
