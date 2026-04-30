@@ -104,23 +104,41 @@ class L2TriggerSystem:
 
     async def connect(self):
         """Establish connection to the embedded server"""
+        async with self._lock:
+            await self._connect_unlocked()
+
+    async def _connect_unlocked(self):
+        """Internal connect without locking"""
+        if self.writer and not self.writer.transport.is_closing():
+            return
+
         logger.info(f"Connecting to L2Trigger server at {self.host}:{self.port} (timeout: {self.connect_timeout}s)")
         try:
             self.reader, self.writer = await asyncio.wait_for(
                 asyncio.open_connection(self.host, self.port),
                 timeout=self.connect_timeout
             )
-        except asyncio.TimeoutError:
-            logger.error(f"Connection timeout after {self.connect_timeout}s")
+        except Exception as e:
+            logger.error(f"Connection failed to {self.host}:{self.port}: {e}")
             self.reader = None
             self.writer = None
-            raise RuntimeError(f"Connection timeout to {self.host}:{self.port}")
+            if isinstance(e, asyncio.TimeoutError):
+                raise RuntimeError(f"Connection timeout to {self.host}:{self.port}")
+            raise
 
     async def disconnect(self):
         """Close connection"""
+        async with self._lock:
+            await self._disconnect_unlocked()
+
+    async def _disconnect_unlocked(self):
+        """Internal disconnect without locking"""
         if self.writer:
-            self.writer.close()
-            await self.writer.wait_closed()
+            try:
+                self.writer.close()
+                await self.writer.wait_closed()
+            except Exception:
+                pass
         self.reader = None
         self.writer = None
 
@@ -130,8 +148,8 @@ class L2TriggerSystem:
 
     async def _send_recv(self, msg_type: L2TCPMsgType, payload: bytes = b"") -> Tuple[L2TCPMsgType, bytes]:
         async with self._lock:
-            if not self.writer:
-                await self.connect()
+            if not self.writer or self.writer.transport.is_closing():
+                await self._connect_unlocked()
 
             try:
                 seq = self._next_seq()
@@ -147,7 +165,7 @@ class L2TriggerSystem:
                     )
                 except asyncio.TimeoutError:
                     logger.error(f"Header recv timeout after {self.recv_timeout}s")
-                    await self.disconnect()
+                    await self._disconnect_unlocked()
                     raise RuntimeError(f"Server response timeout after {self.recv_timeout}s")
                 
                 rtype, rseq, rlen = struct.unpack(HEADER_FMT, resp_hdr_data)
@@ -162,7 +180,7 @@ class L2TriggerSystem:
                         )
                     except asyncio.TimeoutError:
                         logger.error(f"Payload recv timeout after {self.recv_timeout}s")
-                        await self.disconnect()
+                        await self._disconnect_unlocked()
                         raise RuntimeError(f"Server payload timeout after {self.recv_timeout}s")
 
                 if rseq != seq:
@@ -177,7 +195,7 @@ class L2TriggerSystem:
             except (asyncio.IncompleteReadError, ConnectionError, OSError) as e:
                 # Connection lost or broken, reset state so we try to reconnect next time
                 logger.error(f"Connection error: {e}")
-                await self.disconnect()
+                await self._disconnect_unlocked()
                 raise
 
     # --- System Control ---
