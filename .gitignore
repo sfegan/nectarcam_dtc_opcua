@@ -60,5 +60,5 @@ nc_lightsource_asyncua_server.py
 .DS_Store
 hal/test_smc_emulation
 l2trig_emulator_state.dat
-hal/l2trig_test_cli
+hal/l2trig_direct_client
 l2tcp_server/l2tcp_server

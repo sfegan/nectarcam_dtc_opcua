@@ -1,5 +1,5 @@
 /*
- * l2trig_test_cli.c
+ * l2trig_direct_client.c
  *
  * Command line interface to exercise the L2 Trigger HAL
  * Mirrors the Python l2trig_direct_client.py interface.
