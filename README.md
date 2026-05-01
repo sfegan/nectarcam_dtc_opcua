@@ -100,6 +100,15 @@ EOF
 
 All monitoring data is accessible under `L2Trigger.Monitoring`:
 
+**Bridge and Connection Status (Scalars):**
+- `device_host` (`String`) — Host or IP of the TCP bridge server
+- `device_port` (`UInt16`) — Port of the TCP bridge server
+- `device_state` (`Int32`) — TCP connection state: 1 if connected, 0 otherwise
+- `device_connected` (`Boolean`) — TCP connection state (True if connected)
+- `device_connection_uptime` (`Double`) — Time in ms the TCP connection has been up
+- `device_connection_downtime` (`Double`) — Time in ms the TCP connection has been down
+- `device_polling_interval` (`Double`) — Polling interval in milliseconds
+
 **L2CB Controller Status (Scalars):**
 - `CrateFirmwareRevision` (`UInt16`) — Firmware version
 - `CrateUpTime` (`UInt64`) — Time since boot (nanoseconds)
@@ -111,12 +120,12 @@ All monitoring data is accessible under `L2Trigger.Monitoring`:
 - `CrateMCFEnabled` (`Boolean`) — MCF propagation state
 - `CrateBusyGlitchFilterEnabled` (`Boolean`) — Glitch filter state
 - `CrateTIBTriggerBusyBlockEnabled` (`Boolean`) — TIB blocking state
-- `CrateMCFThreshold` (`Int16`) — MCF threshold (0-512 channels)
+- `CrateMCFThreshold` (`UInt16`) — MCF threshold (0-512 channels)
 - `CrateMCFDelay` (`Double`) — MCF delay in ns (0-75ns in 5ns steps)
 - `CrateL1Deadtime` (`Double`) — L1 deadtime in ns (0-1275ns in 5ns steps)
 
 **Per-Slot Board Data (Arrays; one element per configured slot):**
-- `BoardSlots` (`Int32[]`) — List of active slot numbers
+- `BoardSlots` (`UInt32[]`) — List of active slot numbers
 - `BoardFirmwareRevision` (`UInt16[]`) — Firmware per CTDB board
 - `BoardCurrent` (`Double[]`) — Total current per CTDB board (mA in 0.485mA steps)
 - `BoardCurrentSum` (`Double[]`) — Sum of all enabled channels per CTDB board (mA in 0.485mA steps)
