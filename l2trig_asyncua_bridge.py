@@ -125,20 +125,24 @@ class L2TriggerBridgeServer:
     # (name, initial value, OPC UA variant type, description)
     _MONITORING_VARS = [
         ("device_host", "", ua.VariantType.String, "Host or IP of the TCP bridge server"),
-        ("device_port", 0, ua.VariantType.Int32, "Port of the TCP bridge server"),
+        ("device_port", 0, ua.VariantType.UInt16, "Port of the TCP bridge server"),
         ("device_state", 0, ua.VariantType.Int32, "TCP connection state: 1 if connected, 0 otherwise"),
+        ("device_connected", False, ua.VariantType.Boolean, "TCP connection state (True if connected)"),
+        ("device_connection_uptime", 0.0, ua.VariantType.Double, "Time in milliseconds the TCP connection has been up"),
+        ("device_connection_downtime", 0.0, ua.VariantType.Double, "Time in milliseconds the TCP connection has been down"),
+        ("device_polling_interval", 0.0, ua.VariantType.Double, "Polling interval in milliseconds"),
         ("CrateFirmwareRevision", 0, ua.VariantType.UInt16, "L2CB board firmware version"),
         ("CrateUpTime", 0, ua.VariantType.UInt64, "L2CB uptime in nanoseconds"),
         ("CrateMCFEnabled", False, ua.VariantType.Boolean, "L2CB MCF enabled status"),
         ("CrateBusyGlitchFilterEnabled", False, ua.VariantType.Boolean, "L2CB busy glitch filter enabled"),
         ("CrateTIBTriggerBusyBlockEnabled", False, ua.VariantType.Boolean, "L2CB TIB trigger blocking enabled"),
-        ("CrateMCFThreshold", 0, ua.VariantType.Int16, "L2CB MCF threshold (0-512)"),
+        ("CrateMCFThreshold", 0, ua.VariantType.UInt16, "L2CB MCF threshold (0-512)"),
         ("CrateMCFDelay", 0.0, ua.VariantType.Double, "L2CB MCF delay in ns"),
         ("CrateL1Deadtime", 0.0, ua.VariantType.Double, "L2CB L1 deadtime in ns"),
         ("CrateNumMutableModules", 0, ua.VariantType.UInt16, "Total number of modules managed by this server"),
         ("CrateNumPoweredModules", 0, ua.VariantType.UInt16, "Total number of modules currently powered on"),
         ("CrateNumTriggerEnabledModules", 0, ua.VariantType.UInt16, "Total number of modules with trigger enabled"),
-        ("BoardSlots", [], ua.VariantType.Int32, "List of crate slots enabled in this server"),
+        ("BoardSlots", [], ua.VariantType.UInt32, "List of crate slots enabled in this server"),
         ("BoardFirmwareRevision", [], ua.VariantType.UInt16, "CTDB firmware versions"),
         ("BoardCurrent", [], ua.VariantType.Double, "CTDB board currents in mA"),
         ("BoardCurrentSum", [], ua.VariantType.Double, "Total channel current per CTDB in mA"),
@@ -215,6 +219,8 @@ class L2TriggerBridgeServer:
         
         # Connection tracking
         self._connected = False
+        self._last_connected_state = False
+        self._state_change_time = time.monotonic()
         self._last_contact: Optional[float] = None
         self._next_reconnect: float = 0.0
         self._reconnect_delay: float = 1.0
@@ -308,6 +314,7 @@ class L2TriggerBridgeServer:
         now = datetime.datetime.now(datetime.timezone.utc)
         await self._set_var("device_host", self.device_host, now)
         await self._set_var("device_port", self.device_port, now)
+        await self._set_var("device_polling_interval", self.poll_interval * 1000.0, now)
         await self._set_var("BoardSlots", self.active_slots, now)
         await self._set_var("CrateNumMutableModules", self.nmodules, now)
         await self._set_var("ModuleIsMutable", self._module_is_mutable, now)
@@ -352,7 +359,8 @@ class L2TriggerBridgeServer:
         await self._set_node_description(mon_obj, "Folder containing real-time monitoring.")
         
         fast_vars = {
-            "device_state", "CrateFirmwareRevision", "CrateUpTime", 
+            "device_state", "device_connected", "device_connection_uptime", "device_connection_downtime",
+            "CrateFirmwareRevision", "CrateUpTime", 
             "CrateMCFEnabled", "CrateBusyGlitchFilterEnabled", "CrateTIBTriggerBusyBlockEnabled",
             "CrateMCFThreshold", "CrateMCFDelay", "CrateL1Deadtime",
             "CrateNumPoweredModules", "BoardCurrent", "BoardCurrentSum", "BoardHasErrors",
@@ -389,7 +397,7 @@ class L2TriggerBridgeServer:
             if array_dims:
                 await var.write_attribute(ua.AttributeIds.ArrayDimensions, ua.DataValue(ua.Variant(array_dims, ua.VariantType.UInt32)))
 
-            interval = fast_interval if name in fast_vars else (0.0 if name in ("device_host", "device_port", "BoardSlots", "ModuleIsMutable") else slow_interval)
+            interval = fast_interval if name in fast_vars else (0.0 if name in ("device_host", "device_port", "device_polling_interval", "BoardSlots", "ModuleIsMutable") else slow_interval)
             await var.write_attribute(ua.AttributeIds.MinimumSamplingInterval, ua.DataValue(interval))
             self._vars[name] = (var, vtype)
 
@@ -557,8 +565,23 @@ class L2TriggerBridgeServer:
 
     async def _write_fast_data(self, l2cb: L2CBStatus, monitoring: Dict[int, CTDBMonitoringData], timestamp: datetime.datetime, now: datetime.datetime):
         sc = self._get_status_code()
+
+        # Update connection timers
+        mono_now = time.monotonic()
+        if self._connected != self._last_connected_state:
+            self._state_change_time = mono_now
+            self._last_connected_state = self._connected
+        
+        duration_ms = round((mono_now - self._state_change_time) * 1000.0)
+        uptime_ms = duration_ms if self._connected else 0.0
+        downtime_ms = duration_ms if not self._connected else 0.0
+
         # device_state always has Good status as the server is authoritative
         await self._set_var("device_state", 1 if self._connected else 0, now, ua.StatusCode(ua.StatusCodes.Good))
+        await self._set_var("device_connected", self._connected, now, ua.StatusCode(ua.StatusCodes.Good))
+        await self._set_var("device_connection_uptime", uptime_ms, now, ua.StatusCode(ua.StatusCodes.Good))
+        await self._set_var("device_connection_downtime", downtime_ms, now, ua.StatusCode(ua.StatusCodes.Good))
+
         await self._set_var("CrateFirmwareRevision", l2cb.firmware_version, timestamp, sc)
         await self._set_var("CrateUpTime", l2cb.uptime, timestamp, sc)
         await self._set_var("CrateMCFEnabled", l2cb.mcf_enabled, timestamp, sc)
