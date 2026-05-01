@@ -9,18 +9,19 @@ Laboratoire Leprince-Ringuet, CNRS/IN2P3, Ecole Polytechnique, Institut Polytech
 
 ## Overview
 
-The L2 Trigger System manages 270 trigger modules across 18 crate slots (15 channels per slot). To ensure stability and security on the embedded hardware, the system uses a split architecture:
+The L2 Trigger System manages 270 trigger modules across 18 crate slots (15 channels per slot). The system uses a split architecture:
 
-1.  **Backend Server (`l2tcp_server`):** A lightweight C-based server running directly on the ARM-based controller board. It manages the low-level SPI hardware interface, implements safety-critical power ramping, and provides a TCP bridge for remote control.
+1.  **Backend Server (`l2tcp_server`):** A lightweight C-based server running directly on the ARM-based controller board. It manages the low-level SPI hardware interface, implements power ramping, and provides a binary TCP messaging interface for remote control.
 2.  **OPC UA Bridge (`l2trig_asyncua_bridge.py`):** A Python-based server that runs on a control PC. It connects to the backend server over TCP and exposes the system state and control methods via the OPC UA protocol.
 3.  **Direct Client (`l2trig_direct_client`):** A native C command-line tool for the ARM board, used for low-level pre-configuration and diagnostics.
+4.  **GUI (`l2tring_gui.py`):** A GUI test application for monitoring and controlling the system via OPC UA.
 
 ---
 
 ## Deployment and Setup
 
 ### 1. Obtain ARM Binaries
-For the embedded ARM-based controller board, you can download pre-compiled static binaries from the **GitHub Releases** page.
+For the embedded ARM-based controller board, you can download pre-compiled static binaries from the [**GitHub Releases**](https://github.com/sfegan/nectarcam_dtc_opcua/releases) page.
 *   `l2tcp_server`: The backend TCP bridge.
 *   `l2trig_direct_client`: The configuration CLI.
 
@@ -31,7 +32,7 @@ pip install -r requirements.txt
 ```
 
 ### 3. Start the Backend Server (ARM Board)
-Transfer the `l2tcp_server` binary to the ARM board and run it:
+Transfer the `l2tcp_server` binary to the ARM board (via ssh) and run it:
 ```bash
 ./l2tcp_server -p 4242 -v
 ```
@@ -41,6 +42,11 @@ Transfer the `l2tcp_server` binary to the ARM board and run it:
 python3 l2trig_asyncua_bridge.py --device-host <ARM_BOARD_IP>
 ```
 The bridge will connect to the ARM board and start an OPC UA server on `opc.tcp://0.0.0.0:4840/l2trig/`.
+
+### 5. Use the GUI or OPC UA Client if desired
+```bash
+python3 l2tring_gui.py --server opc.tcp://<CONTROL_PC_IP>:4840/l2trig/
+```
 
 ---
 
@@ -60,6 +66,23 @@ The **Direct Client** (`l2trig_direct_client`) provides native access to the har
 | `powermask <slot> [m]`| Get/Set power mask (16-bit hex) |
 | `allpower <on\|off>` | Set power for all channels |
 
+The client can be used a a interactive text interface, allowing command to be typed from the terminal, or read from a script file or piped from another command. For example, the following command will pre-configure the system the parameters of the muon candidate flag and disable the trigger from the unused channels in slot 21:
+
+```bash
+python3 l2trig_direct_client.py << 'EOF'
+allpower off    # Should presumably be the default on DTC start-up
+mcf on          # Enable the muon candidate flag
+mcfthr 20       # Set the muon threshold to 20 modules
+mcfdel 15       # Set the muon delay to 75 ns (5ns per digital code)
+allcurmin 200   # Set the minimum current to 97mA (0.485mA/step)
+allcurmax 1000  # Set the maximum current to 485mA
+trig 21 11 off  # Disable trigger on Slot 21 Channel 11
+trig 21 12 off  # Alternatively, disable all five channels with: 
+trig 21 13 off  # trigmask 21 0x07FE
+trig 21 14 off
+trig 21 15 off
+EOF
+```
 ---
 
 ## OPC UA Interface Reference
