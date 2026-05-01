@@ -41,17 +41,44 @@ L1DELAY_FACTOR = 0.037
 MCFDELAY_FACTOR = 5.0
 L1DEADTIME_FACTOR = 5.0
 
-def current_ma_to_raw(ma: float) -> int:
-    return int(ma / CURRENT_FACTOR)
+# Hardware Limits (Raw Codes)
+LIMIT_MCF_THRESH = 0x01FF
+LIMIT_MCF_DELAY = 0x000F
+LIMIT_L1_DEADTIME = 0x00FF
+LIMIT_TRIG_DELAY = 0x007F
+LIMIT_CURR_CODE = 0x0FFF
 
-def delay_ns_to_raw(ns: float) -> int:
-    return int(ns / L1DELAY_FACTOR)
+def _clip(val: int, max_val: int, name: str, unit: str = "", factor: float = 1.0) -> Tuple[int, str]:
+    """Clip value to [0, max_val] and return (clipped_val, warning_string)"""
+    if val < 0:
+        return 0, f" (clipped {name} to 0{unit})"
+    if val > max_val:
+        clipped_unit = max_val * factor
+        if factor == 1.0:
+            return max_val, f" (clipped {name} to {int(clipped_unit)}{unit})"
+        else:
+            return max_val, f" (clipped {name} to {clipped_unit:.3f}{unit})"
+    return val, ""
 
-def mcf_delay_ns_to_raw(ns: float) -> int:
-    return int(ns / MCFDELAY_FACTOR)
+def current_ma_to_raw(ma: float) -> Tuple[int, str]:
+    code = int(ma / CURRENT_FACTOR)
+    code, warn = _clip(code, LIMIT_CURR_CODE, "current_ma", "mA", CURRENT_FACTOR)
+    return code, warn
 
-def l1_deadtime_ns_to_raw(ns: float) -> int:
-    return int(ns / L1DEADTIME_FACTOR)
+def delay_ns_to_raw(ns: float) -> Tuple[int, str]:
+    code = int(ns / L1DELAY_FACTOR)
+    code, warn = _clip(code, LIMIT_TRIG_DELAY, "delay_ns", "ns", L1DELAY_FACTOR)
+    return code, warn
+
+def mcf_delay_ns_to_raw(ns: float) -> Tuple[int, str]:
+    code = int(ns / MCFDELAY_FACTOR)
+    code, warn = _clip(code, LIMIT_MCF_DELAY, "mcf_delay_ns", "ns", MCFDELAY_FACTOR)
+    return code, warn
+
+def l1_deadtime_ns_to_raw(ns: float) -> Tuple[int, str]:
+    code = int(ns / L1DEADTIME_FACTOR)
+    code, warn = _clip(code, LIMIT_L1_DEADTIME, "l1_deadtime_ns", "ns", L1DEADTIME_FACTOR)
+    return code, warn
 
 # ============================================================================
 # Logging
@@ -417,11 +444,13 @@ class L2TriggerBridgeServer:
             """Configure current limits for an entire CTDB board."""
             if not 1 <= board <= len(self.active_slots): return f"ERROR: Board index {board} out of range"
             slot = self.active_slots[board - 1]
+            min_raw, warn_min = current_ma_to_raw(min_ma)
+            max_raw, warn_max = current_ma_to_raw(max_ma)
             async with self._lock: 
                 if not await self._ensure_connected(): return "ERROR: Device not connected"
-                await self.system.set_ctdb_limits(slot, current_ma_to_raw(min_ma), current_ma_to_raw(max_ma))
+                await self.system.set_ctdb_limits(slot, min_raw, max_raw)
                 self._poll_event.set()
-            return f"OK: Board {board} limits set"
+            return f"OK: Board {board} limits set{warn_min}{warn_max}"
         await add_described_method("SetBoardCurrentLimits", set_board_current_limits,
                                    inputs=[a("board", ua.VariantType.Int32), a("min_ma", ua.VariantType.Double), a("max_ma", ua.VariantType.Double)])
 
@@ -445,11 +474,12 @@ class L2TriggerBridgeServer:
             try: slot, channel = self._module_to_slot_channel(module)
             except ValueError as e: return f"ERROR: {e}"
             if (slot, channel) in self.immutable_channels: return f"ERROR: Module {module} is immutable"
+            raw, warn = delay_ns_to_raw(delay_ns)
             async with self._lock: 
                 if not await self._ensure_connected(): return "ERROR: Device not connected"
-                await self.system.set_channel_trigger_delay(slot, channel, delay_ns_to_raw(delay_ns))
+                await self.system.set_channel_trigger_delay(slot, channel, raw)
                 self._poll_event.set()
-            return f"OK: Module {module} delay set"
+            return f"OK: Module {module} delay set{warn}"
         await add_described_method("SetModuleTriggerDelay", set_module_trigger_delay,
                                    inputs=[a("module", ua.VariantType.Int32), a("delay_ns", ua.VariantType.Double)])
 
@@ -466,12 +496,12 @@ class L2TriggerBridgeServer:
         @uamethod
         async def set_all_trigger_delay(parent_node, delay_ns: float):
             """Apply uniform trigger delay to all modules."""
-            raw = delay_ns_to_raw(delay_ns)
+            raw, warn = delay_ns_to_raw(delay_ns)
             async with self._lock:
                 if not await self._ensure_connected(): return "ERROR: Device not connected"
                 await self.system.set_all_trigger_delay(raw)
                 self._poll_event.set()
-            return "OK: All delays updated"
+            return f"OK: All delays updated{warn}"
         await add_described_method("SetAllTriggerDelay", set_all_trigger_delay, inputs=[a("delay_ns", ua.VariantType.Double)])
 
         @uamethod
@@ -500,26 +530,29 @@ class L2TriggerBridgeServer:
 
         @uamethod
         async def set_mcf_delay(parent_node, delay: float):
+            raw, warn = mcf_delay_ns_to_raw(delay)
             async with self._lock: 
                 if not await self._ensure_connected(): return "ERROR: Device not connected"
-                await self.system.set_mcf_delay(mcf_delay_ns_to_raw(delay))
-            return "OK"
+                await self.system.set_mcf_delay(raw)
+            return f"OK{warn}"
         await add_described_method("SetMCFDelay", set_mcf_delay, inputs=[a("delay", ua.VariantType.Double)])
 
         @uamethod
         async def set_mcf_threshold(parent_node, threshold: int):
+            raw, warn = _clip(threshold, LIMIT_MCF_THRESH, "threshold", "", 1.0)
             async with self._lock: 
                 if not await self._ensure_connected(): return "ERROR: Device not connected"
-                await self.system.set_mcf_threshold(threshold)
-            return "OK"
+                await self.system.set_mcf_threshold(raw)
+            return f"OK{warn}"
         await add_described_method("SetMCFThreshold", set_mcf_threshold, inputs=[a("threshold", ua.VariantType.Int16)])
 
         @uamethod
         async def set_l1_deadtime(parent_node, deadtime: float):
+            raw, warn = l1_deadtime_ns_to_raw(deadtime)
             async with self._lock: 
                 if not await self._ensure_connected(): return "ERROR: Device not connected"
-                await self.system.set_l1_deadtime(l1_deadtime_ns_to_raw(deadtime))
-            return "OK"
+                await self.system.set_l1_deadtime(raw)
+            return f"OK{warn}"
         await add_described_method("SetL1Deadtime", set_l1_deadtime, inputs=[a("deadtime", ua.VariantType.Double)])
 
     async def _write_fast_data(self, l2cb: L2CBStatus, monitoring: Dict[int, CTDBMonitoringData], timestamp: datetime.datetime, now: datetime.datetime):
