@@ -94,6 +94,7 @@ All monitoring data is accessible under `L2Trigger.Monitoring`:
 **L2CB Controller Status (Scalars):**
 - `CrateFirmwareRevision` (`UInt16`) — Firmware version
 - `CrateUpTime` (`UInt64`) — Time since boot (nanoseconds)
+- `CrateNumMutableModules` (`UInt16`) — Total actively controlled modules
 - `CrateNumPoweredModules` (`UInt16`) — Modules currently powered
 - `CrateNumTriggerEnabledModules` (`UInt16`) — Modules with trigger enabled
 
@@ -101,23 +102,25 @@ All monitoring data is accessible under `L2Trigger.Monitoring`:
 - `CrateMCFEnabled` (`Boolean`) — MCF propagation state
 - `CrateBusyGlitchFilterEnabled` (`Boolean`) — Glitch filter state
 - `CrateTIBTriggerBusyBlockEnabled` (`Boolean`) — TIB blocking state
-- `CrateMCFThreshold` (`Int16`) — MCF threshold (0-512)
-- `CrateMCFDelay` (`Double`) — MCF delay in ns (0-75)
-- `CrateL1Deadtime` (`Double`) — L1 deadtime in ns (0-1275)
+- `CrateMCFThreshold` (`Int16`) — MCF threshold (0-512 channels)
+- `CrateMCFDelay` (`Double`) — MCF delay in ns (0-75ns in 5ns steps)
+- `CrateL1Deadtime` (`Double`) — L1 deadtime in ns (0-1275ns in 5ns steps)
 
-**Per-Slot Board Data (Arrays):**
-- `BoardSlots` (`Int32[]`) — Active slot numbers
-- `BoardFirmwareRevision` (`UInt16[]`) — Firmware per slot
-- `BoardCurrent` (`Double[]`) — Total current per slot (mA)
-- `BoardCurrentLimitMin/Max` (`Double[]`) — Current safety limits
-- `BoardHasErrors` (`Boolean[]`) — Error flag per slot
+**Per-Slot Board Data. (Arrays; one element per configured slot):**
+- `BoardSlots` (`Int32[]`) — List of active slot numbers
+- `BoardFirmwareRevision` (`UInt16[]`) — Firmware per CDTB board
+- `BoardCurrent` (`Double[]`) — Total current per CDTB board (mA in 0.485mA steps)
+- `BoardCurrentSum` (`Double[]`) — Sum of all enabled channels per CDTB board (mA in 0.485mA steps)
+- `BoardCurrentLimitMin/Max` (`Double[]`) — Current safety limits per CDTB board (mA in 0.485mA steps)
+- `BoardHasErrors` (`Boolean[]`) — Error flag per CDTB board
 
-**Per-Module Data (Arrays):**
-- `ModulePowerEnabled` (`Boolean[]`) — Power state
-- `ModuleCurrent` (`Double[]`) — Current reading (mA)
+**Per-Module Data (Arrays; one element per configured channel):**
+- `ModulePowerEnabled` (`Boolean[]`) — Power state (1=on/0=off)
+- `ModuleCurrent` (`Double[]`) — Current reading (mA in 0.485mA steps)
 - `ModuleState` (`String[]`) — Detailed state (on/off/error/etc.)
-- `ModuleTriggerEnabled` (`Boolean[]`) — Trigger state
-- `ModuleTriggerDelay` (`Double[]`) — Trigger delay (ns)
+- `ModuleTriggerEnabled` (`Boolean[]`) — Trigger state (1=enabled/0=disabled)
+- `ModuleTriggerDelay` (`Double[]`) — Trigger delay in ns (0-4.7ns in 37ps steps)
+- `ModuleIsMutable` (`Boolean[]`) — Whether server controls this module
 
 ### Control Methods
 
@@ -128,11 +131,17 @@ Methods return a string prefixed with **`OK:`** or **`ERROR:`**. Boards are inde
 | `EmergencyShutdown` | None | Immediately disable all power |
 | `SetAllPowerEnabled` | `enabled: Boolean` | Ramp all modules on/off |
 | `SetModulePowerEnabled` | `module: Int32, enabled: Boolean` | Control single module power |
-| `SetAllTriggerEnabled` | `enabled: Boolean` | Enable/Disable all triggers |
-| `SetModuleTriggerEnabled`| `module: Int32, enabled: Boolean`| Control specific trigger |
-| `SetModuleTriggerDelay` | `module: Int32, ns: Double` | Set trigger delay (37ps steps) |
-| `SetMCFThreshold` | `threshold: Int16` | Set MCF threshold (0-512) |
-| `SetMCFEnabled` | `enabled: Boolean` | Set MCF propagation |
+| `SetBoardCurrentLimits` | `board: Int32, min_ma: Double, max_ma: Double` | Configure board current limits (0-1986mA in 0.485mA steps) |
+| `SetAllTriggerEnabled` | `enabled: Boolean` | Enable/Disable triggers from all modules |
+| `SetModuleTriggerEnabled`| `module: Int32, enabled: Boolean`| Enable/Disable trigger from specific module |
+| `SetAllTriggerDelay` | `delay_ns: Double` | Set uniform trigger delay for all modules (0-4.7ns in 37ps steps) |
+| `SetModuleTriggerDelay` | `module: Int32, ns: Double` | Set trigger delay for specific module (0-4.7ns in 37ps steps) |
+| `SetMCFEnabled` | `enabled: Boolean` | Enable muon candidate flag propagation to TIB |
+| `SetMCFDelay` | `delay: Double` | Set MCF delay in ns (0-75ns in 5ns steps) |
+| `SetMCFThreshold` | `threshold: Int16` | Set MCF threshold in modules (0-512) |
+| `SetBusyGlitchFilterEnabled`| `enabled: Boolean` | Enable/Disable busy glitch filter |
+| `SetTIBTriggerBusyBlockEnabled`| `enabled: Boolean` | Enable/Disable TIB trigger blocking |
+| `SetL1Deadtime` | `deadtime: Double` | Set L1 deadtime in ns (0-1275ns in 5ns steps) |
 
 ---
 
