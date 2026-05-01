@@ -1,23 +1,14 @@
-# Python Requirements for L2 Trigger OPC UA Server
+# Python Requirements for L2 Trigger OPC UA Bridge
 
-# OPC UA Server
-asyncua>=1.0.0
+# OPC UA Server & Client
+asyncua>=1.1.0
 
-# Async support
-asyncio-mqtt>=0.16.0  # If MQTT integration needed
-
-# Logging and monitoring
-python-json-logger>=2.0.0
-
-# Development dependencies
+# Development and testing
 pytest>=7.0.0
 pytest-asyncio>=0.21.0
-pytest-cov>=4.0.0
 
-# Type checking
-mypy>=1.0.0
-
-# Code quality
+# Code quality and formatting
 black>=23.0.0
 flake8>=6.0.0
 isort>=5.12.0
+mypy>=1.0.0
