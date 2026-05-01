@@ -147,12 +147,14 @@ Methods return a string prefixed with **`OK:`** or **`ERROR:`**. Boards are inde
 
 ### Safe Power Ramping
 The backend server implements a **round-robin sequence** to prevent electrical surges. When `SetAllPowerEnabled(true)` is called:
-1.  One module per slot is enabled (S1C1, S2C1, ... S18C1).
-2.  The sequence moves to the next channel level (S1C2, ... S18C2).
-3.  A configurable delay (default 100ms) is maintained between powering subsequent modules on the same board.
+1.  The server automatically recovers any channels in an under/over current error state by un-powering them before proceeding.
+2.  The first module in each CDTB board is powered up (S1C1, S2C1, S9C1, S13C1... S21C1).
+3.  A configurable delay (default 100ms) is introduced to allow inrush currents to stabilize.
+4.  The sequence moves to the next module attached to each CDTB board (S1C2, ... S21C2) and  these two steps until all modules are powered.
+5.  The power state of any immutable channels are never changed by the server.
 
 ### Recovery from Under/Overcurrent Errors
-The system monitors for over/under current errors. If a module is in an error state, the backend server automatically clear the error when a subsequent power-on request is received. So, for example, if a set of modules does not power on correctly, the user can simply call `SetAllPowerEnabled(true)` again to attempt recovery.
+If a module is in an under/over current error state, the backend server automatically clears this error when a subsequent power-on request is received. So, for example, if a set of modules does not power on correctly, the user can simply call `SetAllPowerEnabled(true)` again to attempt recovery.
 
 ### Bridge Configuration
 The `l2trig_asyncua_bridge.py` supports several advanced options:
