@@ -228,6 +228,13 @@ static int is_polling_msg(uint8_t type) {
             type == L2TCP_MSG_CTDB_GET_CONFIG);
 }
 
+/* --- Hardware Limits --- */
+#define LIMIT_MCF_THRESH    0x01FF
+#define LIMIT_MCF_DELAY     0x000F
+#define LIMIT_L1_DEADTIME   0x00FF
+#define LIMIT_TRIG_DELAY    0x007F
+#define LIMIT_CURR_CODE     0x0FFF
+
 static void handle_request() {
     l2tcp_header_t hdr;
     ssize_t n = recv(g_server.client_fd, &hdr, sizeof(hdr), 0);
@@ -371,6 +378,7 @@ static void handle_request() {
         }
         case L2TCP_MSG_SYS_SET_ALL_TRIG_DELAY: {
             uint16_t delay = ((l2tcp_payload_u16_t*)buffer)->value;
+            if (delay > LIMIT_TRIG_DELAY) delay = LIMIT_TRIG_DELAY;
             for (int s = L2TCP_MIN_SLOT; s <= L2TCP_MAX_SLOT; s++) {
                 if (!is_slot_active(s)) continue;
                 for (int ch = 1; ch <= 15; ch++) {
@@ -411,18 +419,27 @@ static void handle_request() {
             cta_l2cb_setTIBTriggerBusyBlockEnabled(((l2tcp_payload_u16_t*)buffer)->value);
             send_ack(hdr.seq, show_msg);
             break;
-        case L2TCP_MSG_L2CB_SET_MCF_THRESH:
-            cta_l2cb_setMCFThreshold(((l2tcp_payload_u16_t*)buffer)->value);
+        case L2TCP_MSG_L2CB_SET_MCF_THRESH: {
+            uint16_t val = ((l2tcp_payload_u16_t*)buffer)->value;
+            if (val > LIMIT_MCF_THRESH) val = LIMIT_MCF_THRESH;
+            cta_l2cb_setMCFThreshold(val);
             send_ack(hdr.seq, show_msg);
             break;
-        case L2TCP_MSG_L2CB_SET_MCF_DELAY:
-            cta_l2cb_setMCFDelay(((l2tcp_payload_u16_t*)buffer)->value);
+        }
+        case L2TCP_MSG_L2CB_SET_MCF_DELAY: {
+            uint16_t val = ((l2tcp_payload_u16_t*)buffer)->value;
+            if (val > LIMIT_MCF_DELAY) val = LIMIT_MCF_DELAY;
+            cta_l2cb_setMCFDelay(val);
             send_ack(hdr.seq, show_msg);
             break;
-        case L2TCP_MSG_L2CB_SET_L1_DEADTIME:
-            cta_l2cb_setL1Deadtime(((l2tcp_payload_u16_t*)buffer)->value);
+        }
+        case L2TCP_MSG_L2CB_SET_L1_DEADTIME: {
+            uint16_t val = ((l2tcp_payload_u16_t*)buffer)->value;
+            if (val > LIMIT_L1_DEADTIME) val = LIMIT_L1_DEADTIME;
+            cta_l2cb_setL1Deadtime(val);
             send_ack(hdr.seq, show_msg);
             break;
+        }
         case L2TCP_MSG_CTDB_SET_CH_POWER: {
             l2tcp_payload_ch_ctrl_t *p = (l2tcp_payload_ch_ctrl_t *)buffer;
             if (!is_slot_active(p->slot)) {
@@ -452,7 +469,9 @@ static void handle_request() {
             } else if (is_ch_immutable(p->slot, p->channel)) {
                 send_error(hdr.seq, L2TCP_ERR_INVALID_PARAMETER, "Channel is immutable");
             } else {
-                cta_l2cb_setL1TriggerDelay(p->slot, p->channel, p->delay);
+                uint16_t delay = p->delay;
+                if (delay > LIMIT_TRIG_DELAY) delay = LIMIT_TRIG_DELAY;
+                cta_l2cb_setL1TriggerDelay(p->slot, p->channel, delay);
                 send_ack(hdr.seq, show_msg);
             }
             break;
@@ -462,8 +481,12 @@ static void handle_request() {
             if (!is_slot_active(p->slot)) {
                 send_error(hdr.seq, L2TCP_ERR_INVALID_PARAMETER, "Slot not active");
             } else {
-                cta_ctdb_setPowerCurrentMin(p->slot, p->curr_limit_min);
-                cta_ctdb_setPowerCurrentMax(p->slot, p->curr_limit_max);
+                uint16_t min = p->curr_limit_min;
+                uint16_t max = p->curr_limit_max;
+                if (min > LIMIT_CURR_CODE) min = LIMIT_CURR_CODE;
+                if (max > LIMIT_CURR_CODE) max = LIMIT_CURR_CODE;
+                cta_ctdb_setPowerCurrentMin(p->slot, min);
+                cta_ctdb_setPowerCurrentMax(p->slot, max);
                 send_ack(hdr.seq, show_msg);
             }
             break;
