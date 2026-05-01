@@ -143,6 +143,15 @@ Methods return a string prefixed with **`OK:`** or **`ERROR:`**. Boards are inde
 
 ---
 
+## Testing applications
+
+Four test applications are included in the repository for different use cases. Three of them are implemented in Python and run on the control PC, while the `l2trig_direct_client` is a native C application that runs on the ARM board for direct hardware access. Of the three Python applications, two are OPC UA clients that connect to the `l2trig_asyncua_bridge.py` server, while the third is a TCP client that connects directly to the `l2tcp_server` backend for low-level testing.
+
+- `l2tring_gui.py`: A GUI application for monitoring and controlling the system via OPC UA. It provides real-time status updates and interactive controls for power and trigger settings.
+- `l2trig_test_opcua_cli.py`: An interactive command-line client for testing and debugging the OPC UA interface. It allows users to read monitoring variables and call control methods directly from the terminal, making it useful for quick tests and automation scripts.
+- `l2trig_test_tcp_client.py`: A simple TCP client for testing the backend server's binary protocol. It can be used to send raw commands and receive responses, bypassing the OPC UA layer for low-level diagnostics.
+- `l2trig_direct_client`: A command-line tool that runs on the ARM board, allowing direct access to the hardware for pre-configuration and diagnostics. It supports commands for reading firmware versions, configuring power and trigger settings, and more.
+
 ## System Architecture
 
 ### Safe Power Ramping
