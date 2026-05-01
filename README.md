@@ -21,9 +21,9 @@ The L2 Trigger System manages 270 trigger modules across 18 crate slots (15 chan
 ## Deployment and Setup
 
 ### 1. Obtain ARM Binaries
-For the embedded ARM-based controller board, you can download pre-compiled static binaries from the [**GitHub Releases**](https://github.com/sfegan/nectarcam_dtc_opcua/releases) page. Alternatively you can cross-compile from source using the toolchain provideed in the `toolchain` directory (only on Linux). The repository contains two applications that can run on the ARM board:
+For the embedded ARM-based controller board, you can download pre-compiled static binaries from the [**GitHub Releases**](https://github.com/sfegan/nectarcam_dtc_opcua/releases) page. Alternatively you can cross-compile from source using the toolchain provided in the `toolchain` directory (only on Linux). The repository contains two applications that can run on the ARM board:
 *   `l2tcp_server`: The backend TCP bridge, should be run from a terminal or from `systemd` after boot.
-*   `l2trig_direct_client`: The configuration application, can be used interactively or with scripts to pre-configue the system before starting the backend server.
+*   `l2trig_direct_client`: The configuration application, can be used interactively or with scripts to pre-configure the system before starting the backend server.
 
 ### 2. Install Python Bridge (Control PC)
 On your control workstation, install the required Python dependencies:
@@ -37,11 +37,21 @@ Transfer the `l2tcp_server` binary to the ARM board (via ssh) and run it:
 ./l2tcp_server -p 4242 -v
 ```
 
+**Available Options:**
+- `-p <port>` — TCP listening port (default: 4242)
+- `-d <ms>` — Power ramp delay in milliseconds between channels (default: 100ms)
+- `-s <device>` — SMC device path (if not using default)
+- `-v` — Verbose logging (repeat for more verbosity)
+- `-c <ms>` — Client inactivity timeout in milliseconds (default: 60000ms)
+- `-r <ms>` — Socket receive timeout in milliseconds (default: 1000ms)
+
 ### 4. Start the OPC UA Bridge (Control PC)
 ```bash
 python3 l2trig_asyncua_bridge.py --device-host <ARM_BOARD_IP>
 ```
 The bridge will connect to the ARM board and start an OPC UA server on `opc.tcp://0.0.0.0:4840/l2trig/`.
+
+**Note:** By default, channels S21C11-S21C15 are marked as immutable (the server will not modify their state). This can be changed with the `--immutable-channels` option.
 
 ### 5. Use the GUI or OPC UA Client if desired
 ```bash
@@ -59,21 +69,22 @@ The **Direct Client** (`l2trig_direct_client`) provides native access to the har
 | `l2cb_fw` | Get L2CB firmware revision |
 | `mcf <on\|off>` | Enable/Disable MCF propagation |
 | `mcfthr [val]` | Get/Set MCF threshold (L1 counts) |
-| `deadtime [val]` | Get/Set L1 deadtime (5ns steps) |
+| `mcfdel [val]` | Get/Set MCF delay (5ns steps, 0-15) |
+| `deadtime [val]` | Get/Set L1 deadtime (5ns steps, 0-255) |
 | `trigmask <slot> [m]` | Get/Set trigger mask (16-bit hex) |
 | `trig <slot> <ch> [o]`| Get/Set trigger for specific channel |
 | `alltrig <on\|off>` | Enable/Disable all trigger channels |
 | `powermask <slot> [m]`| Get/Set power mask (16-bit hex) |
 | `allpower <on\|off>` | Set power for all channels |
 
-The client can be used interafctively, allowing commands to be typed from the terminal, or via a script to allow command to be piped or read from a file. For example, the following  will pre-configure the system parameters for the muon candidate flag and disable the trigger from the unused channels in slot 21:
+The client can be used interactively, allowing commands to be typed from the terminal, or via a script to allow commands to be piped or read from a file. For example, the following will pre-configure the system parameters for the muon candidate flag and disable the trigger from the unused channels in slot 21:
 
 ```bash
 l2trig_direct_client << 'EOF'
 allpower off    # Should presumably be the default on DTC start-up
 mcf on          # Enable the muon candidate flag
 mcfthr 20       # Set the muon threshold to 20 modules
-mcfdel 15       # Set the muon delay to 75 ns (5ns per digital code)
+mcfdel 15       # Set the muon delay to 75 ns (15 × 5ns = 75ns)
 trig 21 11 off  # Disable trigger on Slot 21 Channel 11
 trig 21 12 off  # Alternatively, disable all five channels with: 
 trig 21 13 off  # trigmask 21 0x07FE
@@ -104,25 +115,34 @@ All monitoring data is accessible under `L2Trigger.Monitoring`:
 - `CrateMCFDelay` (`Double`) — MCF delay in ns (0-75ns in 5ns steps)
 - `CrateL1Deadtime` (`Double`) — L1 deadtime in ns (0-1275ns in 5ns steps)
 
-**Per-Slot Board Data. (Arrays; one element per configured slot):**
+**Per-Slot Board Data (Arrays; one element per configured slot):**
 - `BoardSlots` (`Int32[]`) — List of active slot numbers
-- `BoardFirmwareRevision` (`UInt16[]`) — Firmware per CDTB board
-- `BoardCurrent` (`Double[]`) — Total current per CDTB board (mA in 0.485mA steps)
-- `BoardCurrentSum` (`Double[]`) — Sum of all enabled channels per CDTB board (mA in 0.485mA steps)
-- `BoardCurrentLimitMin/Max` (`Double[]`) — Current safety limits per CDTB board (mA in 0.485mA steps)
-- `BoardHasErrors` (`Boolean[]`) — Error flag per CDTB board
+- `BoardFirmwareRevision` (`UInt16[]`) — Firmware per CTDB board
+- `BoardCurrent` (`Double[]`) — Total current per CTDB board (mA in 0.485mA steps)
+- `BoardCurrentSum` (`Double[]`) — Sum of all enabled channels per CTDB board (mA in 0.485mA steps)
+- `BoardCurrentLimitMin/Max` (`Double[]`) — Current safety limits per CTDB board (mA in 0.485mA steps)
+- `BoardHasErrors` (`Boolean[]`) — Error flag per CTDB board
 
 **Per-Module Data (Arrays; one element per configured channel):**
 - `ModulePowerEnabled` (`Boolean[]`) — Power state (1=on/0=off)
 - `ModuleCurrent` (`Double[]`) — Current reading (mA in 0.485mA steps)
-- `ModuleState` (`String[]`) — Detailed state (on/off/error/etc.)
+- `ModuleState` (`String[]`) — Detailed state (on/off/error_over_current/error_under_current/error_both/offline)
 - `ModuleTriggerEnabled` (`Boolean[]`) — Trigger state (1=enabled/0=disabled)
 - `ModuleTriggerDelay` (`Double[]`) — Trigger delay in ns (0-4.7ns in 37ps steps)
 - `ModuleIsMutable` (`Boolean[]`) — Whether server controls this module
 
+**Module Numbering:**
+Modules are numbered consecutively starting from 1, ordered by slot and channel. For example, with all slots enabled:
+- Modules 1-15: Slot 1, Channels 1-15
+- Modules 16-30: Slot 2, Channels 1-15
+- ...
+- Modules 256-270: Slot 21, Channels 1-15
+
+If only specific slots are enabled (via `--slots`), module numbers are renumbered consecutively across only those slots.
+
 ### Control Methods
 
-Methods return a string prefixed with **`OK:`** or **`ERROR:`**. Boards are indexed 1-18; modules are indexed 1-270.
+Methods return a string prefixed with **`OK:`** or **`ERROR:`**. Boards are indexed by slot number (1-9, 13-21); modules are indexed 1-270 (or 1-N if fewer slots are enabled).
 
 | Method | Parameters | Description |
 | :--- | :--- | :--- |
@@ -143,7 +163,7 @@ Methods return a string prefixed with **`OK:`** or **`ERROR:`**. Boards are inde
 
 ---
 
-## Testing applications
+## Testing Applications
 
 Four test applications are included in the repository for different use cases. Three of them are implemented in Python and run on the control PC, while the `l2trig_direct_client` is a native C application that runs on the ARM board for direct hardware access. Of the three Python applications, two are OPC UA clients that connect to the `l2trig_asyncua_bridge.py` server, while the third is a TCP client that connects directly to the `l2tcp_server` backend for low-level testing.
 
@@ -152,28 +172,46 @@ Four test applications are included in the repository for different use cases. T
 - `l2trig_test_tcp_client.py`: A simple TCP client for testing the backend server's binary protocol. It can be used to send raw commands and receive responses, bypassing the OPC UA layer for low-level diagnostics.
 - `l2trig_direct_client`: A command-line tool that runs on the ARM board, allowing direct access to the hardware for pre-configuration and diagnostics. It supports commands for reading firmware versions, configuring power and trigger settings, and more.
 
+---
+
 ## System Architecture
 
 ### Safe Power Ramping
 The backend server implements a **round-robin sequence** to prevent electrical surges. When `SetAllPowerEnabled(true)` is called:
 1.  The server automatically recovers any channels in an under/over current error state by un-powering them before proceeding.
-2.  The first module in each CDTB board is powered up (S1C1, S2C1, S9C1, S13C1... S21C1).
+2.  The first module in each CTDB board is powered up (S1C1, S2C1, S9C1, S13C1... S21C1).
 3.  A configurable delay (default 100ms) is introduced to allow inrush currents to stabilize.
-4.  The sequence moves to the next module attached to each CDTB board (S1C2, ... S21C2) and  these two steps until all modules are powered.
-5.  The power state of any immutable channels are never changed by the server.
+4.  The sequence moves to the next module attached to each CTDB board (S1C2, ... S21C2) and these two steps repeat until all modules are powered.
+5.  The power state of any immutable channels is never changed by the server.
 
 ### Recovery from Under/Overcurrent Errors
-If a module is in an under/over current error state, the backend server automatically clears this error when a subsequent power-on request is received. So, for example, if a set of modules does not power on correctly, the user can simply call `SetAllPowerEnabled(true)` again to attempt recovery.
+If a module is in an under/over current error state, the backend server **automatically clears this error during the `SetAllPowerEnabled` ramp sequence** by first turning off the affected channel before attempting to power it on again. This automatic recovery **only applies to the bulk ramp operation** (`SetAllPowerEnabled`), not to individual channel power commands via `SetModulePowerEnabled`.
+
+For individual channels with errors, you can manually recover by:
+1. Calling `SetModulePowerEnabled(module, false)` to turn off the channel
+2. Calling `SetModulePowerEnabled(module, true)` to turn it back on
+
+Alternatively, calling `SetAllPowerEnabled(true)` will attempt to recover all channels in error across the entire system.
 
 ### Bridge Configuration
 The `l2trig_asyncua_bridge.py` supports several advanced options:
-- `--poll-interval`: Frequency of fast updates (currents, errors).
-- `--poll-ratio`: Frequency of slow updates (firmware, configuration).
-- `--immutable-channels`: List of channels the server is forbidden to modify.
-- `--opcua-user`: `user:pass` for authentication.
+- `--device-host`: Host or IP address of the backend TCP server (default: 127.0.0.1)
+- `--device-port`: TCP port of the backend server (default: 4242)
+- `--device-timeout`: TCP connection and receive timeout in seconds (default: 5.0)
+- `--poll-interval`: Frequency of fast updates in seconds for currents and errors (default: 1.0)
+- `--poll-ratio`: Ratio of fast to slow polling cycles for firmware and configuration (default: 10, meaning slow poll every 10 fast polls)
+- `--slots`: Comma-separated list of slots to enable (e.g., `--slots 1,2,3,13,14`); if omitted, all valid slots (1-9, 13-21) are enabled
+- `--immutable-channels`: Comma-separated list of channels the server should not modify (default: `S21C11,S21C12,S21C13,S21C14,S21C15`). Format: `S<slot>C<channel>` (e.g., `S1C1,S18C15`)
+- `--opcua-endpoint`: OPC UA server endpoint URL (default: `opc.tcp://0.0.0.0:4840/l2trig/`)
+- `--opcua-user`: Username:password for authentication (format: `user:pass`); disables anonymous access
+- `--reconnection-backoff-interval`: Maximum delay between reconnection attempts in seconds (default: 30.0)
+- `--log-level`: Logging verbosity (DEBUG, INFO, WARNING, ERROR; default: INFO)
+- `--log-file`: Optional path to write logs to file
 
-## Cross-compilation of backend-server using supplied toolchain
-The `toolchain` directory contains a Docker-based cross-compilation environment for building the ARM binaries on Linux. It uses the `arm-none-eabi` toolchain. To build the binaries (as imoplemented in the GitHub actions workflow included here), run the following command from the repository root:
+---
+
+## Cross-compilation of Backend Server Using Supplied Toolchain
+The `toolchain` directory contains a Docker-based cross-compilation environment for building the ARM binaries on Linux. It uses the `arm-none-eabi` toolchain. To build the binaries (as implemented in the GitHub actions workflow included here), run the following command from the repository root:
 
 ```bash
 tar -xzf toolchain/crosstoll-ng-1.2.00-arm-926ejs-linux-gnueabi.tar.gz -C toolchain
