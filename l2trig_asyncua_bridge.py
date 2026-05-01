@@ -566,22 +566,6 @@ class L2TriggerBridgeServer:
     async def _write_fast_data(self, l2cb: L2CBStatus, monitoring: Dict[int, CTDBMonitoringData], timestamp: datetime.datetime, now: datetime.datetime):
         sc = self._get_status_code()
 
-        # Update connection timers
-        mono_now = time.monotonic()
-        if self._connected != self._last_connected_state:
-            self._state_change_time = mono_now
-            self._last_connected_state = self._connected
-        
-        duration_ms = round((mono_now - self._state_change_time) * 1000.0)
-        uptime_ms = duration_ms if self._connected else 0.0
-        downtime_ms = duration_ms if not self._connected else 0.0
-
-        # device_state always has Good status as the server is authoritative
-        await self._set_var("device_state", 1 if self._connected else 0, now, ua.StatusCode(ua.StatusCodes.Good))
-        await self._set_var("device_connected", self._connected, now, ua.StatusCode(ua.StatusCodes.Good))
-        await self._set_var("device_connection_uptime", uptime_ms, now, ua.StatusCode(ua.StatusCodes.Good))
-        await self._set_var("device_connection_downtime", downtime_ms, now, ua.StatusCode(ua.StatusCodes.Good))
-
         await self._set_var("CrateFirmwareRevision", l2cb.firmware_version, timestamp, sc)
         await self._set_var("CrateUpTime", l2cb.uptime, timestamp, sc)
         await self._set_var("CrateMCFEnabled", l2cb.mcf_enabled, timestamp, sc)
@@ -629,6 +613,27 @@ class L2TriggerBridgeServer:
         await self._set_var("ModuleCurrent", mc, timestamp, sc)
         await self._set_var("ModuleState", ms, timestamp, sc)
         await self._set_var("ModulePowerEnabled", mpe, timestamp, sc)
+
+        # Update connection timers
+        mono_now = time.monotonic()
+        if self._connected != self._last_connected_state:
+            self._state_change_time = mono_now
+            self._last_connected_state = self._connected
+        
+        duration_ms = round((mono_now - self._state_change_time) * 1000.0)
+        uptime_ms = duration_ms if self._connected else 0.0
+        downtime_ms = duration_ms if not self._connected else 0.0
+
+        device_state = 0
+        if self._connected:
+            device_state = 2 if powered_count > 0 else 1
+
+        # device_state always has Good status as the server is authoritative
+        await self._set_var("device_state", device_state, now, ua.StatusCode(ua.StatusCodes.Good))
+        await self._set_var("device_connected", self._connected, now, ua.StatusCode(ua.StatusCodes.Good))
+        await self._set_var("device_connection_uptime", uptime_ms, now, ua.StatusCode(ua.StatusCodes.Good))
+        await self._set_var("device_connection_downtime", downtime_ms, now, ua.StatusCode(ua.StatusCodes.Good))
+
 
     async def _write_slow_data(self, configs: Dict[int, CTDBConfigData], timestamp: datetime.datetime):
         sc = self._get_status_code()
