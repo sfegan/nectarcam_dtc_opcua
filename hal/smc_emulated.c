@@ -111,6 +111,10 @@ typedef struct {
     uint16_t l1_masks[MAX_CTDB_SLOTS];
     uint16_t l1_delays[MAX_CTDB_SLOTS][16];
     
+    /* PERSISTENT: Random trip state (configuration survives) */
+    uint16_t ctdb_tripped_under[MAX_CTDB_SLOTS];
+    uint16_t ctdb_tripped_over[MAX_CTDB_SLOTS];
+    
 } smc_emu_state_t;
 
 typedef struct {
@@ -141,14 +145,39 @@ static void update_ctdb_dynamic_registers(uint8_t slot)
     /* Simulate per-channel current based on power state */
     for (int ch = 1; ch <= 15; ch++) {
         uint16_t current = 0;
-        if (ponf & (1 << ch)) {
-            /* FEB powered on - simulate typical current draw of ~300mA (raw ADC ~619) */
-            current = 619;
-            
-            /* Check against limits */
-            if (current < cur_min) under_errors |= (1 << ch);
-            if (current > cur_max) over_errors |= (1 << ch);
+        uint16_t bit = (1 << ch);
+        
+        if (ponf & bit) {
+            /* Check if already tripped (random or previous deterministic) */
+            if (!(emulated_driver.state->ctdb_tripped_under[slot] & bit) &&
+                !(emulated_driver.state->ctdb_tripped_over[slot] & bit)) {
+                
+                /* Not tripped yet - simulate typical current draw of ~300mA (raw ADC ~619) */
+                current = 619;
+                
+                /* Deterministic limit checking: if limits exceeded, it trips and current goes to 0 */
+                if (current < cur_min) {
+                    emulated_driver.state->ctdb_tripped_under[slot] |= bit;
+                    current = 0;
+                } else if (current > cur_max) {
+                    emulated_driver.state->ctdb_tripped_over[slot] |= bit;
+                    current = 0;
+                }
+            } else {
+                /* Already in a tripped state (random or deterministic) */
+                current = 0;
+            }
+        } else {
+            /* Powered off - ensure trip state is cleared for this channel */
+            emulated_driver.state->ctdb_tripped_under[slot] &= ~bit;
+            emulated_driver.state->ctdb_tripped_over[slot] &= ~bit;
+            current = 0;
         }
+        
+        /* Accumulate error bits for registers based on persistent trip state */
+        if (emulated_driver.state->ctdb_tripped_under[slot] & bit) under_errors |= bit;
+        if (emulated_driver.state->ctdb_tripped_over[slot] & bit) over_errors |= bit;
+        
         /* Store current reading for this channel (registers 0x01-0x0F) */
         emulated_driver.state->ctdb_registers[slot][BASE_CTA_CTDB_CUR + ch - 1] = current;
     }
@@ -267,7 +296,30 @@ static void handle_spad_write(unsigned short value)
         /* Write: Copy SPTX data to CTDB register */
         uint16_t sptx = emulated_driver.state->registers[ADDR_CTA_L2CB_SPTX >> 1];
         if (slot < MAX_CTDB_SLOTS && slot > 0) {
+            uint16_t old_val = emulated_driver.state->ctdb_registers[slot][reg_addr];
             emulated_driver.state->ctdb_registers[slot][reg_addr] = sptx;
+            
+            /* Handle power-on transitions and random trips */
+            if (reg_addr == ADDR_CTA_CTDB_PONF) {
+                for (int ch = 1; ch <= 15; ch++) {
+                    uint16_t bit = (1 << ch);
+                    if ((sptx & bit) && !(old_val & bit)) {
+                        /* 0->1 transition: roll 1/1024 chance to trip */
+                        if ((rand() % 1024) == 0) {
+                            /* Randomly pick under or over current trip */
+                            if (rand() % 2) {
+                                emulated_driver.state->ctdb_tripped_under[slot] |= bit;
+                            } else {
+                                emulated_driver.state->ctdb_tripped_over[slot] |= bit;
+                            }
+                        }
+                    } else if (!(sptx & bit)) {
+                        /* Disabling clears any tripped state */
+                        emulated_driver.state->ctdb_tripped_under[slot] &= ~bit;
+                        emulated_driver.state->ctdb_tripped_over[slot] &= ~bit;
+                    }
+                }
+            }
         }
     }
     /* Read: Data will be loaded into SPRX when busy clears (see update_dynamic_state) */
@@ -362,6 +414,9 @@ smc_driver_error_t smc_open(const char* devname)
     emulated_driver.state->timestamp.latched = 0;
     emulated_driver.state->timestamp.counter = 0;
     clock_gettime(CLOCK_MONOTONIC, &emulated_driver.state->timestamp.start_time);
+    
+    /* Seed random number generator for trips */
+    srand(time(NULL));
     
     emulated_driver.is_open = 1;
     printf("[SMC_EMU] Firmware revision: 0x%04X\n", DEFAULT_FIRMWARE_REV);
