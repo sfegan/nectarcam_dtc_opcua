@@ -228,3 +228,8 @@ PATH=$PWD/toolchain/arm-926ejs-linux-gnueabi/bin:$PATH
 cd l2tcp_server
 arm-926ejs-linux-gnueabi-gcc -std=gnu99 -march=armv5te -I../hal -static -o l2tcp_server l2tcp_server_main.c ../hal/smc.c ../hal/l2trig_hal.c
 ```
+
+## Note to self
+
+- Push changes to CTA GitLab: `git push cta_gitlab main`
+- Generate new release on GitHub: `git tag v1.0.6` and `git push origin v1.0.6`
