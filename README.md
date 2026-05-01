@@ -103,7 +103,7 @@ All monitoring data is accessible under `L2Trigger.Monitoring`:
 **Bridge and Connection Status (Scalars):**
 - `device_host` (`String`) — Host or IP of the TCP bridge server
 - `device_port` (`UInt16`) — Port of the TCP bridge server
-- `device_state` (`Int32`) — TCP connection state: 1 if connected, 0 otherwise
+- `device_state` (`Int32`) — Device state: 0 if TCP connection down, 1 if TCP connected but no modules powered, 2 if TCP connected and at least one module is powered
 - `device_connected` (`Boolean`) — TCP connection state (True if connected)
 - `device_connection_uptime` (`Double`) — Time in ms the TCP connection has been up
 - `device_connection_downtime` (`Double`) — Time in ms the TCP connection has been down
