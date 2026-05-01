@@ -304,14 +304,12 @@ static void handle_spad_write(unsigned short value)
                 for (int ch = 1; ch <= 15; ch++) {
                     uint16_t bit = (1 << ch);
                     if ((sptx & bit) && !(old_val & bit)) {
-                        /* 0->1 transition: roll 1/1024 chance to trip */
-                        if ((rand() % 1024) == 0) {
-                            /* Randomly pick under or over current trip */
-                            if (rand() % 2) {
-                                emulated_driver.state->ctdb_tripped_under[slot] |= bit;
-                            } else {
-                                emulated_driver.state->ctdb_tripped_over[slot] |= bit;
-                            }
+                        /* 0->1 transition: roll 1/256 chance to trip */
+                        if ((rand() % 512) == 0) {
+                            emulated_driver.state->ctdb_tripped_under[slot] |= bit;
+                        }
+                        if ((rand() % 512) == 0) {
+                            emulated_driver.state->ctdb_tripped_over[slot] |= bit;
                         }
                     } else if (!(sptx & bit)) {
                         /* Disabling clears any tripped state */
