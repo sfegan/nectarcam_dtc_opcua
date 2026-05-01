@@ -1,5 +1,5 @@
 """
-l2trig_test_client.py
+l2trig_test_opcua_cli.py
 
 Interactive OPC UA client for L2 Trigger System
 Allows reading monitoring variables and calling control methods from the terminal
