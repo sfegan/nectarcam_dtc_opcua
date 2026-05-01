@@ -132,7 +132,7 @@ class L2TriggerBridgeServer:
                  variable_lifetime: float = 10.0,
                  opcua_endpoint: str = "opc.tcp://0.0.0.0:4840/l2trig/",
                  opcua_namespace: str = "http://cta-observatory.org/nectarcam/l2trig/",
-                 opcua_root: str = "l2trig",
+                 opcua_root: str = "L2Trigger",
                  monitoring_path: str = None,
                  opcua_users: dict = None,
                  poll_interval: float = 1.0,
@@ -149,7 +149,7 @@ class L2TriggerBridgeServer:
         self.reconnection_backoff_interval = reconnection_backoff_interval
         self.endpoint = opcua_endpoint
         self.namespace_uri = opcua_namespace
-        self.opcua_root = opcua_root or self._DEFAULT_ROOT
+        self.opcua_root = opcua_root
         self.monitoring_path = monitoring_path or self._DEFAULT_MONITORING_PATH
         self.opcua_users = opcua_users or {}
         self.poll_interval = poll_interval
@@ -735,8 +735,8 @@ def main():
                    help="OPC UA server endpoint URL")
     p.add_argument("--opcua-namespace", default="http://cta-observatory.org/nectarcam/l2trig/",
                    help="OPC UA namespace URI")
-    p.add_argument("--opcua-root", default="l2trig", metavar="PATH",
-                   help="Root object path in the OPC UA address space (default: l2trig). Dot-separated components create nested browse levels.")
+    p.add_argument("--opcua-root", default="L2Trigger", metavar="PATH",
+                   help="Root object path in the OPC UA address space (default: L2Trigger). Dot-separated components create nested browse levels.")
     p.add_argument("--monitoring-path", default="Monitoring",
                    help="Name of the monitoring object under the root")
     p.add_argument("--opcua-user", default=None, metavar="USER:PASS",

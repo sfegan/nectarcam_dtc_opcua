@@ -448,7 +448,7 @@ async def interactive_loop(client: L2TrigTestClient):
 def _parse_args():
     p = argparse.ArgumentParser(description="L2 Trigger System OPC UA Test Client")
     p.add_argument("--endpoint", default="opc.tcp://localhost:4840/l2trig/")
-    p.add_argument("--root", default="l2trig", help="Browse path to root object")
+    p.add_argument("--root", default="L2Trigger", help="Browse path to root object")
     p.add_argument("--monitoring", default="Monitoring", help="Name of monitoring folder")
     return p.parse_args()
 

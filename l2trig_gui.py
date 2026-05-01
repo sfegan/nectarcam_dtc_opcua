@@ -100,7 +100,7 @@ class OPCUAClient:
             raise RuntimeError("Event loop not running")
         return asyncio.run_coroutine_threadsafe(coro, self.loop)
     
-    async def connect(self, endpoint: str, root: str = "l2trig", monitoring: str = "Monitoring"):
+    async def connect(self, endpoint: str, root: str = "L2Trigger", monitoring: str = "Monitoring"):
         """Connect to OPC UA server"""
         try:
             self.client = Client(endpoint)
