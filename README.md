@@ -186,7 +186,7 @@ Four test applications are included in the repository for different use cases. T
 ## System Architecture
 
 ### Safe Power Ramping
-The backend server implements a **round-robin sequence** to prevent electrical surges. When `SetAllPowerEnabled(true)` is called:
+The backend server implements a **round-robin sequence** to prevent excessive inrush currents. When `SetAllPowerEnabled(true)` is called:
 1.  The server automatically recovers any channels in an under/over current error state by un-powering them before proceeding.
 2.  The first module in each CTDB board is powered up (S1C1, S2C1, S9C1, S13C1... S21C1).
 3.  A configurable delay (default 100ms) is introduced to allow inrush currents to stabilize.
@@ -194,13 +194,11 @@ The backend server implements a **round-robin sequence** to prevent electrical s
 5.  The power state of any immutable channels is never changed by the server.
 
 ### Recovery from Under/Overcurrent Errors
-If a module is in an under/over current error state, the backend server **automatically clears this error during the `SetAllPowerEnabled` ramp sequence** by first turning off the affected channel before attempting to power it on again. This automatic recovery **only applies to the bulk ramp operation** (`SetAllPowerEnabled`), not to individual channel power commands via `SetModulePowerEnabled`.
+If a module is in an under/over current error state, the backend server **automatically clears this error** when the channel is commanded to power on, either using `SetModulePowerEnabled(True)` or during the `SetAllPowerEnabled(True)` ramp sequence. Any such channel is turned off before attempting to power it on again. 
 
-For individual channels with errors, you can manually recover by:
-1. Calling `SetModulePowerEnabled(module, false)` to turn off the channel
-2. Calling `SetModulePowerEnabled(module, true)` to turn it back on
+The user does not need to manually clear errors by calling `SetModulePowerEnabled(False)` explicitly before calling `SetModulePowerEnabled(True)`.
 
-Alternatively, calling `SetAllPowerEnabled(true)` will attempt to recover all channels in error across the entire system.
+If a module is consistently tripped due to a hardware fault, the server will log this and continue to attempt to power it on during each ramp sequence. The user can choose to disable the channel permanently by marking it as immutable (e.g., `--immutable-channels S1C5,S2C3`), which will prevent the server from attempting to change its state.
 
 ### Bridge Configuration
 The `l2trig_asyncua_bridge.py` supports several advanced options:
