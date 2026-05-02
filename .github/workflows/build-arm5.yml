@@ -22,20 +22,63 @@ jobs:
         tar -xzf toolchain/crosstoll-ng-1.2.00-arm-926ejs-linux-gnueabi.tar.gz -C toolchain
         echo "$GITHUB_WORKSPACE/toolchain/arm-926ejs-linux-gnueabi/bin" >> $GITHUB_PATH
 
+    - name: Verify GCC version
+      run: |
+        arm-926ejs-linux-gnueabi-gcc --version
+        arm-926ejs-linux-gnueabi-gcc -dumpmachine
+        arm-926ejs-linux-gnueabi-gcc -dumpversion
+
     - name: Compile l2tcp_server
       run: |
         cd l2tcp_server
-        arm-926ejs-linux-gnueabi-gcc -std=gnu99 -march=armv5te -I../hal -static -o l2tcp_server l2tcp_server_main.c ../hal/smc.c ../hal/l2trig_hal.c
+        arm-926ejs-linux-gnueabi-gcc \
+          -std=gnu99 \
+          -march=armv5te \
+          -mtune=arm926ej-s \
+          -msoft-float \
+          -O2 \
+          -fomit-frame-pointer \
+          -ffunction-sections \
+          -fdata-sections \
+          -Wall \
+          -Wextra \
+          -Werror \
+          -I../hal \
+          -static \
+          -Wl,--gc-sections \
+          -Wl,-s \
+          -o l2tcp_server l2tcp_server_main.c ../hal/smc.c ../hal/l2trig_hal.c
 
     - name: Compile l2trig_direct_client
       run: |
         cd hal
-        arm-926ejs-linux-gnueabi-gcc -std=gnu99 -march=armv5te -I. -static -o l2trig_direct_client l2trig_direct_client.c smc.c l2trig_hal.c l2trig_hal_exports.c
+        arm-926ejs-linux-gnueabi-gcc \
+          -std=gnu99 \
+          -march=armv5te \
+          -mtune=arm926ej-s \
+          -msoft-float \
+          -O2 \
+          -fomit-frame-pointer \
+          -ffunction-sections \
+          -fdata-sections \
+          -Wall \
+          -Wextra \
+          -Werror \
+          -I. \
+          -static \
+          -Wl,--gc-sections \
+          -Wl,-s \
+          -o l2trig_direct_client l2trig_direct_client.c smc.c l2trig_hal.c l2trig_hal_exports.c
 
     - name: Verify binaries
       run: |
+        echo "=== l2tcp_server ==="
         file l2tcp_server/l2tcp_server
+        ls -lh l2tcp_server/l2tcp_server
+        echo ""
+        echo "=== l2trig_direct_client ==="
         file hal/l2trig_direct_client
+        ls -lh hal/l2trig_direct_client
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v7
