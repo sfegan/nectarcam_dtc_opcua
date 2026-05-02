@@ -458,6 +458,16 @@ class ModuleMatrix(tk.Frame):
                     self.opcua_client.call_method("SetModuleTriggerDelay",
                                                  indicator.module_idx, float(new_delay))
                 )
+        
+        elif self.display_mode == DisplayMode.MODIFIABLE:
+            # Toggle immutability status
+            # If currently modifiable, set to immutable (True)
+            # If currently not modifiable, set to mutable (False)
+            new_immutable_state = indicator.is_modifiable
+            self.opcua_client.run_async(
+                self.opcua_client.call_method("SetModuleIsImmutable",
+                                             indicator.module_idx, new_immutable_state)
+            )
     
     def update_from_data(self, var_name: str, value):
         """Update module states from OPC UA data"""

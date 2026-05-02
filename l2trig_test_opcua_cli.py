@@ -341,6 +341,7 @@ async def interactive_loop(client: L2TrigTestClient):
                 print("  allpower <on|off>    Set all modules power")
                 print("  trig <mod> <on|off>  Enable or disable module trigger")
                 print("  delay <mod> <ns>     Set module trigger delay (0-5.0)")
+                print("  immutable <mod> <on|off> Set module immutability (protected from changes)")
                 print("  alltrig <on|off>     Enable or disable all triggers")
                 print("  alldelay <ns>        Set all trigger delays")
                 print("  limits <board> <min> <max> Set current limits for a board (1-based index)")
@@ -402,6 +403,9 @@ async def interactive_loop(client: L2TrigTestClient):
             elif cmd == "delay":
                 if len(args) != 2: print("Usage: delay <module> <ns>")
                 else: await client.call_method("SetModuleTriggerDelay", args[0], args[1])
+            elif cmd == "immutable":
+                if len(args) != 2: print("Usage: immutable <module> <on|off>")
+                else: await client.call_method("SetModuleIsImmutable", args[0], args[1])
             elif cmd == "alltrig":
                 if len(args) != 1: print("Usage: alltrig <on|off>")
                 else: await client.call_method("SetAllTriggerEnabled", args[0])
