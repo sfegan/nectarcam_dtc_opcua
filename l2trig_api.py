@@ -32,6 +32,7 @@ class L2TCPMsgType(IntEnum):
     SYS_SET_ALL_TRIG_EN = 0x04
     SYS_SET_ALL_TRIG_DELAY = 0x05
     SYS_KEEPALIVE       = 0x06
+    HELLO               = 0x07
     L2CB_GET_STATE      = 0x10
     L2CB_SET_MCF_EN     = 0x11
     L2CB_SET_GLITCH_EN  = 0x12
@@ -91,6 +92,8 @@ class CTDBConfigData:
 # ============================================================================
 
 class L2TriggerSystem:
+    PROTOCOL_VERSION = 1
+
     def __init__(self, host: str = "127.0.0.1", port: int = DEFAULT_PORT, 
                  connect_timeout: float = 5.0, recv_timeout: float = 5.0):
         self.host = host
@@ -106,6 +109,7 @@ class L2TriggerSystem:
         """Establish connection to the embedded server"""
         async with self._lock:
             await self._connect_unlocked()
+            await self._negotiate_unlocked()
 
     async def _connect_unlocked(self):
         """Internal connect without locking"""
@@ -146,57 +150,86 @@ class L2TriggerSystem:
         self._seq = (self._seq + 1) & 0xFF
         return self._seq
 
+    async def _negotiate_unlocked(self):
+        """Perform version negotiation handshake"""
+        logger.info(f"Negotiating protocol version (client version: {self.PROTOCOL_VERSION})")
+        
+        # 1. Send our version
+        payload = struct.pack("<H", self.PROTOCOL_VERSION)
+        rtype, rpayload = await self._send_recv_unlocked(L2TCPMsgType.HELLO, payload)
+        
+        server_version = struct.unpack("<H", rpayload)[0]
+        logger.info(f"Server protocol version: {server_version}")
+
+        if server_version != self.PROTOCOL_VERSION:
+            logger.warning(f"Protocol version mismatch: client={self.PROTOCOL_VERSION}, server={server_version}. Adapting to server.")
+            # 2. Adapt to server version as requested: send HELLO with server's version
+            payload = struct.pack("<H", server_version)
+            rtype, rpayload = await self._send_recv_unlocked(L2TCPMsgType.HELLO, payload)
+            
+            final_version = struct.unpack("<H", rpayload)[0]
+            if final_version != server_version:
+                raise RuntimeError(f"Failed to negotiate version: server keeps changing version! ({server_version} -> {final_version})")
+            
+            logger.info("Negotiation successful (adapted to server)")
+        else:
+            logger.info("Negotiation successful (version match)")
+
     async def _send_recv(self, msg_type: L2TCPMsgType, payload: bytes = b"") -> Tuple[L2TCPMsgType, bytes]:
         async with self._lock:
             if not self.writer or self.writer.transport.is_closing():
                 await self._connect_unlocked()
+                await self._negotiate_unlocked()
 
+            return await self._send_recv_unlocked(msg_type, payload)
+
+    async def _send_recv_unlocked(self, msg_type: L2TCPMsgType, payload: bytes = b"") -> Tuple[L2TCPMsgType, bytes]:
+        try:
+            seq = self._next_seq()
+            header = struct.pack(HEADER_FMT, msg_type, seq, len(payload))
+            self.writer.write(header + payload)
+            await self.writer.drain()
+
+            # Read response header with timeout
             try:
-                seq = self._next_seq()
-                header = struct.pack(HEADER_FMT, msg_type, seq, len(payload))
-                self.writer.write(header + payload)
-                await self.writer.drain()
-
-                # Read response header with timeout
+                resp_hdr_data = await asyncio.wait_for(
+                    self.reader.readexactly(HEADER_SIZE),
+                    timeout=self.recv_timeout
+                )
+            except asyncio.TimeoutError:
+                logger.error(f"Header recv timeout after {self.recv_timeout}s")
+                await self._disconnect_unlocked()
+                raise RuntimeError(f"Server response timeout after {self.recv_timeout}s")
+            
+            rtype, rseq, rlen = struct.unpack(HEADER_FMT, resp_hdr_data)
+            
+            # Read payload with timeout
+            rpayload = b""
+            if rlen > 0:
                 try:
-                    resp_hdr_data = await asyncio.wait_for(
-                        self.reader.readexactly(HEADER_SIZE),
+                    rpayload = await asyncio.wait_for(
+                        self.reader.readexactly(rlen),
                         timeout=self.recv_timeout
                     )
                 except asyncio.TimeoutError:
-                    logger.error(f"Header recv timeout after {self.recv_timeout}s")
+                    logger.error(f"Payload recv timeout after {self.recv_timeout}s")
                     await self._disconnect_unlocked()
-                    raise RuntimeError(f"Server response timeout after {self.recv_timeout}s")
-                
-                rtype, rseq, rlen = struct.unpack(HEADER_FMT, resp_hdr_data)
-                
-                # Read payload with timeout
-                rpayload = b""
-                if rlen > 0:
-                    try:
-                        rpayload = await asyncio.wait_for(
-                            self.reader.readexactly(rlen),
-                            timeout=self.recv_timeout
-                        )
-                    except asyncio.TimeoutError:
-                        logger.error(f"Payload recv timeout after {self.recv_timeout}s")
-                        await self._disconnect_unlocked()
-                        raise RuntimeError(f"Server payload timeout after {self.recv_timeout}s")
+                    raise RuntimeError(f"Server payload timeout after {self.recv_timeout}s")
 
-                if rseq != seq:
-                    raise RuntimeError(f"Sequence mismatch: expected {seq}, got {rseq}")
+            if rseq != seq:
+                raise RuntimeError(f"Sequence mismatch: expected {seq}, got {rseq}")
 
-                if rtype == L2TCPMsgType.ERROR:
-                    code = rpayload[0]
-                    msg = rpayload[1:].decode('ascii').strip('\x00')
-                    raise RuntimeError(f"Server error {code}: {msg}")
+            if rtype == L2TCPMsgType.ERROR:
+                code = rpayload[0]
+                msg = rpayload[1:].decode('ascii').strip('\x00')
+                raise RuntimeError(f"Server error {code}: {msg}")
 
-                return L2TCPMsgType(rtype), rpayload
-            except (asyncio.IncompleteReadError, ConnectionError, OSError) as e:
-                # Connection lost or broken, reset state so we try to reconnect next time
-                logger.error(f"Connection error: {e}")
-                await self._disconnect_unlocked()
-                raise
+            return L2TCPMsgType(rtype), rpayload
+        except (asyncio.IncompleteReadError, ConnectionError, OSError) as e:
+            # Connection lost or broken, reset state so we try to reconnect next time
+            logger.error(f"Connection error: {e}")
+            await self._disconnect_unlocked()
+            raise
 
     # --- System Control ---
 

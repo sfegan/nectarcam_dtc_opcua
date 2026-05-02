@@ -36,6 +36,7 @@ typedef enum {
     L2TCP_MSG_SYS_SET_ALL_TRIG_EN     = 0x04,
     L2TCP_MSG_SYS_SET_ALL_TRIG_DELAY  = 0x05,
     L2TCP_MSG_KEEPALIVE               = 0x06,
+    L2TCP_MSG_HELLO                   = 0x07,
 
     /* L2CB Global Control & Monitoring */
     L2TCP_MSG_L2CB_GET_STATE          = 0x10,

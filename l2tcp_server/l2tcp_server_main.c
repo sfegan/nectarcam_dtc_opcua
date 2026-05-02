@@ -46,6 +46,7 @@ static struct {
 
     int listen_fd;
     int client_fd;
+    int is_negotiated;               /* Handshake complete? */
     struct timespec last_activity_ts;  /* Track last client activity */
 } g_server;
 
@@ -76,6 +77,7 @@ static const char* msg_type_to_str(uint8_t type) {
         case L2TCP_MSG_SYS_SET_ALL_TRIG_EN: return "SYS_SET_ALL_TRIG_EN";
         case L2TCP_MSG_SYS_SET_ALL_TRIG_DELAY: return "SYS_SET_ALL_TRIG_DELAY";
         case L2TCP_MSG_KEEPALIVE:          return "KEEPALIVE";
+        case L2TCP_MSG_HELLO:              return "HELLO";
         case L2TCP_MSG_L2CB_GET_STATE:     return "L2CB_GET_STATE";
         case L2TCP_MSG_L2CB_SET_MCF_EN:    return "L2CB_SET_MCF_EN";
         case L2TCP_MSG_L2CB_SET_GLITCH_EN: return "L2CB_SET_GLITCH_EN";
@@ -305,6 +307,40 @@ static void handle_request() {
             case L2TCP_MSG_CTDB_GET_CONFIG: printf(" slot: %d", buffer[0]); break;
         }
         printf("\n");
+    }
+
+    switch (hdr.type) {
+        case L2TCP_MSG_HELLO: {
+            l2tcp_payload_u16_t *p = (l2tcp_payload_u16_t *)buffer;
+            if (p->value == L2TCP_PROTOCOL_VERSION) {
+                g_server.is_negotiated = 1;
+                if (g_server.verbose > 0) printf("  [DEBUG] Negotiation SUCCESS, version matches\n");
+            } else {
+                g_server.is_negotiated = 0;
+                if (g_server.verbose > 0) printf("  [DEBUG] Negotiation FAIL, version mismatch (%d != %d)\n", p->value, L2TCP_PROTOCOL_VERSION);
+            }
+            
+            l2tcp_header_t resp_hdr = { L2TCP_MSG_HELLO, hdr.seq, sizeof(l2tcp_payload_u16_t) };
+            l2tcp_payload_u16_t resp = { L2TCP_PROTOCOL_VERSION };
+            
+            if (g_server.verbose > 0) {
+                printf("  -> HELLO (ver: %d, negotiated: %d)\n", resp.value, g_server.is_negotiated);
+            }
+
+            if (send_all(&resp_hdr, sizeof(resp_hdr)) == 0) {
+                send_all(&resp, sizeof(resp));
+            }
+            return;
+        }
+        default:
+            if (!g_server.is_negotiated) {
+                if (g_server.verbose > 0) printf("  [DEBUG] Rejecting %s - not negotiated\n", msg_type_to_str(hdr.type));
+                send_error(hdr.seq, L2TCP_ERR_NOT_INITIALIZED, "Connection not initialized (HELLO required)");
+                close(g_server.client_fd);
+                g_server.client_fd = -1;
+                return;
+            }
+            break;
     }
 
     switch (hdr.type) {
@@ -671,6 +707,7 @@ int main(int argc, char **argv) {
                 g_server.active_slots_mask = 0;
                 memset(g_server.immutable_masks, 0, sizeof(g_server.immutable_masks));
                 g_server.ramp.active = 0;
+                g_server.is_negotiated = 0;
                 get_now(&g_server.last_activity_ts);
                 printf("Client connected - configuration reset (inactivity timeout: %dms, recv timeout: %dms)\n",
                        g_server.client_timeout_ms, g_server.recv_timeout_ms);
