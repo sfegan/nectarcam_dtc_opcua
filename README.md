@@ -125,7 +125,7 @@ All monitoring data is accessible under `L2Trigger.Monitoring`:
 - `CrateL1Deadtime` (`Double`) — L1 deadtime in ns (0-1275ns in 5ns steps)
 
 **Per-Slot Board Data (Arrays; one element per configured slot):**
-- `BoardSlots` (`UInt32[]`) — List of active slot numbers
+- `BoardSlotId` (`UInt16[]`) — List of active slot numbers
 - `BoardFirmwareRevision` (`UInt16[]`) — Firmware per CTDB board
 - `BoardCurrent` (`Double[]`) — Total current per CTDB board (mA in 0.485mA steps)
 - `BoardCurrentSum` (`Double[]`) — Sum of all enabled channels per CTDB board (mA in 0.485mA steps)
@@ -139,6 +139,8 @@ All monitoring data is accessible under `L2Trigger.Monitoring`:
 - `ModuleTriggerEnabled` (`Boolean[]`) — Trigger state (1=enabled/0=disabled)
 - `ModuleTriggerDelay` (`Double[]`) — Trigger delay in ns (0-4.7ns in 37ps steps)
 - `ModuleIsMutable` (`Boolean[]`) — Whether server controls this module
+- `ModuleSlotId` (`UInt16[]`) — Crate slot ID for this module
+- `ModuleChannelId` (`UInt16[]`) — Crate channel ID for this module
 
 **Module Numbering:**
 Modules are numbered consecutively starting from 1, ordered by slot and channel. For example, with all slots enabled:

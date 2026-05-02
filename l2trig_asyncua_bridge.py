@@ -145,7 +145,7 @@ class L2TriggerBridgeServer:
         ("CrateNumMutableModules", 0, ua.VariantType.UInt16, "Total number of modules managed by this server"),
         ("CrateNumPoweredModules", 0, ua.VariantType.UInt16, "Total number of modules currently powered on"),
         ("CrateNumTriggerEnabledModules", 0, ua.VariantType.UInt16, "Total number of modules with trigger enabled"),
-        ("BoardSlots", [], ua.VariantType.UInt32, "List of crate slots enabled in this server"),
+        ("BoardSlotId", [], ua.VariantType.UInt16, "List of crate slots enabled in this server"),
         ("BoardFirmwareRevision", [], ua.VariantType.UInt16, "CTDB firmware versions"),
         ("BoardCurrent", [], ua.VariantType.Double, "CTDB board currents in mA"),
         ("BoardCurrentSum", [], ua.VariantType.Double, "Total channel current per CTDB in mA"),
@@ -158,6 +158,8 @@ class L2TriggerBridgeServer:
         ("ModuleTriggerEnabled", [], ua.VariantType.Boolean, "Trigger enabled status (flattened)"),
         ("ModuleTriggerDelay", [], ua.VariantType.Double, "Trigger delay in ns (flattened)"),
         ("ModuleIsMutable", [], ua.VariantType.Boolean, "Flag whether module state can be modified (flattened)"),
+        ("ModuleSlotId", [], ua.VariantType.UInt16, "Crate slot ID per module (flattened)"),
+        ("ModuleChannelId", [], ua.VariantType.UInt16, "Crate channel ID per module (flattened)"),
     ]
 
     def __init__(self, 
@@ -202,11 +204,15 @@ class L2TriggerBridgeServer:
                                       connect_timeout=tcp_connect_timeout,
                                       recv_timeout=tcp_recv_timeout)
         
-        # Pre-calculate ModuleIsMutable vector
+        # Pre-calculate ModuleIsMutable, ModuleSlotId and ModuleChannelId vectors
         self._module_is_mutable = []
+        self._module_slot_id = []
+        self._module_channel_id = []
         for slot in self.active_slots:
             for ch in range(1, CHANNELS_PER_SLOT + 1):
                 self._module_is_mutable.append((slot, ch) not in self.immutable_channels)
+                self._module_slot_id.append(slot)
+                self._module_channel_id.append(ch)
 
         # Configure TCP server configuration mask
         self._immutable_masks = {}
@@ -318,9 +324,11 @@ class L2TriggerBridgeServer:
         await self._set_var("device_host", self.device_host, now)
         await self._set_var("device_port", self.device_port, now)
         await self._set_var("device_polling_interval", self.poll_interval * 1000.0, now)
-        await self._set_var("BoardSlots", self.active_slots, now)
+        await self._set_var("BoardSlotId", self.active_slots, now)
         await self._set_var("CrateNumMutableModules", self.nmodules, now)
         await self._set_var("ModuleIsMutable", self._module_is_mutable, now)
+        await self._set_var("ModuleSlotId", self._module_slot_id, now)
+        await self._set_var("ModuleChannelId", self._module_channel_id, now)
 
         logger.info(f"OPC UA Bridge initialized at {self.endpoint}")
 
@@ -383,7 +391,7 @@ class L2TriggerBridgeServer:
                 value_rank = ua.ValueRank.OneDimension
                 if "Module" in name:
                     array_dims = [len(self.active_slots) * CHANNELS_PER_SLOT]
-                elif "Board" in name or name == "BoardSlots":
+                elif "Board" in name or name == "BoardSlotId":
                     array_dims = [len(self.active_slots)]
             
             var = await mon_obj.add_variable(
@@ -400,7 +408,7 @@ class L2TriggerBridgeServer:
             if array_dims:
                 await var.write_attribute(ua.AttributeIds.ArrayDimensions, ua.DataValue(ua.Variant(array_dims, ua.VariantType.UInt32)))
 
-            interval = fast_interval if name in fast_vars else (0.0 if name in ("device_host", "device_port", "device_polling_interval", "BoardSlots", "ModuleIsMutable") else slow_interval)
+            interval = fast_interval if name in fast_vars else (0.0 if name in ("device_host", "device_port", "device_polling_interval", "BoardSlotId", "ModuleIsMutable", "ModuleSlotId", "ModuleChannelId") else slow_interval)
             await var.write_attribute(ua.AttributeIds.MinimumSamplingInterval, ua.DataValue(interval))
             self._vars[name] = (var, vtype)
 

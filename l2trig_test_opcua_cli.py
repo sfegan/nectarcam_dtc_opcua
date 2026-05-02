@@ -222,9 +222,9 @@ class L2TrigTestClient:
         print("\n--- L2 Trigger System Summary ---")
         
         # Read essential variables
-        slots = await self.read_variable("BoardSlots")
+        slots = await self.read_variable("BoardSlotId")
         if slots is None:
-            print("Could not retrieve BoardSlots.")
+            print("Could not retrieve BoardSlotId.")
             return
         
         l2cb_fw = await self.read_variable("CrateFirmwareRevision")

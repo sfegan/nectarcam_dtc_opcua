@@ -935,7 +935,7 @@ class MainWindow:
         def update_slots():
             try:
                 future = self.opcua_client.run_async(
-                    self.opcua_client.read_variable("BoardSlots")
+                    self.opcua_client.read_variable("BoardSlotId")
                 )
                 slots = future.result(timeout=5)
                 if slots:
