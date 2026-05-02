@@ -563,6 +563,50 @@ class L2TriggerBridgeServer:
             return f"OK{warn}"
         await add_described_method("SetL1Deadtime", set_l1_deadtime, inputs=[a("deadtime", ua.VariantType.Double)])
 
+        @uamethod
+        async def set_module_is_immutable(parent_node, module: int, immutable: bool):
+            """Set whether a module is immutable (protected from changes)."""
+            try: slot, channel = self._module_to_slot_channel(module)
+            except ValueError as e: return f"ERROR: {e}"
+            
+            async with self._lock:
+                if immutable:
+                    self.immutable_channels.add((slot, channel))
+                else:
+                    self.immutable_channels.discard((slot, channel))
+                
+                # Update _immutable_masks
+                self._immutable_masks = {}
+                for s, ch in self.immutable_channels:
+                    if s not in self._immutable_masks:
+                        self._immutable_masks[s] = 0
+                    self._immutable_masks[s] |= (1 << ch)
+                
+                # Update derived attributes
+                self.nmodules = sum(1 for slot in self.active_slots 
+                                    for ch in range(1, CHANNELS_PER_SLOT + 1) 
+                                    if (slot, ch) not in self.immutable_channels)
+                
+                self._module_is_mutable = []
+                for s in self.active_slots:
+                    for ch in range(1, CHANNELS_PER_SLOT + 1):
+                        self._module_is_mutable.append((s, ch) not in self.immutable_channels)
+                
+                # Reconfigure backend
+                if await self._ensure_connected():
+                    await self.system.set_config(self.active_slots, self._immutable_masks)
+                
+                # Update OPC UA variables
+                now = datetime.datetime.now(datetime.timezone.utc)
+                await self._set_var("CrateNumMutableModules", self.nmodules, now)
+                await self._set_var("ModuleIsMutable", self._module_is_mutable, now)
+                
+                self._poll_event.set()
+                
+            return f"OK: Module {module} is now {'immutable' if immutable else 'mutable'}"
+        await add_described_method("SetModuleIsImmutable", set_module_is_immutable,
+                                   inputs=[a("module", ua.VariantType.Int32), a("immutable", ua.VariantType.Boolean)])
+
     async def _write_fast_data(self, l2cb: L2CBStatus, monitoring: Dict[int, CTDBMonitoringData], timestamp: datetime.datetime, now: datetime.datetime):
         sc = self._get_status_code()
 
