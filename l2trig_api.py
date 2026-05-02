@@ -206,6 +206,11 @@ class L2TriggerSystem:
 
     async def set_config(self, active_slots: List[int], immutable_masks: Dict[int, int]):
         """Configure active slots and immutable channels"""
+        # Validate slots
+        for s in active_slots:
+            if s not in VALID_SLOTS:
+                raise ValueError(f"Invalid slot {s}, must be one of {VALID_SLOTS}")
+
         active_mask = 0
         for s in active_slots:
             active_mask |= (1 << s)

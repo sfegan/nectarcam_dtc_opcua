@@ -21,7 +21,7 @@
 #define L2TCP_PORT 4242
 #define L2TCP_MAX_CHANNELS 15
 #define L2TCP_MIN_SLOT 1
-#define L2TCP_MAX_SLOT 22 // Slots used are labelled 1-9 13-21
+#define L2TCP_MAX_SLOT 21 // Slots used are labelled 1-9 13-21
 
 /* --- Message Types --- */
 
@@ -65,8 +65,11 @@ typedef enum {
     L2TCP_ERR_UNKNOWN_COMMAND         = 2,
     L2TCP_ERR_MALFORMED_PAYLOAD       = 3,
     L2TCP_ERR_INVALID_PARAMETER       = 4,
-    L2TCP_ERR_HARDWARE_ERROR          = 5
+    L2TCP_ERR_HARDWARE_ERROR          = 5,
+    L2TCP_ERR_NOT_INITIALIZED         = 6
 } l2tcp_error_code_t;
+
+#define L2TCP_PROTOCOL_VERSION 1
 
 /* --- Protocol Header --- */
 
