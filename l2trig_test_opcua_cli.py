@@ -349,6 +349,7 @@ async def interactive_loop(client: L2TrigTestClient):
                 print("  alltrig <on|off>     Enable or disable all triggers")
                 print("  alldelay <ns>        Set all trigger delays")
                 print("  limits <board> <min> <max> Set current limits for a board (1-based index)")
+                print("  slotlimits <slot> <min> <max> Set current limits for a board by slot ID")
                 print("  mcf <on|off>         Set L2CB MCF enabled status")
                 print("  mcfdelay <ns>        Set L2CB MCF delay (0-75 ns)")
                 print("  mcfthreshold <val>   Set L2CB MCF threshold (0-512)")
@@ -431,6 +432,9 @@ async def interactive_loop(client: L2TrigTestClient):
             elif cmd == "limits":
                 if len(args) != 3: print("Usage: limits <board_index> <min_ma> <max_ma>")
                 else: await client.call_method("SetBoardCurrentLimits", args[0], args[1], args[2])
+            elif cmd == "slotlimits":
+                if len(args) != 3: print("Usage: slotlimits <slot> <min_ma> <max_ma>")
+                else: await client.call_method("SetSlotCurrentLimits", args[0], args[1], args[2])
             elif cmd == "health":
                 await client.call_method("HealthCheck")
             elif cmd == "shutdown":

@@ -488,6 +488,20 @@ class L2TriggerBridgeServer:
                                    inputs=[a("board", ua.VariantType.Int32), a("min_ma", ua.VariantType.Double), a("max_ma", ua.VariantType.Double)])
 
         @uamethod
+        async def set_slot_current_limits(parent_node, slot: int, min_ma: float, max_ma: float):
+            """Configure current limits for an entire CTDB board by slot ID."""
+            if slot not in self.active_slots: return f"ERROR: Slot {slot} not active"
+            min_raw, warn_min = current_ma_to_raw(min_ma)
+            max_raw, warn_max = current_ma_to_raw(max_ma)
+            async with self._lock: 
+                if not await self._ensure_connected(): return "ERROR: Device not connected"
+                await self.system.set_ctdb_limits(slot, min_raw, max_raw)
+                self._poll_event.set()
+            return f"OK: Slot {slot} limits set{warn_min}{warn_max}"
+        await add_described_method("SetSlotCurrentLimits", set_slot_current_limits,
+                                   inputs=[a("slot", ua.VariantType.Int16), a("min_ma", ua.VariantType.Double), a("max_ma", ua.VariantType.Double)])
+
+        @uamethod
         async def set_module_trigger_enabled(parent_node, module: int, enabled: bool):
             """Enable or disable trigger for a specific module."""
             try: slot, channel = self._module_to_slot_channel(module)

@@ -162,6 +162,7 @@ Methods return a string prefixed with **`OK:`** or **`ERROR:`**. Boards are inde
 | `SetModulePowerEnabled` | `module: Int32, enabled: Boolean` | Control single module power |
 | `SetSlotChannelPowerEnabled` | `slot: Int16, channel: Int16, enabled: Boolean` | Control single module power by slot and channel |
 | `SetBoardCurrentLimits` | `board: Int32, min_ma: Double, max_ma: Double` | Configure board current limits (0-1986mA in 0.485mA steps) |
+| `SetSlotCurrentLimits` | `slot: Int16, min_ma: Double, max_ma: Double` | Configure board current limits by slot ID (0-1986mA in 0.485mA steps) |
 | `SetAllTriggerEnabled` | `enabled: Boolean` | Enable/Disable triggers from all modules |
 | `SetModuleTriggerEnabled`| `module: Int32, enabled: Boolean`| Enable/Disable trigger from specific module |
 | `SetSlotChannelTriggerEnabled`| `slot: Int16, channel: Int16, enabled: Boolean`| Enable/Disable trigger from specific module by slot and channel |
