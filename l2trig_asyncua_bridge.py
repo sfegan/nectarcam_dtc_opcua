@@ -108,6 +108,9 @@ def _configure_logging(level: str, log_file: Optional[str]) -> None:
     logging.getLogger("asyncua.server.address_space").setLevel(logging.WARNING)
     logging.getLogger("asyncua.server.internal_server").setLevel(logging.WARNING)
     logging.getLogger("asyncua.server.uaprocessor").setLevel(logging.WARNING)
+    logging.getLogger("asyncua.server.monitored_item_service").setLevel(logging.WARNING)
+    logging.getLogger("asyncua.server.subscription_service").setLevel(logging.WARNING)
+    logging.getLogger("asyncua.common.manage_nodes").setLevel(logging.WARNING)
     logging.getLogger("asyncua.server.address_space").addFilter(_SuppressUaStatusCodeTracebacks())
 
 logger = logging.getLogger("cta.l2trigger.bridge")
