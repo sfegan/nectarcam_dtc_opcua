@@ -338,10 +338,14 @@ async def interactive_loop(client: L2TrigTestClient):
                 
                 print("\nControl Commands:")
                 print("  power <mod> <on|off> Set module power (1-270)")
+                print("  slotpower <slot> <ch> <on|off> Set module power by slot/channel")
                 print("  allpower <on|off>    Set all modules power")
                 print("  trig <mod> <on|off>  Enable or disable module trigger")
+                print("  slottrig <slot> <ch> <on|off> Enable or disable module trigger by slot/channel")
                 print("  delay <mod> <ns>     Set module trigger delay (0-5.0)")
+                print("  slotdelay <slot> <ch> <ns> Set module trigger delay by slot/channel")
                 print("  immutable <mod> <on|off> Set module immutability (protected from changes)")
+                print("  slotimmutable <slot> <ch> <on|off> Set module immutability by slot/channel")
                 print("  alltrig <on|off>     Enable or disable all triggers")
                 print("  alldelay <ns>        Set all trigger delays")
                 print("  limits <board> <min> <max> Set current limits for a board (1-based index)")
@@ -394,18 +398,30 @@ async def interactive_loop(client: L2TrigTestClient):
             elif cmd == "power":
                 if len(args) != 2: print("Usage: power <module> <on|off>")
                 else: await client.call_method("SetModulePowerEnabled", args[0], args[1])
+            elif cmd == "slotpower":
+                if len(args) != 3: print("Usage: slotpower <slot> <channel> <on|off>")
+                else: await client.call_method("SetSlotChannelPowerEnabled", args[0], args[1], args[2])
             elif cmd == "allpower":
                 if len(args) != 1: print("Usage: allpower <on|off>")
                 else: await client.call_method("SetAllPowerEnabled", args[0])
             elif cmd == "trig":
                 if len(args) != 2: print("Usage: trig <module> <on|off>")
                 else: await client.call_method("SetModuleTriggerEnabled", args[0], args[1])
+            elif cmd == "slottrig":
+                if len(args) != 3: print("Usage: slottrig <slot> <channel> <on|off>")
+                else: await client.call_method("SetSlotChannelTriggerEnabled", args[0], args[1], args[2])
             elif cmd == "delay":
                 if len(args) != 2: print("Usage: delay <module> <ns>")
                 else: await client.call_method("SetModuleTriggerDelay", args[0], args[1])
+            elif cmd == "slotdelay":
+                if len(args) != 3: print("Usage: slotdelay <slot> <channel> <ns>")
+                else: await client.call_method("SetSlotChannelTriggerDelay", args[0], args[1], args[2])
             elif cmd == "immutable":
                 if len(args) != 2: print("Usage: immutable <module> <on|off>")
                 else: await client.call_method("SetModuleIsImmutable", args[0], args[1])
+            elif cmd == "slotimmutable":
+                if len(args) != 3: print("Usage: slotimmutable <slot> <channel> <on|off>")
+                else: await client.call_method("SetSlotChannelIsImmutable", args[0], args[1], args[2])
             elif cmd == "alltrig":
                 if len(args) != 1: print("Usage: alltrig <on|off>")
                 else: await client.call_method("SetAllTriggerEnabled", args[0])

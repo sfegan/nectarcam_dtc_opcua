@@ -459,6 +459,20 @@ class L2TriggerBridgeServer:
                                    inputs=[a("module", ua.VariantType.Int32), a("enabled", ua.VariantType.Boolean)])
 
         @uamethod
+        async def set_slot_channel_power(parent_node, slot: int, channel: int, enabled: bool):
+            """Enable or disable power for a specific module by slot and channel."""
+            if slot not in self.active_slots: return f"ERROR: Slot {slot} not active"
+            if not 1 <= channel <= CHANNELS_PER_SLOT: return f"ERROR: Channel {channel} out of range"
+            if (slot, channel) in self.immutable_channels: return f"ERROR: Slot {slot} Channel {channel} is immutable"
+            logger.info(f"Setting power for S{slot}C{channel} to {enabled}")
+            async with self._lock: 
+                if not await self._ensure_connected(): return "ERROR: Device not connected"
+                await self.system.set_channel_power_enabled(slot, channel, enabled)
+            return f"OK: Slot {slot} Channel {channel} {'enabled' if enabled else 'disabled'}"
+        await add_described_method("SetSlotChannelPowerEnabled", set_slot_channel_power, 
+                                   inputs=[a("slot", ua.VariantType.Int16), a("channel", ua.VariantType.Int16), a("enabled", ua.VariantType.Boolean)])
+
+        @uamethod
         async def set_board_current_limits(parent_node, board: int, min_ma: float, max_ma: float):
             """Configure current limits for an entire CTDB board."""
             if not 1 <= board <= len(self.active_slots): return f"ERROR: Board index {board} out of range"
@@ -488,6 +502,20 @@ class L2TriggerBridgeServer:
                                    inputs=[a("module", ua.VariantType.Int32), a("enabled", ua.VariantType.Boolean)])
 
         @uamethod
+        async def set_slot_channel_trigger_enabled(parent_node, slot: int, channel: int, enabled: bool):
+            """Enable or disable trigger for a specific module by slot and channel."""
+            if slot not in self.active_slots: return f"ERROR: Slot {slot} not active"
+            if not 1 <= channel <= CHANNELS_PER_SLOT: return f"ERROR: Channel {channel} out of range"
+            if (slot, channel) in self.immutable_channels: return f"ERROR: Slot {slot} Channel {channel} is immutable"
+            async with self._lock: 
+                if not await self._ensure_connected(): return "ERROR: Device not connected"
+                await self.system.set_channel_trigger_enabled(slot, channel, enabled)
+                self._poll_event.set()
+            return f"OK: Slot {slot} Channel {channel} trigger {'enabled' if enabled else 'disabled'}"
+        await add_described_method("SetSlotChannelTriggerEnabled", set_slot_channel_trigger_enabled,
+                                   inputs=[a("slot", ua.VariantType.Int16), a("channel", ua.VariantType.Int16), a("enabled", ua.VariantType.Boolean)])
+
+        @uamethod
         async def set_module_trigger_delay(parent_node, module: int, delay_ns: float):
             """Set trigger delay for a module."""
             try: slot, channel = self._module_to_slot_channel(module)
@@ -501,6 +529,21 @@ class L2TriggerBridgeServer:
             return f"OK: Module {module} delay set{warn}"
         await add_described_method("SetModuleTriggerDelay", set_module_trigger_delay,
                                    inputs=[a("module", ua.VariantType.Int32), a("delay_ns", ua.VariantType.Double)])
+
+        @uamethod
+        async def set_slot_channel_trigger_delay(parent_node, slot: int, channel: int, delay_ns: float):
+            """Set trigger delay for a module by slot and channel."""
+            if slot not in self.active_slots: return f"ERROR: Slot {slot} not active"
+            if not 1 <= channel <= CHANNELS_PER_SLOT: return f"ERROR: Channel {channel} out of range"
+            if (slot, channel) in self.immutable_channels: return f"ERROR: Slot {slot} Channel {channel} is immutable"
+            raw, warn = delay_ns_to_raw(delay_ns)
+            async with self._lock: 
+                if not await self._ensure_connected(): return "ERROR: Device not connected"
+                await self.system.set_channel_trigger_delay(slot, channel, raw)
+                self._poll_event.set()
+            return f"OK: Slot {slot} Channel {channel} delay set{warn}"
+        await add_described_method("SetSlotChannelTriggerDelay", set_slot_channel_trigger_delay,
+                                   inputs=[a("slot", ua.VariantType.Int16), a("channel", ua.VariantType.Int16), a("delay_ns", ua.VariantType.Double)])
 
         @uamethod
         async def set_all_trigger_enabled(parent_node, enabled: bool):
@@ -617,6 +660,50 @@ class L2TriggerBridgeServer:
             return f"OK: Module {module} is now {'immutable' if immutable else 'mutable'}"
         await add_described_method("SetModuleIsImmutable", set_module_is_immutable,
                                    inputs=[a("module", ua.VariantType.Int32), a("immutable", ua.VariantType.Boolean)])
+
+        @uamethod
+        async def set_slot_channel_is_immutable(parent_node, slot: int, channel: int, immutable: bool):
+            """Set whether a module is immutable (protected from changes) by slot and channel."""
+            if slot not in self.active_slots: return f"ERROR: Slot {slot} not active"
+            if not 1 <= channel <= CHANNELS_PER_SLOT: return f"ERROR: Channel {channel} out of range"
+            
+            async with self._lock:
+                if immutable:
+                    self.immutable_channels.add((slot, channel))
+                else:
+                    self.immutable_channels.discard((slot, channel))
+                
+                # Update _immutable_masks
+                self._immutable_masks = {}
+                for s, ch in self.immutable_channels:
+                    if s not in self._immutable_masks:
+                        self._immutable_masks[s] = 0
+                    self._immutable_masks[s] |= (1 << ch)
+                
+                # Update derived attributes
+                self.nmodules = sum(1 for slot in self.active_slots 
+                                    for ch in range(1, CHANNELS_PER_SLOT + 1) 
+                                    if (slot, ch) not in self.immutable_channels)
+                
+                self._module_is_mutable = []
+                for s in self.active_slots:
+                    for ch in range(1, CHANNELS_PER_SLOT + 1):
+                        self._module_is_mutable.append((s, ch) not in self.immutable_channels)
+                
+                # Reconfigure backend
+                if await self._ensure_connected():
+                    await self.system.set_config(self.active_slots, self._immutable_masks)
+                
+                # Update OPC UA variables
+                now = datetime.datetime.now(datetime.timezone.utc)
+                await self._set_var("CrateNumMutableModules", self.nmodules, now)
+                await self._set_var("ModuleIsMutable", self._module_is_mutable, now)
+                
+                self._poll_event.set()
+                
+            return f"OK: Slot {slot} Channel {channel} is now {'immutable' if immutable else 'mutable'}"
+        await add_described_method("SetSlotChannelIsImmutable", set_slot_channel_is_immutable,
+                                   inputs=[a("slot", ua.VariantType.Int16), a("channel", ua.VariantType.Int16), a("immutable", ua.VariantType.Boolean)])
 
     async def _write_fast_data(self, l2cb: L2CBStatus, monitoring: Dict[int, CTDBMonitoringData], timestamp: datetime.datetime, now: datetime.datetime):
         sc = self._get_status_code()

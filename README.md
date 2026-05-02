@@ -160,11 +160,14 @@ Methods return a string prefixed with **`OK:`** or **`ERROR:`**. Boards are inde
 | `EmergencyShutdown` | None | Immediately disable all power |
 | `SetAllPowerEnabled` | `enabled: Boolean` | Ramp all modules on/off |
 | `SetModulePowerEnabled` | `module: Int32, enabled: Boolean` | Control single module power |
+| `SetSlotChannelPowerEnabled` | `slot: Int16, channel: Int16, enabled: Boolean` | Control single module power by slot and channel |
 | `SetBoardCurrentLimits` | `board: Int32, min_ma: Double, max_ma: Double` | Configure board current limits (0-1986mA in 0.485mA steps) |
 | `SetAllTriggerEnabled` | `enabled: Boolean` | Enable/Disable triggers from all modules |
 | `SetModuleTriggerEnabled`| `module: Int32, enabled: Boolean`| Enable/Disable trigger from specific module |
+| `SetSlotChannelTriggerEnabled`| `slot: Int16, channel: Int16, enabled: Boolean`| Enable/Disable trigger from specific module by slot and channel |
 | `SetAllTriggerDelay` | `delay_ns: Double` | Set uniform trigger delay for all modules (0-4.7ns in 37ps steps) |
 | `SetModuleTriggerDelay` | `module: Int32, ns: Double` | Set trigger delay for specific module (0-4.7ns in 37ps steps) |
+| `SetSlotChannelTriggerDelay` | `slot: Int16, channel: Int16, ns: Double` | Set trigger delay for specific module by slot and channel (0-4.7ns in 37ps steps) |
 | `SetMCFEnabled` | `enabled: Boolean` | Enable muon candidate flag propagation to TIB |
 | `SetMCFDelay` | `delay: Double` | Set MCF delay in ns (0-75ns in 5ns steps) |
 | `SetMCFThreshold` | `threshold: Int16` | Set MCF threshold in modules (0-512) |
@@ -172,6 +175,7 @@ Methods return a string prefixed with **`OK:`** or **`ERROR:`**. Boards are inde
 | `SetTIBTriggerBusyBlockEnabled`| `enabled: Boolean` | Enable/Disable TIB trigger blocking |
 | `SetL1Deadtime` | `deadtime: Double` | Set L1 deadtime in ns (0-1275ns in 5ns steps) |
 | `SetModuleIsImmutable` | `module: Int32, immutable: Boolean` | Set whether a module is immutable (protected from changes) |
+| `SetSlotChannelIsImmutable` | `slot: Int16, channel: Int16, immutable: Boolean` | Set whether a module is immutable by slot and channel |
 
 ---
 
