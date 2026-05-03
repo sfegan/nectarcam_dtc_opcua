@@ -2,9 +2,9 @@ graph TD
     subgraph UserLayer ["<b><font size='4'>User Layer (Control PC)</font></b>"]
         direction TB
         User(("👤 User"))
-        GUI["l2trig_gui.py<br/>(GUI Client)"]
-        OPC_CLI["l2trig_test_opcua_cli.py<br/>(OPC UA CLI)"]
-        TCP_CLI["l2trig_test_tcp_cli.py<br/>(TCP Test Client)"]
+        GUI["GUI Client<br/>(l2trig_gui.py)"]
+        OPC_CLI["OPC UA Test Client CLI<br/>(l2trig_test_opcua_cli.py)"]
+        TCP_CLI["TCP Test Client CLI<br/>(l2trig_test_tcp_cli.py)"]
         
         %% Internal links
         User --- GUI
@@ -13,13 +13,13 @@ graph TD
     end
 
     subgraph ControlLayer ["<b><font size='4'>Control Layer</font></b>"]
-        Bridge["l2trig_asyncua_bridge.py<br/>(OPC UA Bridge)"]
+        Bridge["OPC UA Bridge<br/>(l2trig_asyncua_bridge.py)"]
     end
 
     subgraph EmbeddedLayer ["<b><font size='4'>Embedded Layer (ARM Board)</font></b>"]
         direction TB
-        Backend["l2tcp_server_main.c<br/>(Backend TCP Server)"]
-        DirectCLI["l2trig_direct_client.c<br/>(Direct CLI Tool)"]
+        Backend["Backend TCP Server<br/>(l2tcp_server_main.c)"]
+        DirectCLI["Direct CLI Tool<br/>(l2trig_direct_client.c)"]
         HAL[["L2 Trigger HAL (Static Library)<br/>(l2trig_hal.c / smc.c)"]]
         
         %% Internal links
