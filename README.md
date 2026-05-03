@@ -25,6 +25,12 @@ For the embedded ARM-based controller board, you can download pre-compiled stati
 *   `l2tcp_server`: The backend TCP bridge, should be run from a terminal or from `systemd` after boot.
 *   `l2trig_direct_client`: The configuration application, can be used interactively or with scripts to pre-configure the system before starting the backend server.
 
+To download the latest release with `wget`:
+```bash
+wget https://github.com/sfegan/nectarcam_dtc_opcua/releases/download/latest/l2tcp_server
+wget https://github.com/sfegan/nectarcam_dtc_opcua/releases/download/latest/l2trig_direct_client
+```
+
 ### 2. Install Python Bridge (Control PC)
 On your control workstation, install the required Python dependencies:
 ```bash
@@ -32,7 +38,7 @@ pip install -r requirements.txt
 ```
 
 ### 3. Start the Backend Server (ARM Board)
-Transfer the `l2tcp_server` binary to the ARM board (via ssh) and run it:
+Transfer the `l2tcp_server` binary to the ARM board (via `scp`) and run it:
 ```bash
 ./l2tcp_server -p 4242 -v
 ```
@@ -149,7 +155,7 @@ Modules are numbered consecutively starting from 1, ordered by slot and channel.
 - ...
 - Modules 256-270: Slot 21, Channels 1-15
 
-If only specific slots are enabled (via `--slots`), module numbers are renumbered consecutively across only those slots.
+If only specific slots are enabled (via `--slots`), module numbers are renumbered consecutively across only those slots. The variables `ModuleSlotId` and `ModuleChannelId` can be used to map module indices to their physical slot and channel.
 
 ### Control Methods
 
@@ -192,6 +198,11 @@ Four test applications are included in the repository for different use cases. T
 ---
 
 ## System Architecture
+
+### Active slots vs immutable channels
+The backend server can be configured to manage a subset of the total 18 available slots using the `--slots` option of `l2trig_asyncua_bridge` (see below). Only channels in these active slots will be monitored and controlled by the server. This allows for scenarios where not all slots are populated or where CTDB slots are malfunctioning and should be ignored. In this case the backend server will never attempt communication with inactive slots. Active slots can only be changed by restarting the OPCUA server with a different `--slots` configuration. Thie list of active slots is communicated to the backend server at startup of the OPCUA server - the backend server itself does not need to be restarted when the active slots are changed. The variables `BoardSlotId` and `ModuleSlotId` can be used to map the module indices to their physical slot numbers.
+
+Immutable channels are a separate concept that applies to individual channels within the active slots. An immutable channel is one that the backend server will never attempt to change the power or trigger state of. This allows users to protect specific channels from being powered on or off by the server, which can be useful for known faulty modules or for safety reasons. By default, channels S21C11-S21C15 are marked as immutable, since they are not connected to FEB modules by default, but this can be customized with the `--immutable-channels` option. The list of immutable channels can be modified on the fly by calling the `SetModuleIsImmutable` or `SetSlotChannelIsImmutable` methods via OPCUA, which can be used to add or remove immutability from specific channels without restarting the server OPCUA or backend server. The OPCUA server maintains the list of immutable channels in memory and communicates it to the backend server, enforcing it when processing power and trigger control requests (and in particular, when processing the `SetAllPowerEnabled` request).
 
 ### Safe Power Ramping
 The backend server implements a **round-robin sequence** to prevent excessive inrush currents. When `SetAllPowerEnabled(true)` is called:
