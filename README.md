@@ -183,8 +183,24 @@ Methods return a string prefixed with **`OK:`** or **`ERROR:`**. Boards are inde
 | `SetL1Deadtime` | `deadtime: Double` | Set L1 deadtime in ns (0-1275ns in 5ns steps) |
 | `SetModuleIsImmutable` | `module: Int32, immutable: Boolean` | Set whether a module is immutable (protected from changes) |
 | `SetSlotChannelIsImmutable` | `slot: Int16, channel: Int16, immutable: Boolean` | Set whether a module is immutable by slot and channel |
-
 ---
+
+## Bridge Configuration
+The `l2trig_asyncua_bridge.py` supports several advanced options:
+- `--device-host`: Host or IP address of the backend TCP server (default: 127.0.0.1)
+- `--device-port`: TCP port of the backend server (default: 4242)
+- `--device-timeout`: TCP connection and receive timeout in seconds (default: 5.0)
+- `--poll-interval`: Frequency of fast updates in seconds for currents and errors (default: 1.0)
+- `--poll-ratio`: Ratio of fast to slow polling cycles for firmware and configuration (default: 10, meaning slow poll every 10 fast polls)
+- `--slots`: Comma-separated list of slots to enable (e.g., `--slots 1,2,3,13,14`); if omitted, all valid slots (1-9, 13-21) are enabled
+- `--immutable-channels`: Comma-separated list of channels the server should not modify (default: `S21C11,S21C12,S21C13,S21C14,S21C15`). Format: `S<slot>C<channel>` (e.g., `S1C1,S18C15`)
+- `--opcua-endpoint`: OPC UA server endpoint URL (default: `opc.tcp://0.0.0.0:4840/l2trig/`)
+- `--opcua-user`: Username:password for authentication (format: `user:pass`); disables anonymous access
+- `--reconnection-backoff-interval`: Maximum delay between reconnection attempts in seconds (default: 30.0)
+- `--log-level`: Logging verbosity (DEBUG, INFO, WARNING, ERROR; default: INFO)
+- `--log-file`: Optional path to write logs to file
+---
+
 
 ## System Architecture
 
@@ -281,21 +297,6 @@ If a module is in an under/over current error state, the backend server **automa
 The user does not need to manually clear errors by calling `SetModulePowerEnabled(False)` explicitly before calling `SetModulePowerEnabled(True)`.
 
 If a module is consistently tripped due to a hardware fault, the server will log this and continue to attempt to power it on during each ramp sequence. The user can choose to disable the channel permanently by marking it as immutable (e.g., `--immutable-channels S1C5,S2C3`), which will prevent the server from attempting to change its state.
-
-### Bridge Configuration
-The `l2trig_asyncua_bridge.py` supports several advanced options:
-- `--device-host`: Host or IP address of the backend TCP server (default: 127.0.0.1)
-- `--device-port`: TCP port of the backend server (default: 4242)
-- `--device-timeout`: TCP connection and receive timeout in seconds (default: 5.0)
-- `--poll-interval`: Frequency of fast updates in seconds for currents and errors (default: 1.0)
-- `--poll-ratio`: Ratio of fast to slow polling cycles for firmware and configuration (default: 10, meaning slow poll every 10 fast polls)
-- `--slots`: Comma-separated list of slots to enable (e.g., `--slots 1,2,3,13,14`); if omitted, all valid slots (1-9, 13-21) are enabled
-- `--immutable-channels`: Comma-separated list of channels the server should not modify (default: `S21C11,S21C12,S21C13,S21C14,S21C15`). Format: `S<slot>C<channel>` (e.g., `S1C1,S18C15`)
-- `--opcua-endpoint`: OPC UA server endpoint URL (default: `opc.tcp://0.0.0.0:4840/l2trig/`)
-- `--opcua-user`: Username:password for authentication (format: `user:pass`); disables anonymous access
-- `--reconnection-backoff-interval`: Maximum delay between reconnection attempts in seconds (default: 30.0)
-- `--log-level`: Logging verbosity (DEBUG, INFO, WARNING, ERROR; default: INFO)
-- `--log-file`: Optional path to write logs to file
 
 ---
 
