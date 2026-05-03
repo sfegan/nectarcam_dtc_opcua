@@ -186,7 +186,66 @@ Methods return a string prefixed with **`OK:`** or **`ERROR:`**. Boards are inde
 
 ---
 
-## Testing Applications
+## System Architecture
+
+### Flowchart of software components
+
+```mermaid
+graph TD
+    subgraph UserLayer ["User Layer (Control PC)"]
+        User(("👤 User"))
+        GUI["l2trig_gui.py<br/>(GUI Client)"]
+        OPC_CLI["l2trig_test_opcua_cli.py<br/>(OPC UA CLI)"]
+        TCP_CLI["l2trig_test_tcp_cli.py<br/>(TCP Test Client)"]
+    end
+
+    subgraph ControlLayer ["Telescope Control Layer"]
+        Bridge["l2trig_asyncua_bridge.py<br/>(OPC UA Bridge)"]
+    end
+
+    subgraph EmbeddedLayer ["Embedded Layer (ARM Board)"]
+        Backend["l2tcp_server_main.c<br/>(Backend TCP Server)"]
+        DirectCLI["l2trig_direct_client.c<br/>(Direct CLI Tool)"]
+        HAL["L2 Trigger HAL<br/>(smc.c / l2trig_hal.c)"]
+    end
+
+    subgraph HardwareLayer ["Hardware Layer"]
+        L2CB["L2CB FPGA"]
+        CTDB["CTDB (x18)"]
+    end
+
+    User --- GUI
+    User --- OPC_CLI
+    User --- TCP_CLI
+    User -.-|SSH| DirectCLI
+
+    GUI ---|OPC UA| Bridge
+    OPC_CLI ---|OPC UA| Bridge
+    Bridge ---|TCP/IP| Backend
+    TCP_CLI ---|TCP/IP| Backend
+
+    Backend --- HAL
+    DirectCLI --- HAL
+    
+    HAL ---|Shared Registers| L2CB
+    L2CB ---|SPI| CTDB
+
+    %% Styling
+    style UserLayer fill:#f5f5f5,stroke:#333,stroke-width:2px
+    style ControlLayer fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    style EmbeddedLayer fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style HardwareLayer fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style User fill:#ffffff,stroke:#333,stroke-width:2px
+```
+
+### Layer Descriptions
+
+- **User Layer**: High-level clients for monitoring and control.
+- **Telescope Control Layer**: The bridge between the standard OPC UA protocol and the custom backend TCP protocol.
+- **Embedded Layer**: Software running directly on the ARM-based controller board.
+- **Hardware Layer**: The physical L2CB and CTDB hardware components.
+
+### Testing Applications
 
 Four test applications are included in the repository for different use cases. Three of them are implemented in Python and run on the control PC, while the `l2trig_direct_client` is a native C application that runs on the ARM board for direct hardware access. Of the three Python applications, two are OPC UA clients that connect to the `l2trig_asyncua_bridge.py` server, while the third is a TCP client that connects directly to the `l2tcp_server` backend for low-level testing.
 
@@ -194,10 +253,6 @@ Four test applications are included in the repository for different use cases. T
 - `l2trig_test_opcua_cli.py`: An interactive command-line client for testing and debugging the OPC UA interface. It allows users to read monitoring variables and call control methods directly from the terminal, making it useful for quick tests and automation scripts.
 - `l2trig_test_tcp_client.py`: A simple TCP client for testing the backend server's binary protocol. It can be used to send raw commands and receive responses, bypassing the OPC UA layer for low-level diagnostics.
 - `l2trig_direct_client`: A command-line tool that runs on the ARM board, allowing direct access to the hardware for pre-configuration and diagnostics. It supports commands for reading firmware versions, configuring power and trigger settings, and more.
-
----
-
-## System Architecture
 
 ### Active slots vs immutable channels
 The backend server can be configured to manage a subset of the total 18 available slots using the `--slots` option of `l2trig_asyncua_bridge` (see below). Only channels in these active slots will be monitored and controlled by the server. This allows for scenarios where not all slots are populated or where CTDB slots are malfunctioning and should be ignored. In this case the backend server will never attempt communication with inactive slots. Active slots can only be changed by restarting the OPCUA server with a different `--slots` configuration. Thie list of active slots is communicated to the backend server at startup of the OPCUA server - the backend server itself does not need to be restarted when the active slots are changed. The variables `BoardSlotId` and `ModuleSlotId` can be used to map the module indices to their physical slot numbers.

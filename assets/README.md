@@ -9,7 +9,7 @@ You can copy the code below into your `README.md` to display the diagram (suppor
 ```mermaid
 graph TD
     subgraph UserLayer ["User Layer (Control PC)"]
-        User((User))
+        User(("👤 User"))
         GUI["l2trig_gui.py<br/>(GUI Client)"]
         OPC_CLI["l2trig_test_opcua_cli.py<br/>(OPC UA CLI)"]
         TCP_CLI["l2trig_test_tcp_cli.py<br/>(TCP Test Client)"]
