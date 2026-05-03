@@ -29,11 +29,11 @@ graph TD
         direction TB
         Backend["l2tcp_server_main.c<br/>(Backend TCP Server)"]
         DirectCLI["l2trig_direct_client.c<br/>(Direct CLI Tool)"]
-        HAL["L2 Trigger HAL<br/>(smc.c / l2trig_hal.c)"]
+        HAL[["L2 Trigger HAL (Static Library)<br/>(l2trig_hal.c / smc.c)"]]
         
         %% Internal links
-        Backend --- HAL
-        DirectCLI --- HAL
+        Backend ---|Function Calls| HAL
+        DirectCLI ---|Function Calls| HAL
     end
 
     subgraph HardwareLayer ["<b><font size='4'>Hardware Layer</font></b>"]
@@ -59,6 +59,7 @@ graph TD
     style HardwareLayer fill:#fff3e0,stroke:#e65100,stroke-width:2px
     
     style User fill:#ffffff,stroke:#333,stroke-width:2px
+    style HAL fill:#ffffff,stroke:#333,stroke-width:2px
 ```
 
 ## Layer Descriptions
