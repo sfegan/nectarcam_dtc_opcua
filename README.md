@@ -98,6 +98,7 @@ trig 21 14 off
 trig 21 15 off
 EOF
 ```
+
 ---
 
 ## OPC UA Interface Reference
@@ -183,6 +184,7 @@ Methods return a string prefixed with **`OK:`** or **`ERROR:`**. Boards are inde
 | `SetL1Deadtime` | `deadtime: Double` | Set L1 deadtime in ns (0-1275ns in 5ns steps) |
 | `SetModuleIsImmutable` | `module: Int32, immutable: Boolean` | Set whether a module is immutable (protected from changes) |
 | `SetSlotChannelIsImmutable` | `slot: Int16, channel: Int16, immutable: Boolean` | Set whether a module is immutable by slot and channel |
+
 ---
 
 ## Bridge Configuration
@@ -199,8 +201,8 @@ The `l2trig_asyncua_bridge.py` supports several advanced options:
 - `--reconnection-backoff-interval`: Maximum delay between reconnection attempts in seconds (default: 30.0)
 - `--log-level`: Logging verbosity (DEBUG, INFO, WARNING, ERROR; default: INFO)
 - `--log-file`: Optional path to write logs to file
----
 
+---
 
 ## System Architecture
 
@@ -309,6 +311,8 @@ PATH=$PWD/toolchain/arm-926ejs-linux-gnueabi/bin:$PATH
 cd l2tcp_server
 arm-926ejs-linux-gnueabi-gcc -std=gnu99 -march=armv5te -I../hal -static -o l2tcp_server l2tcp_server_main.c ../hal/smc.c ../hal/l2trig_hal.c
 ```
+
+---
 
 ## Note to self
 
