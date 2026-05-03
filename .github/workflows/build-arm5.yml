@@ -92,12 +92,27 @@ jobs:
           l2tcp_server/l2tcp_server
           hal/l2trig_direct_client
 
-    - name: Release
+    - name: Release tagged version
       uses: softprops/action-gh-release@v3
       if: startsWith(github.ref, 'refs/tags/')
       with:
         files: |
           l2tcp_server/l2tcp_server
           hal/l2trig_direct_client
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Update latest release
+      uses: softprops/action-gh-release@v3
+      if: startsWith(github.ref, 'refs/tags/v')
+      with:
+        tag_name: latest
+        files: |
+          l2tcp_server/l2tcp_server
+          hal/l2trig_direct_client
+        body: |
+          Latest release (automatically updated from ${{ github.ref_name }})
+          
+          This release always contains the most recent stable build.
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
