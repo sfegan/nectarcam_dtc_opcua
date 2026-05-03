@@ -1,5 +1,5 @@
 graph TD
-    subgraph UserSpace ["User Space"]
+    subgraph UserLayer ["User Layer (Control PC)"]
         User((User))
         GUI["l2trig_gui.py<br/>(GUI Client)"]
         OPC_CLI["l2trig_test_opcua_cli.py<br/>(OPC UA CLI)"]
@@ -13,29 +13,32 @@ graph TD
     subgraph EmbeddedLayer ["Embedded Layer (ARM Board)"]
         Backend["l2tcp_server_main.c<br/>(Backend TCP Server)"]
         DirectCLI["l2trig_direct_client.c<br/>(Direct CLI Tool)"]
+        HAL["L2 Trigger HAL<br/>(smc.c / l2trig_hal.c)"]
     end
 
     subgraph HardwareLayer ["Hardware Layer"]
-        HAL["L2 Trigger HAL<br/>(smc.c / l2trig_hal.c)"]
-        HW["L2CB / CTDB Hardware"]
+        L2CB["L2CB FPGA"]
+        CTDB["CTDB (x18)"]
     end
 
-    User --> GUI
-    User --> OPC_CLI
-    User --> TCP_CLI
-    User -.->|SSH| DirectCLI
+    User --- GUI
+    User --- OPC_CLI
+    User --- TCP_CLI
+    User -.-|SSH| DirectCLI
 
-    GUI -->|OPC UA| Bridge
-    OPC_CLI -->|OPC UA| Bridge
-    Bridge -->|TCP/IP| Backend
-    TCP_CLI -->|TCP/IP| Backend
+    GUI ---|OPC UA| Bridge
+    OPC_CLI ---|OPC UA| Bridge
+    Bridge ---|TCP/IP| Backend
+    TCP_CLI ---|TCP/IP| Backend
 
-    Backend --> HAL
-    DirectCLI --> HAL
-    HAL --> HW
+    Backend --- HAL
+    DirectCLI --- HAL
+    
+    HAL ---|Shared Registers| L2CB
+    L2CB ---|SPI| CTDB
 
     %% Styling
-    style UserSpace fill:#f5f5f5,stroke:#333,stroke-width:2px
+    style UserLayer fill:#f5f5f5,stroke:#333,stroke-width:2px
     style ControlLayer fill:#e1f5fe,stroke:#01579b,stroke-width:2px
     style EmbeddedLayer fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
     style HardwareLayer fill:#fff3e0,stroke:#e65100,stroke-width:2px
