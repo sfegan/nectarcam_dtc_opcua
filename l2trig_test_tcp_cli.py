@@ -10,14 +10,77 @@ Copyright 2026, Stephen Fegan <sfegan@llr.in2p3.fr>
 import asyncio
 import sys
 import argparse
+import re
 from l2trig_api import L2TriggerSystem, VALID_SLOTS
+
+def parse_slots(args):
+    if not args:
+        return []
+    
+    first_arg = args[0].lower()
+    if first_arg == "all" or first_arg == "default":
+        return VALID_SLOTS
+    
+    slot_str = " ".join(args).replace(',', ' ')
+    slots = set()
+    for part in slot_str.split():
+        if '-' in part:
+            try:
+                start_str, end_str = part.split('-', 1)
+                start = int(start_str)
+                end = int(end_str)
+                for s in range(start, end + 1):
+                    if s in VALID_SLOTS:
+                        slots.add(s)
+            except ValueError:
+                print(f"Warning: Invalid range format: {part}")
+        else:
+            try:
+                s = int(part)
+                if s in VALID_SLOTS:
+                    slots.add(s)
+                else:
+                    print(f"Warning: Slot {s} is not valid. Valid slots are: {VALID_SLOTS}")
+            except ValueError:
+                print(f"Warning: Invalid slot format: {part}")
+    
+    return sorted(list(slots))
+
+def parse_immutable(args):
+    if not args:
+        return None
+    
+    cmd_lower = args[0].lower()
+    if cmd_lower == "default":
+        return {21: 0xF800}
+    if cmd_lower == "none":
+        return {}
+    
+    imm = {}
+    arg_str = " ".join(args).replace(',', ' ')
+    for part in arg_str.split():
+        match = re.match(r"S(\d+)C(\d+)", part, re.IGNORECASE)
+        if match:
+            s = int(match.group(1))
+            c = int(match.group(2))
+            if s in VALID_SLOTS and 1 <= c <= 15:
+                imm[s] = imm.get(s, 0) | (1 << c)
+            else:
+                print(f"Warning: Slot {s} or Channel {c} is not valid.")
+        else:
+            print(f"Warning: Invalid format for immutable: {part}. Use 'S<slot>C<ch>'.")
+    
+    return imm
 
 def print_help():
     print("\nSystem Commands:")
-    print("  config                   - Send default active slots/immutable config")
-    print("  config_default           - Activate all valid slots and set default immutable channels")
+    print("  set_active_slots <all|slots> - Set active slots (e.g. 'all', '1-9,13-21')")
+    print("  set_immutable <default|none|list> - Set immutable channels (e.g. 'default', 'none', 'S1C1 S21C15')")
     print("  ramp <0|1>               - Trigger global power ramp")
     print("  emergency                - Trigger emergency shutdown")
+    print("  ping                     - Send immediate keepalive/ping")
+    print("  all_trig <0|1>           - Set all trigger contributions")
+    print("  all_delay <val>          - Set all trigger delays (0-255)")
     print("  keepalive <0|1>          - Toggle keepalive on/off (1=on, 0=off)")
     
     print("\nL2CB (Global) Commands:")
@@ -74,6 +137,16 @@ async def run_cli(host, port, keepalive_enabled):
 
     print_help()
     
+    # Set default configuration on startup
+    print() # Add blank line for readability
+    current_active = VALID_SLOTS
+    current_imm = {21: 0xF800}
+    try:
+        await system.set_config(current_active, current_imm)
+        print(f"Default configuration applied: {len(current_active)} slots active, S21C11-15 immutable.")
+    except Exception as e:
+        print(f"Warning: Failed to apply default configuration: {e}")
+
     while True:
         try:
             line = await asyncio.get_event_loop().run_in_executor(None, input, "> ")
@@ -88,17 +161,24 @@ async def run_cli(host, port, keepalive_enabled):
             elif cmd == "help":
                 print_help()
             
-            elif cmd == "config":
-                active = [1, 2, 21]
-                imm = {21: 0xF800} 
-                await system.set_config(active, imm)
-                print("Configuration sent: Slots 1, 2, 21 active. S21C11-15 immutable.")
+            elif cmd == "set_active_slots":
+                active = parse_slots(parts[1:])
+                if not active:
+                    print("Error: No valid slots specified. Use 'set_active_slots all' or a list of slots.")
+                    continue
+                current_active = active
+                current_imm = {} # Clear immutable by default as requested
+                await system.set_config(current_active, current_imm)
+                print(f"Active slots set: {current_active}. Immutable channels cleared.")
 
-            elif cmd == "config_default":
-                active = VALID_SLOTS
-                imm = {21: 0xF800} 
-                await system.set_config(active, imm)
-                print(f"Default config: {len(active)} slots active, S21C11-15 immutable.")
+            elif cmd == "set_immutable":
+                imm = parse_immutable(parts[1:])
+                if imm is None:
+                    print("Error: No immutable channels specified. Use 'default', 'none', or a list like 'S1C1,S1C2'.")
+                    continue
+                current_imm = imm
+                await system.set_config(current_active, current_imm)
+                print(f"Immutable channels set. Slots with immutable channels: {list(current_imm.keys())}")
 
             elif cmd == "ramp":
                 val = int(parts[1])
@@ -108,6 +188,20 @@ async def run_cli(host, port, keepalive_enabled):
             elif cmd == "emergency":
                 await system.emergency_shutdown()
                 print("Emergency shutdown sent.")
+
+            elif cmd == "ping":
+                await system.keepalive()
+                print("Keepalive (ping) sent.")
+
+            elif cmd == "all_trig":
+                val = int(parts[1])
+                await system.set_all_trigger_enabled(val == 1)
+                print(f"All trigger contributions {'enabled' if val == 1 else 'disabled'}.")
+
+            elif cmd == "all_delay":
+                val = int(parts[1])
+                await system.set_all_trigger_delay(val)
+                print(f"All trigger delays set to {val}.")
             
             elif cmd == "keepalive":
                 val = int(parts[1])
