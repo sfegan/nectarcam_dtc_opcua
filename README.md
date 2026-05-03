@@ -253,9 +253,9 @@ graph TD
 - **Embedded Layer**: Software running directly on the ARM-based controller board.
 - **Hardware Layer**: The physical L2CB and CTDB hardware components.
 
-### Testing Applications
+### Client Applications
 
-Four test applications are included in the repository for different use cases. Three of them are implemented in Python and run on the control PC, while the `l2trig_direct_client` is a native C application that runs on the ARM board for direct hardware access. Of the three Python applications, two are OPC UA clients that connect to the `l2trig_asyncua_bridge.py` server, while the third is a TCP client that connects directly to the `l2tcp_server` backend for low-level testing.
+Four client applications are included in the repository for different use cases. Three of them are implemented in Python and run on the control PC, while the `l2trig_direct_client` is a native C application that runs on the ARM board for direct hardware access. Of the three Python applications, two are OPC UA clients that connect to the `l2trig_asyncua_bridge.py` server, while the third is a TCP client that connects directly to the `l2tcp_server` backend for low-level testing.
 
 - `l2tring_gui.py`: A GUI application for monitoring and controlling the system via OPC UA. It provides real-time status updates and interactive controls for power and trigger settings.
 - `l2trig_test_opcua_cli.py`: An interactive command-line client for testing and debugging the OPC UA interface. It allows users to read monitoring variables and call control methods directly from the terminal, making it useful for quick tests and automation scripts.
