@@ -238,7 +238,7 @@ class L2TrigTestClient:
         print(f"L2CB Status: MCF={'ON' if l2cb_mcf else 'OFF'}, BusyGlitchFilter={'ON' if l2cb_glitch else 'OFF'}, TIBTriggerBusyBlock={'ON' if l2cb_tib else 'OFF'}, L1Deadtime={l2cb_deadtime:.1f} ns")
         
         ctdb_fw = await self.read_variable("BoardFirmwareRevision")
-        ctdb_curr = await self.read_variable("BoardCurrent")
+        ctdb_curr = await self.read_variable("BoardBaseCurrent")
         ctdb_err = await self.read_variable("BoardHasErrors")
         ctdb_min = await self.read_variable("BoardCurrentLimitMin")
         ctdb_max = await self.read_variable("BoardCurrentLimitMax")

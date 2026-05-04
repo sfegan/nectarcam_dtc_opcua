@@ -154,8 +154,7 @@ All monitoring data is accessible under `L2Trigger.Monitoring`:
 - `BoardFirmwareRevision` (`UInt16[]`) — Firmware per CTDB board
 - `BoardBusyEnabled` (`Boolean[]`) — BUSY enablement status per board
 - `BoardBusyStuckStatus` (`Boolean[]`) — BUSY stuck status per board
-- `BoardCurrent` (`Double[]`) — Total current per CTDB board (mA in 0.485mA steps)
-- `BoardCurrentSum` (`Double[]`) — Sum of all enabled channels per CTDB board (mA in 0.485mA steps)
+- `BoardBaseCurrent` (`Double[]`) — Total current per CTDB board (mA in 0.485mA steps)
 - `BoardCurrentLimitMin/Max` (`Double[]`) — Current safety limits per CTDB board (mA in 0.485mA steps)
 - `BoardHasErrors` (`Boolean[]`) — Error flag per CTDB board
 
