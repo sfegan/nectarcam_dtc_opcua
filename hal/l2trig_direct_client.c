@@ -129,9 +129,9 @@ void process_line(char* line) {
         printf("TIB Event Count reset.\n");
     } else if (strcmp(cmd, "busy_mask") == 0) {
         if (n > 1) {
-            cta_l2cb_setBusyEnable(parse_int(tokens[1]));
+            cta_l2cb_setBusyEnableMask(parse_int(tokens[1]));
         } else {
-            uint32_t mask = cta_l2cb_getBusyEnable();
+            uint32_t mask = cta_l2cb_getBusyEnableMask();
             printf("Busy Mask: 0x%08X (Slots: ", mask);
             int first = 1;
             for (int s = 1; s <= 21; s++) {

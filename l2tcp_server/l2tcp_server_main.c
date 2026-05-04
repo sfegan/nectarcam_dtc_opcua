@@ -443,7 +443,7 @@ static void handle_request() {
             resp.mcf_delay = cta_l2cb_getMCFDelay();
             resp.l1_deadtime = cta_l2cb_getL1Deadtime();
             resp.tib_event_count = cta_l2cb_getTIBEventCount();
-            resp.busy_mask = cta_l2cb_getBusyEnable();
+            resp.busy_mask = cta_l2cb_getBusyEnableMask();
             resp.busy_stuck = cta_l2cb_getBusyStuck();
             
             if (g_server.verbose > 1) printf("  -> L2CB STATE (fw: 0x%04x, ts: %llu, tib: %u)\n", resp.fw_rev, (unsigned long long)resp.timestamp, resp.tib_event_count);
@@ -487,7 +487,7 @@ static void handle_request() {
         }
         case L2TCP_MSG_L2CB_SET_BUSY_ENABLE_MASK: {
             uint32_t mask = *((uint32_t*)buffer);
-            cta_l2cb_setBusyEnable(mask);
+            cta_l2cb_setBusyEnableMask(mask);
             send_ack(hdr.seq, show_msg);
             break;
         }

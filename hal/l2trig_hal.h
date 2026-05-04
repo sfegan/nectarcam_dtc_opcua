@@ -253,14 +253,14 @@ static inline void cta_l2cb_resetTIBEventCount(void)
 
 // ***** Helper Functions to set and get BUSY enable for all slots (BSYMSKL and BSYMSKR)
 
-static inline void cta_l2cb_setBusyEnable(uint32_t enable_mask)
+static inline void cta_l2cb_setBusyEnableMask(uint32_t enable_mask)
 {
 	// Bits 1-9 and 13-21 correspond to slots 1-9 and 13-21. Bits 0,10,11,12 and 22-31 are unused
 	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_BSYMSKL, (enable_mask>>1)&0x01FF);
 	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_BSYMSKR, (enable_mask>>13)&0x01FF);
 }
 
-static inline uint32_t cta_l2cb_getBusyEnable()
+static inline uint32_t cta_l2cb_getBusyEnableMask()
 {
 	// Bits 1-9 and 13-21 correspond to slots 1-9 and 13-21. Bits 0,10,11,12 and 22-31 are unused
 	uint32_t enable_mask;
@@ -272,10 +272,10 @@ static inline uint32_t cta_l2cb_getBusyEnable()
 static inline void cta_l2cb_setBusyEnableSlot(uint8_t _slot, int _on)
 {
 	if (!cta_l2cb_isValidSLot(_slot)) return;
-	uint32_t mask = cta_l2cb_getBusyEnable();
+	uint32_t mask = cta_l2cb_getBusyEnableMask();
 	if (_on) mask |= (1U << _slot);
 	else mask &= ~(1U << _slot);
-	cta_l2cb_setBusyEnable(mask);
+	cta_l2cb_setBusyEnableMask(mask);
 }
 
 // ***** Helper Functions to get BUSY stuck status for all slots (BSYSTATL and BSYSTATR)
