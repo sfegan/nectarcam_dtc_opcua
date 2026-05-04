@@ -5,7 +5,7 @@ CFLAGS = -Wall -fPIC -O2
 LDFLAGS = -shared
 
 # Source files
-SOURCES = l2trig_hal.c l2trig_hal_exports.c
+SOURCES = l2trig_hal.c
 HEADERS = l2trig_hal.h bits.h
 
 # Output library
@@ -16,11 +16,9 @@ EMULATESMC ?= 0
 
 ifeq ($(EMULATESMC),1)
 	SOURCES += smc_emulated.c
-	TARGET += test_smc_emulation
 else
 	SOURCES += smc.c
 endif
-
 
 # Installation paths
 PREFIX ?= /usr/local
@@ -38,10 +36,6 @@ $(TARGET_LIBRARY): $(SOURCES) $(HEADERS)
 l2trig_direct_client: l2trig_direct_client.c $(HEADERS) $(TARGET_LIBRARY)
 	$(CC) $(CFLAGS) -o $@ $< -L. -ll2trig_hal -Wl,-rpath,.
 	@echo "Built l2trig_direct_client"
-
-test_smc_emulation: test_smc_emulation.c $(HEADERS) $(TARGET_LIBRARY)
-	$(CC) $(CFLAGS) -o $@ $< -L. -ll2trig_hal
-	@echo "Built SMC emulation test executable"
 
 clean:
 	rm -f $(TARGET) test_smc_emulation test_hal

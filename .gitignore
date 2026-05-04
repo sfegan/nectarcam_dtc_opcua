@@ -62,3 +62,5 @@ hal/test_smc_emulation
 l2trig_emulator_state.dat
 hal/l2trig_direct_client
 l2tcp_server/l2tcp_server
+docs/CTDB2_user_manual_v2.pdf
+docs/MST-CAM-UM-0227-DESY_L2CB_user_manual_v12.pdf

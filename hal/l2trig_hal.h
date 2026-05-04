@@ -81,6 +81,11 @@ CEXTERN void cta_l2cb_spi_set_delay_delays_export(int64_t _min_command_delay_ns,
 #define ADDR_CTA_L2CB_MUTHR		0x18		// Muon threshold, amount of L1s, causing a Muon-trigger,
 #define ADDR_CTA_L2CB_MUDEL		0x20		// Muon trigger delay, in steps of 5ns
 #define ADDR_CTA_L2CB_L1DT		0x22		// L1 dead time in multiples of 5ns
+#define ADDR_CTA_L2CB_TIBEVCT   0x24        // TIB event count
+#define ADDR_CTA_L2CB_BSYMSKL   0x26        // BUSY enable for CTDB slots 1 to 9 (L2-crate, left side), bit0=slot1
+#define ADDR_CTA_L2CB_BSYMSKR   0x28		// BUSY enable for CTDB slots 13 to 21 (L2-crate, right side), bit0=slot13
+#define ADDR_CTA_L2CB_BSYSTATL  0x2A        // CTDB-BUSY stuck at slots 1 to 9 (L2-crate, left side), bit0=slot1
+#define ADDR_CTA_L2CB_BSYSTATR  0x2C        // CTDB-BUSY stuck at slots 13 to 21 (L2-crate, right side), bit0=slot13
 
 #define ADDR_CTA_L2CB_FREV		0xfe		// Firmware Revision
 
@@ -232,6 +237,47 @@ static inline uint16_t cta_l2cb_getL1Deadtime()
 static inline void cta_l2cb_setL1Deadtime(uint16_t _delay)
 {
 	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_L1DT, _delay & 0x00FF);
+}
+
+// ***** Helper Functions to get and reset TIB event count (TIBEVCT)
+
+static inline uint16_t cta_l2cb_getTIBEventCount(void)
+{
+	return IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_TIBEVCT);
+}
+
+static inline void cta_l2cb_resetTIBEventCount(void)
+{
+	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_TIBEVCT, 0);
+}
+
+// ***** Helper Functions to set and get BUSY enable for all slots (BSYMSKL and BSYMSKR)
+
+static inline void cta_l2cb_setBusyEnable(uint32_t enable_mask)
+{
+	// Bits 1-9 and 13-21 correspond to slots 1-9 and 13-21. Bits 0,10,11,12 and 22-31 are unused
+	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_BSYMSKL, (enable_mask>>1)&0x01FF);
+	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_BSYMSKR, (enable_mask>>13)&0x01FF);
+}
+
+static inline uint32_t cta_l2cb_getBusyEnable()
+{
+	// Bits 1-9 and 13-21 correspond to slots 1-9 and 13-21. Bits 0,10,11,12 and 22-31 are unused
+	uint32_t enable_mask;
+	enable_mask  = (uint32_t)(IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_BSYMSKL) & 0x01FF) << 1;
+	enable_mask |= (uint32_t)(IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_BSYMSKR) & 0x01FF) << 13;
+	return enable_mask;
+}
+
+// ***** Helper Functions to get BUSY stuck status for all slots (BSYSTATL and BSYSTATR)
+
+static inline uint32_t cta_l2cb_getBusyStuck()
+{
+	// Bits 1-9 and 13-21 correspond to slots 1-9 and 13-21. Bits 0,10,11,12 and 22-31 are unused
+	uint32_t stuck_mask;
+	stuck_mask  = (uint32_t)(IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_BSYSTATL) & 0x01FF) << 1;
+	stuck_mask |= (uint32_t)(IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_BSYSTATR) & 0x01FF) << 13;
+	return stuck_mask;
 }
 
 // ***** Helper Functions to set trigger enabled status and delays
