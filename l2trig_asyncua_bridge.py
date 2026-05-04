@@ -153,7 +153,6 @@ class L2TriggerBridgeServer:
         ("BoardBaseCurrent", [], ua.VariantType.Double, "CTDB board currents in mA"),
         ("BoardCurrentLimitMin", [], ua.VariantType.Double, "Current limit minimum in mA"),
         ("BoardCurrentLimitMax", [], ua.VariantType.Double, "Current limit maximum in mA"),
-        ("BoardHasErrors", [], ua.VariantType.Boolean, "Error status flag per board"),
         ("ModulePowerEnabled", [], ua.VariantType.Boolean, "Module power enable status (flattened)"),
         ("ModuleCurrent", [], ua.VariantType.Double, "Channel current readings in mA (flattened)"),
         ("ModuleState", [], ua.VariantType.String, "Channel state strings (flattened)"),
@@ -380,7 +379,7 @@ class L2TriggerBridgeServer:
             "CrateFirmwareRevision", "CrateUpTime", 
             "CrateMCFEnabled", "CrateBusyGlitchFilterEnabled", "CrateTIBTriggerBusyBlockEnabled",
             "CrateMCFThreshold", "CrateMCFDelay", "CrateL1Deadtime",
-            "CrateNumPoweredModules", "BoardBaseCurrent", "BoardHasErrors",
+            "CrateNumPoweredModules", "BoardBaseCurrent",
             "ModuleCurrent", "ModuleState", "ModulePowerEnabled"
         }
         fast_interval = float(self.poll_interval * 1000)
@@ -794,7 +793,7 @@ class L2TriggerBridgeServer:
         self._last_tib_raw = l2cb.tib_event_count
         await self._set_var("CrateTIBEventCount", self._tib_accumulator, timestamp, sc)
 
-        bc, bhe = [], []
+        bc = []
         bb_en, bb_stuck = [], []
         mc, ms, mpe = [], [], []
         powered_count = 0
@@ -806,7 +805,6 @@ class L2TriggerBridgeServer:
             m = monitoring.get(slot)
             if m:
                 bc.append(m.ctdb_current_ma)
-                bhe.append(bool(m.over_current_errors or m.under_current_errors))
                 for i in range(CHANNELS_PER_SLOT):
                     ch = i + 1
                     curr = m.channel_currents_ma[i]
@@ -822,7 +820,7 @@ class L2TriggerBridgeServer:
                     else: state = "off"
                     ms.append(state)
             else:
-                bc.append(0.0); bhe.append(True)
+                bc.append(0.0)
                 for _ in range(CHANNELS_PER_SLOT): mc.append(0.0); mpe.append(False); ms.append("offline")
         
         self._powered_count = powered_count
@@ -830,7 +828,6 @@ class L2TriggerBridgeServer:
         await self._set_var("BoardBusyEnabled", bb_en, timestamp, sc)
         await self._set_var("BoardBusyStuckStatus", bb_stuck, timestamp, sc)
         await self._set_var("BoardBaseCurrent", bc, timestamp, sc)
-        await self._set_var("BoardHasErrors", bhe, timestamp, sc)
         await self._set_var("ModuleCurrent", mc, timestamp, sc)
         await self._set_var("ModuleState", ms, timestamp, sc)
         await self._set_var("ModulePowerEnabled", mpe, timestamp, sc)

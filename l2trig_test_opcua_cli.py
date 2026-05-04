@@ -239,7 +239,6 @@ class L2TrigTestClient:
         
         ctdb_fw = await self.read_variable("BoardFirmwareRevision")
         ctdb_curr = await self.read_variable("BoardBaseCurrent")
-        ctdb_err = await self.read_variable("BoardHasErrors")
         ctdb_min = await self.read_variable("BoardCurrentLimitMin")
         ctdb_max = await self.read_variable("BoardCurrentLimitMax")
         
@@ -252,8 +251,7 @@ class L2TrigTestClient:
         CHANNELS_PER_SLOT = 15
 
         for i, slot in enumerate(slots):
-            status = "ERROR" if ctdb_err[i] else "OK"
-            print(f"\nSlot {slot:2d} | FW: 0x{ctdb_fw[i]:04X} | Current: {ctdb_curr[i]:6.1f} mA | Status: {status}")
+            print(f"\nSlot {slot:2d} | FW: 0x{ctdb_fw[i]:04X} | Base Current: {ctdb_curr[i]:6.1f} mA")
             print(f"        Limits: {ctdb_min[i]:.1f} - {ctdb_max[i]:.1f} mA")
             print(f"        {'Ch':<3} | {'Pwr':<4} | {'Current':<10} | {'State':<10} | {'Trig':<8} | {'Delay'}")
             print(f"        " + "-" * 68)

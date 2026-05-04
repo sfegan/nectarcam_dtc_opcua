@@ -156,7 +156,6 @@ All monitoring data is accessible under `L2Trigger.Monitoring`:
 - `BoardBusyStuckStatus` (`Boolean[]`) — BUSY stuck status per board
 - `BoardBaseCurrent` (`Double[]`) — Total current per CTDB board (mA in 0.485mA steps)
 - `BoardCurrentLimitMin/Max` (`Double[]`) — Current safety limits per CTDB board (mA in 0.485mA steps)
-- `BoardHasErrors` (`Boolean[]`) — Error flag per CTDB board
 
 **Per-Module Data (Arrays; one element per configured channel):**
 - `ModulePowerEnabled` (`Boolean[]`) — Power state (1=on/0=off)
