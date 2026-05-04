@@ -85,6 +85,11 @@ The **Direct Client** (`l2trig_direct_client`) provides native access to the har
 | Command | Description |
 | :--- | :--- |
 | `l2cb_fw` | Get L2CB firmware revision |
+| `tib_count` | Get TIB event count |
+| `tib_reset` | Reset TIB event count |
+| `busy_mask [m]` | Get/Set 32-bit busy mask (hex) |
+| `busy_slot <s> <o>`| Set busy mask for specific slot |
+| `busy_stuck` | Get 32-bit busy stuck status |
 | `mcf <on\|off>` | Enable/Disable MCF propagation |
 | `mcfthr [val]` | Get/Set MCF threshold (L1 counts) |
 | `mcfdel [val]` | Get/Set MCF delay (5ns steps, 0-15) |
@@ -131,6 +136,7 @@ All monitoring data is accessible under `L2Trigger.Monitoring`:
 **L2CB Controller Status (Scalars):**
 - `CrateFirmwareRevision` (`UInt16`) — Firmware version
 - `CrateUpTime` (`UInt64`) — Time since boot (nanoseconds)
+- `CrateTIBEventCount` (`UInt64`) — Total software-accumulated event count
 - `CrateNumMutableModules` (`UInt16`) — Total actively controlled modules
 - `CrateNumPoweredModules` (`UInt16`) — Modules currently powered
 - `CrateNumTriggerEnabledModules` (`UInt16`) — Modules with trigger enabled
@@ -146,6 +152,8 @@ All monitoring data is accessible under `L2Trigger.Monitoring`:
 **Per-Slot Board Data (Arrays; one element per configured slot):**
 - `BoardSlotId` (`UInt16[]`) — List of active slot numbers
 - `BoardFirmwareRevision` (`UInt16[]`) — Firmware per CTDB board
+- `BoardBusyEnabled` (`Boolean[]`) — BUSY enablement status per board
+- `BoardBusyStuckStatus` (`Boolean[]`) — BUSY stuck status per board
 - `BoardCurrent` (`Double[]`) — Total current per CTDB board (mA in 0.485mA steps)
 - `BoardCurrentSum` (`Double[]`) — Sum of all enabled channels per CTDB board (mA in 0.485mA steps)
 - `BoardCurrentLimitMin/Max` (`Double[]`) — Current safety limits per CTDB board (mA in 0.485mA steps)
@@ -177,6 +185,10 @@ Methods return a string prefixed with **`OK:`** or **`ERROR:`**. Boards are inde
 | Method | Parameters | Description |
 | :--- | :--- | :--- |
 | `EmergencyShutdown` | None | Immediately disable all power |
+| `ResetTIBEventCount` | None | Reset hardware counter and 64-bit software accumulator |
+| `SetAllBusyEnabled` | `enabled: Boolean` | Enable/Disable BUSY for all active slots |
+| `SetBoardBusyEnabled` | `board: Int32, enabled: Boolean` | Enable/Disable BUSY for specific board index |
+| `SetSlotBusyEnabled` | `slot: Int16, enabled: Boolean` | Enable/Disable BUSY for specific slot ID |
 | `SetAllPowerEnabled` | `enabled: Boolean` | Ramp all modules on/off |
 | `SetModulePowerEnabled` | `module: Int32, enabled: Boolean` | Control single module power |
 | `SetSlotChannelPowerEnabled` | `slot: Int16, channel: Int16, enabled: Boolean` | Control single module power by slot and channel |
