@@ -46,6 +46,8 @@ typedef enum {
     L2TCP_MSG_L2CB_SET_MCF_THRESH     = 0x14,
     L2TCP_MSG_L2CB_SET_MCF_DELAY      = 0x15,
     L2TCP_MSG_L2CB_SET_L1_DEADTIME    = 0x16,
+    L2TCP_MSG_L2CB_SET_BUSY_MASK      = 0x17,
+    L2TCP_MSG_L2CB_RESET_TIB_COUNT    = 0x18,
 
     /* CTDB Single Channel Control */
     L2TCP_MSG_CTDB_SET_CH_POWER       = 0x20,
@@ -70,7 +72,7 @@ typedef enum {
     L2TCP_ERR_NOT_INITIALIZED         = 6
 } l2tcp_error_code_t;
 
-#define L2TCP_PROTOCOL_VERSION 1
+#define L2TCP_PROTOCOL_VERSION 2
 
 /* --- Protocol Header --- */
 
@@ -114,6 +116,9 @@ typedef struct {
     uint16_t mcf_threshold;
     uint16_t mcf_delay;
     uint16_t l1_deadtime;
+    uint16_t tib_event_count;
+    uint32_t busy_mask;
+    uint32_t busy_stuck;
 } l2tcp_payload_l2cb_state_t;
 
 /* L2TCP_MSG_CTDB_SET_CH_POWER, L2TCP_MSG_CTDB_SET_CH_TRIG */

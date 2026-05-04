@@ -85,6 +85,8 @@ static const char* msg_type_to_str(uint8_t type) {
         case L2TCP_MSG_L2CB_SET_MCF_THRESH: return "L2CB_SET_MCF_THRESH";
         case L2TCP_MSG_L2CB_SET_MCF_DELAY:  return "L2CB_SET_MCF_DELAY";
         case L2TCP_MSG_L2CB_SET_L1_DEADTIME: return "L2CB_SET_L1_DEADTIME";
+        case L2TCP_MSG_L2CB_SET_BUSY_MASK:  return "L2CB_SET_BUSY_MASK";
+        case L2TCP_MSG_L2CB_RESET_TIB_COUNT: return "L2CB_RESET_TIB_COUNT";
         case L2TCP_MSG_CTDB_SET_CH_POWER:  return "CTDB_SET_CH_POWER";
         case L2TCP_MSG_CTDB_SET_CH_TRIG:   return "CTDB_SET_CH_TRIG";
         case L2TCP_MSG_CTDB_SET_CH_DELAY:  return "CTDB_SET_CH_DELAY";
@@ -299,6 +301,8 @@ static void handle_request() {
             case L2TCP_MSG_L2CB_SET_MCF_THRESH:
             case L2TCP_MSG_L2CB_SET_MCF_DELAY:
             case L2TCP_MSG_L2CB_SET_L1_DEADTIME: printf(" val: %d", ((l2tcp_payload_u16_t*)buffer)->value); break;
+            case L2TCP_MSG_L2CB_SET_BUSY_MASK: printf(" val: 0x%08x", *((uint32_t*)buffer)); break;
+            case L2TCP_MSG_L2CB_RESET_TIB_COUNT: break;
             case L2TCP_MSG_CTDB_SET_CH_POWER:
             case L2TCP_MSG_CTDB_SET_CH_TRIG: printf(" S%dC%d en: %d", ((l2tcp_payload_ch_ctrl_t*)buffer)->slot, ((l2tcp_payload_ch_ctrl_t*)buffer)->channel, ((l2tcp_payload_ch_ctrl_t*)buffer)->enable); break;
             case L2TCP_MSG_CTDB_SET_CH_DELAY: printf(" S%dC%d delay: %d", ((l2tcp_payload_ch_delay_t*)buffer)->slot, ((l2tcp_payload_ch_delay_t*)buffer)->channel, ((l2tcp_payload_ch_delay_t*)buffer)->delay); break;
@@ -436,8 +440,11 @@ static void handle_request() {
             resp.mcf_threshold = cta_l2cb_getMCFThreshold();
             resp.mcf_delay = cta_l2cb_getMCFDelay();
             resp.l1_deadtime = cta_l2cb_getL1Deadtime();
+            resp.tib_event_count = cta_l2cb_getTIBEventCount();
+            resp.busy_mask = cta_l2cb_getBusyEnable();
+            resp.busy_stuck = cta_l2cb_getBusyStuck();
             
-            if (g_server.verbose > 1) printf("  -> L2CB STATE (fw: 0x%04x, ts: %llu)\n", resp.fw_rev, (unsigned long long)resp.timestamp);
+            if (g_server.verbose > 1) printf("  -> L2CB STATE (fw: 0x%04x, ts: %llu, tib: %u)\n", resp.fw_rev, (unsigned long long)resp.timestamp, resp.tib_event_count);
 
             if (send_all(&resp_hdr, sizeof(resp_hdr)) == 0) {
                 send_all(&resp, sizeof(resp));
@@ -473,6 +480,17 @@ static void handle_request() {
             uint16_t val = ((l2tcp_payload_u16_t*)buffer)->value;
             if (val > LIMIT_L1_DEADTIME) val = LIMIT_L1_DEADTIME;
             cta_l2cb_setL1Deadtime(val);
+            send_ack(hdr.seq, show_msg);
+            break;
+        }
+        case L2TCP_MSG_L2CB_SET_BUSY_MASK: {
+            uint32_t mask = *((uint32_t*)buffer);
+            cta_l2cb_setBusyEnable(mask);
+            send_ack(hdr.seq, show_msg);
+            break;
+        }
+        case L2TCP_MSG_L2CB_RESET_TIB_COUNT: {
+            cta_l2cb_resetTIBEventCount();
             send_ack(hdr.seq, show_msg);
             break;
         }

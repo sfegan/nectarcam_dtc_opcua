@@ -90,9 +90,12 @@ def print_help():
     print("  tib <0|1>                - Set TIB Trigger Busy Block enable")
     print("  thresh <val>             - Set MCF threshold (0-511)")
     print("  mcf_delay <val>          - Set MCF delay (0-15, in 5ns steps)")
-    print("  deadtime <val>           - Set L1 deadtime (0-255, in 5ns steps)")
-    
+    print("  deadtime <val>          - Set L1 deadtime (0-255, in 5ns steps)")
+    print("  busy_mask <val>         - Set unified 32-bit busy mask")
+    print("  tib_reset               - Reset TIB event counter")
+
     print("\nCTDB (Per-Slot/Channel) Commands:")
+
     print("  mon <slot>               - Get monitoring for a slot (currents, errors, pwr mask)")
     print("  mon_all                  - Get monitoring for all active slots")
     print("  cfg <slot>               - Get configuration for a slot (fw, limits, trig mask/delays)")
@@ -233,6 +236,9 @@ async def run_cli(host, port, keepalive_enabled):
                 print(f"  MCF Thr:   {s.mcf_threshold}")
                 print(f"  MCF Delay: {s.mcf_delay_ns} ns")
                 print(f"  L1 Dead:   {s.l1_deadtime_ns} ns")
+                print(f"  TIB Count: {s.tib_event_count}")
+                print(f"  Busy Mask: 0x{s.busy_mask:08x}")
+                print(f"  Busy Stuck: 0x{s.busy_stuck:08x}")
 
             elif cmd == "mcf":
                 await system.set_mcf_enabled(int(parts[1]) == 1)
@@ -252,6 +258,13 @@ async def run_cli(host, port, keepalive_enabled):
             elif cmd == "deadtime":
                 await system.set_l1_deadtime(int(parts[1]))
                 print("L1 deadtime set.")
+            elif cmd == "busy_mask":
+                val = int(parts[1], 0) # Allow hex input
+                await system.set_busy_mask(val)
+                print(f"Busy mask set to 0x{val:08x}.")
+            elif cmd == "tib_reset":
+                await system.reset_tib_event_count()
+                print("TIB event counter reset.")
 
             elif cmd == "mon":
                 slot = int(parts[1])

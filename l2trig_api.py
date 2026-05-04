@@ -40,6 +40,8 @@ class L2TCPMsgType(IntEnum):
     L2CB_SET_MCF_THRESH = 0x14
     L2CB_SET_MCF_DELAY  = 0x15
     L2CB_SET_L1_DEADTIME = 0x16
+    L2CB_SET_BUSY_MASK  = 0x17
+    L2CB_RESET_TIB_COUNT = 0x18
     CTDB_SET_CH_POWER   = 0x20
     CTDB_SET_CH_TRIG    = 0x21
     CTDB_SET_CH_DELAY   = 0x22
@@ -68,6 +70,9 @@ class L2CBStatus:
     mcf_threshold: int
     mcf_delay_ns: float
     l1_deadtime_ns: float
+    tib_event_count: int
+    busy_mask: int
+    busy_stuck: int
 
 @dataclass
 class CTDBMonitoringData:
@@ -92,7 +97,7 @@ class CTDBConfigData:
 # ============================================================================
 
 class L2TriggerSystem:
-    PROTOCOL_VERSION = 1
+    PROTOCOL_VERSION = 2
 
     def __init__(self, host: str = "127.0.0.1", port: int = DEFAULT_PORT, 
                  connect_timeout: float = 5.0, recv_timeout: float = 5.0):
@@ -279,8 +284,8 @@ class L2TriggerSystem:
 
     async def get_l2cb_status(self) -> L2CBStatus:
         _, data = await self._send_recv(L2TCPMsgType.L2CB_GET_STATE)
-        # fw(u16), ts(u64), ctrl(u16), thresh(u16), delay(u16), dt(u16)
-        fw, ts, ctrl, thresh, delay, dt = struct.unpack("<HQHHHH", data)
+        # fw(u16), ts(u64), ctrl(u16), thresh(u16), delay(u16), dt(u16), tib(u16), bmask(u32), bstuck(u32)
+        fw, ts, ctrl, thresh, delay, dt, tib, bmask, bstuck = struct.unpack("<HQHHHHHII", data)
         return L2CBStatus(
             firmware_version=fw,
             uptime=ts * 8, # convert to ns
@@ -289,7 +294,10 @@ class L2TriggerSystem:
             tib_trigger_busy_block_enabled=bool(ctrl & 0x4),
             mcf_threshold=thresh,
             mcf_delay_ns=float(delay * 5),
-            l1_deadtime_ns=float(dt * 5)
+            l1_deadtime_ns=float(dt * 5),
+            tib_event_count=tib,
+            busy_mask=bmask,
+            busy_stuck=bstuck
         )
 
     async def set_mcf_enabled(self, enabled: bool):
@@ -309,6 +317,14 @@ class L2TriggerSystem:
 
     async def set_l1_deadtime(self, deadtime_raw: int):
         await self._send_recv(L2TCPMsgType.L2CB_SET_L1_DEADTIME, struct.pack("<H", deadtime_raw))
+
+    async def set_busy_mask(self, mask: int):
+        """Set the unified 32-bit busy enable mask"""
+        await self._send_recv(L2TCPMsgType.L2CB_SET_BUSY_MASK, struct.pack("<I", mask))
+
+    async def reset_tib_event_count(self):
+        """Reset the TIB event counter"""
+        await self._send_recv(L2TCPMsgType.L2CB_RESET_TIB_COUNT)
 
     # --- CTDB Controls ---
 
