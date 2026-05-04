@@ -40,8 +40,9 @@ class L2TCPMsgType(IntEnum):
     L2CB_SET_MCF_THRESH = 0x14
     L2CB_SET_MCF_DELAY  = 0x15
     L2CB_SET_L1_DEADTIME = 0x16
-    L2CB_SET_BUSY_MASK  = 0x17
-    L2CB_RESET_TIB_COUNT = 0x18
+    L2CB_SET_BUSY_ENABLE_MASK = 0x17
+    L2CB_SET_BUSY_ENABLE_SLOT = 0x18
+    L2CB_RESET_TIB_COUNT = 0x19
     CTDB_SET_CH_POWER   = 0x20
     CTDB_SET_CH_TRIG    = 0x21
     CTDB_SET_CH_DELAY   = 0x22
@@ -318,9 +319,14 @@ class L2TriggerSystem:
     async def set_l1_deadtime(self, deadtime_raw: int):
         await self._send_recv(L2TCPMsgType.L2CB_SET_L1_DEADTIME, struct.pack("<H", deadtime_raw))
 
-    async def set_busy_mask(self, mask: int):
+    async def set_busy_enable_mask(self, mask: int):
         """Set the unified 32-bit busy enable mask"""
-        await self._send_recv(L2TCPMsgType.L2CB_SET_BUSY_MASK, struct.pack("<I", mask))
+        await self._send_recv(L2TCPMsgType.L2CB_SET_BUSY_ENABLE_MASK, struct.pack("<I", mask))
+
+    async def set_busy_enable_slot(self, slot: int, enabled: bool):
+        """Enable or disable busy for a specific slot"""
+        payload = struct.pack("<BB", slot, 1 if enabled else 0)
+        await self._send_recv(L2TCPMsgType.L2CB_SET_BUSY_ENABLE_SLOT, payload)
 
     async def reset_tib_event_count(self):
         """Reset the TIB event counter"""

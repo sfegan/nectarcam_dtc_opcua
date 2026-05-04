@@ -92,6 +92,7 @@ def print_help():
     print("  mcf_delay <val>          - Set MCF delay (0-15, in 5ns steps)")
     print("  deadtime <val>          - Set L1 deadtime (0-255, in 5ns steps)")
     print("  busy_mask <val>         - Set unified 32-bit busy mask")
+    print("  busy_slot <slot> <0|1>  - Set busy enable for a specific slot")
     print("  tib_reset               - Reset TIB event counter")
 
     print("\nCTDB (Per-Slot/Channel) Commands:")
@@ -260,8 +261,13 @@ async def run_cli(host, port, keepalive_enabled):
                 print("L1 deadtime set.")
             elif cmd == "busy_mask":
                 val = int(parts[1], 0) # Allow hex input
-                await system.set_busy_mask(val)
+                await system.set_busy_enable_mask(val)
                 print(f"Busy mask set to 0x{val:08x}.")
+            elif cmd == "busy_slot":
+                slot = int(parts[1])
+                on = int(parts[2]) == 1
+                await system.set_busy_enable_slot(slot, on)
+                print(f"Busy for slot {slot} {'enabled' if on else 'disabled'}.")
             elif cmd == "tib_reset":
                 await system.reset_tib_event_count()
                 print("TIB event counter reset.")

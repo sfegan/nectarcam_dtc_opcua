@@ -85,7 +85,8 @@ static const char* msg_type_to_str(uint8_t type) {
         case L2TCP_MSG_L2CB_SET_MCF_THRESH: return "L2CB_SET_MCF_THRESH";
         case L2TCP_MSG_L2CB_SET_MCF_DELAY:  return "L2CB_SET_MCF_DELAY";
         case L2TCP_MSG_L2CB_SET_L1_DEADTIME: return "L2CB_SET_L1_DEADTIME";
-        case L2TCP_MSG_L2CB_SET_BUSY_MASK:  return "L2CB_SET_BUSY_MASK";
+        case L2TCP_MSG_L2CB_SET_BUSY_ENABLE_MASK: return "L2CB_SET_BUSY_ENABLE_MASK";
+        case L2TCP_MSG_L2CB_SET_BUSY_ENABLE_SLOT: return "L2CB_SET_BUSY_ENABLE_SLOT";
         case L2TCP_MSG_L2CB_RESET_TIB_COUNT: return "L2CB_RESET_TIB_COUNT";
         case L2TCP_MSG_CTDB_SET_CH_POWER:  return "CTDB_SET_CH_POWER";
         case L2TCP_MSG_CTDB_SET_CH_TRIG:   return "CTDB_SET_CH_TRIG";
@@ -301,7 +302,8 @@ static void handle_request() {
             case L2TCP_MSG_L2CB_SET_MCF_THRESH:
             case L2TCP_MSG_L2CB_SET_MCF_DELAY:
             case L2TCP_MSG_L2CB_SET_L1_DEADTIME: printf(" val: %d", ((l2tcp_payload_u16_t*)buffer)->value); break;
-            case L2TCP_MSG_L2CB_SET_BUSY_MASK: printf(" val: 0x%08x", *((uint32_t*)buffer)); break;
+            case L2TCP_MSG_L2CB_SET_BUSY_ENABLE_MASK: printf(" val: 0x%08x", *((uint32_t*)buffer)); break;
+            case L2TCP_MSG_L2CB_SET_BUSY_ENABLE_SLOT: printf(" S%d en: %d", buffer[0], buffer[1]); break;
             case L2TCP_MSG_L2CB_RESET_TIB_COUNT: break;
             case L2TCP_MSG_CTDB_SET_CH_POWER:
             case L2TCP_MSG_CTDB_SET_CH_TRIG: printf(" S%dC%d en: %d", ((l2tcp_payload_ch_ctrl_t*)buffer)->slot, ((l2tcp_payload_ch_ctrl_t*)buffer)->channel, ((l2tcp_payload_ch_ctrl_t*)buffer)->enable); break;
@@ -483,9 +485,16 @@ static void handle_request() {
             send_ack(hdr.seq, show_msg);
             break;
         }
-        case L2TCP_MSG_L2CB_SET_BUSY_MASK: {
+        case L2TCP_MSG_L2CB_SET_BUSY_ENABLE_MASK: {
             uint32_t mask = *((uint32_t*)buffer);
             cta_l2cb_setBusyEnable(mask);
+            send_ack(hdr.seq, show_msg);
+            break;
+        }
+        case L2TCP_MSG_L2CB_SET_BUSY_ENABLE_SLOT: {
+            uint8_t slot = buffer[0];
+            uint8_t on = buffer[1];
+            cta_l2cb_setBusyEnableSlot(slot, on);
             send_ack(hdr.seq, show_msg);
             break;
         }
