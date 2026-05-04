@@ -451,7 +451,8 @@ static void handle_request() {
             if (send_all(&resp_hdr, sizeof(resp_hdr)) == 0) {
                 send_all(&resp, sizeof(resp));
             }
-            break;        }
+            break;        
+        }
         case L2TCP_MSG_L2CB_SET_MCF_EN:
             cta_l2cb_setMCFEnabled(((l2tcp_payload_u16_t*)buffer)->value);
             send_ack(hdr.seq, show_msg);
