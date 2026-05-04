@@ -32,8 +32,20 @@ wget https://github.com/sfegan/nectarcam_dtc_opcua/releases/download/latest/l2tr
 ```
 
 ### 2. Install Python Bridge (Control PC)
-On your control workstation, install the required Python dependencies:
+On your control workstation, you can install the required Python dependencies either using standard `pip` or by creating a dedicated Conda environment.
+
+#### Option A: Using standard pip
 ```bash
+pip install -r requirements.txt
+```
+
+#### Option B: Using Conda (Recommended for Linux)
+For a clean environment on a Linux machine, it is recommended to use Conda. If you do not have Conda installed, see the [**instructions at the bottom of this document**](#installing-conda-on-linux).
+
+Once Conda is available, create the environment and install the dependencies:
+```bash
+conda create -n l2trig python=3.11 -y
+conda activate l2trig
 pip install -r requirements.txt
 ```
 
@@ -310,6 +322,20 @@ tar -xzf toolchain/crosstoll-ng-1.2.00-arm-926ejs-linux-gnueabi.tar.gz -C toolch
 PATH=$PWD/toolchain/arm-926ejs-linux-gnueabi/bin:$PATH
 cd l2tcp_server
 arm-926ejs-linux-gnueabi-gcc -std=gnu99 -march=armv5te -I../hal -static -o l2tcp_server l2tcp_server_main.c ../hal/smc.c ../hal/l2trig_hal.c
+```
+
+---
+
+## Installing Conda on Linux
+If you do not have Conda installed on your Linux machine, you can install Miniconda with the following commands:
+
+```bash
+mkdir -p ~/miniconda3
+wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
+bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3
+rm -rf ~/miniconda3/miniconda.sh
+~/miniconda3/bin/conda init bash
+source ~/.bashrc
 ```
 
 ---
