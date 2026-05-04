@@ -72,7 +72,7 @@ jobs:
           -static \
           -Wl,--gc-sections \
           -Wl,-s \
-          -o l2trig_direct_client l2trig_direct_client.c smc.c l2trig_hal.c l2trig_hal_exports.c
+          -o l2trig_direct_client l2trig_direct_client.c smc.c l2trig_hal.c
 
     - name: Verify binaries
       run: |
