@@ -269,6 +269,15 @@ static inline uint32_t cta_l2cb_getBusyEnable()
 	return enable_mask;
 }
 
+static inline void cta_l2cb_setBusyEnableSlot(uint8_t _slot, int _on)
+{
+	if (!cta_l2cb_isValidSLot(_slot)) return;
+	uint32_t mask = cta_l2cb_getBusyEnable();
+	if (_on) mask |= (1U << _slot);
+	else mask &= ~(1U << _slot);
+	cta_l2cb_setBusyEnable(mask);
+}
+
 // ***** Helper Functions to get BUSY stuck status for all slots (BSYSTATL and BSYSTATR)
 
 static inline uint32_t cta_l2cb_getBusyStuck()

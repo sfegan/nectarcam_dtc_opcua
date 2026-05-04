@@ -54,6 +54,11 @@ void print_help() {
     printf("  mcf <on|off>          : Set MCF enabled\n");
     printf("  glitch <on|off>       : Set busy glitch filter enabled\n");
     printf("  tibblock <on|off>     : Set TIB trigger busy block enabled\n");
+    printf("  tib_count             : Get TIB event count\n");
+    printf("  tib_reset             : Reset TIB event count\n");
+    printf("  busy_mask [mask]      : Get or set unified 32-bit busy mask\n");
+    printf("  busy_slot <s.> <o/f>: Set busy mask for specific slot\n");
+    printf("  busy_stuck            : Get unified 32-bit busy stuck status\n");
     printf("  mcfthr [val]          : Get or set MCF threshold (L1 counts)\n");
     printf("  mcfdel [val]          : Get or set MCF delay (5ns/step)\n");
     printf("  deadtime [val]        : Get or set L1 deadtime (5ns/step)\n");
@@ -117,6 +122,46 @@ void process_line(char* line) {
     } else if (strcmp(cmd, "tibblock") == 0) {
         if (n < 2) printf("Usage: tibblock <on|off>\n");
         else cta_l2cb_setTIBTriggerBusyBlockEnabled(parse_bool(tokens[1]));
+    } else if (strcmp(cmd, "tib_count") == 0) {
+        printf("TIB Event Count: %u\n", cta_l2cb_getTIBEventCount());
+    } else if (strcmp(cmd, "tib_reset") == 0) {
+        cta_l2cb_resetTIBEventCount();
+        printf("TIB Event Count reset.\n");
+    } else if (strcmp(cmd, "busy_mask") == 0) {
+        if (n > 1) {
+            cta_l2cb_setBusyEnable(parse_int(tokens[1]));
+        } else {
+            uint32_t mask = cta_l2cb_getBusyEnable();
+            printf("Busy Mask: 0x%08X (Slots: ", mask);
+            int first = 1;
+            for (int s = 1; s <= 21; s++) {
+                if (mask & (1U << s)) {
+                    printf("%s%d", first ? "" : ",", s);
+                    first = 0;
+                }
+            }
+            if (first) printf("none");
+            printf(")\n");
+        }
+    } else if (strcmp(cmd, "busy_slot") == 0) {
+        if (n < 3) printf("Usage: busy_slot <slot> <on|off>\n");
+        else {
+            int slot = parse_int(tokens[1]);
+            int on = parse_bool(tokens[2]);
+            cta_l2cb_setBusyEnableSlot(slot, on);
+        }
+    } else if (strcmp(cmd, "busy_stuck") == 0) {
+        uint32_t stuck = cta_l2cb_getBusyStuck();
+        printf("Busy Stuck Status: 0x%08X (Slots: ", stuck);
+        int first = 1;
+        for (int s = 1; s <= 21; s++) {
+            if (stuck & (1U << s)) {
+                printf("%s%d", first ? "" : ",", s);
+                first = 0;
+            }
+        }
+        if (first) printf("none");
+        printf(")\n");
     } else if (strcmp(cmd, "mcfthr") == 0) {
         if (n > 1) cta_l2cb_setMCFThreshold(parse_int(tokens[1]));
         else printf("MCF Threshold: %u (L1 counts)\n", cta_l2cb_getMCFThreshold());
