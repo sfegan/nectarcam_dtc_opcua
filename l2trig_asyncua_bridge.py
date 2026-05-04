@@ -142,11 +142,14 @@ class L2TriggerBridgeServer:
         ("CrateMCFThreshold", 0, ua.VariantType.UInt16, "L2CB MCF threshold (0-512)"),
         ("CrateMCFDelay", 0.0, ua.VariantType.Double, "L2CB MCF delay in ns"),
         ("CrateL1Deadtime", 0.0, ua.VariantType.Double, "L2CB L1 deadtime in ns"),
+        ("CrateTIBEventCount", 0, ua.VariantType.UInt64, "Total TIB event count (64-bit software accumulated)"),
         ("CrateNumMutableModules", 0, ua.VariantType.UInt16, "Total number of modules managed by this server"),
         ("CrateNumPoweredModules", 0, ua.VariantType.UInt16, "Total number of modules currently powered on"),
         ("CrateNumTriggerEnabledModules", 0, ua.VariantType.UInt16, "Total number of modules with trigger enabled"),
         ("BoardSlotId", [], ua.VariantType.UInt16, "List of crate slots enabled in this server"),
         ("BoardFirmwareRevision", [], ua.VariantType.UInt16, "CTDB firmware versions"),
+        ("BoardBusyEnabled", [], ua.VariantType.Boolean, "BUSY enablement status per board"),
+        ("BoardBusyStuckStatus", [], ua.VariantType.Boolean, "BUSY stuck status per board"),
         ("BoardCurrent", [], ua.VariantType.Double, "CTDB board currents in mA"),
         ("BoardCurrentSum", [], ua.VariantType.Double, "Total channel current per CTDB in mA"),
         ("BoardCurrentLimitMin", [], ua.VariantType.Double, "Current limit minimum in mA"),
@@ -246,6 +249,10 @@ class L2TriggerBridgeServer:
         # Stats
         self._powered_count = 0
         self._enabled_count = 0
+        
+        # TIB counter tracking
+        self._tib_accumulator = 0
+        self._last_tib_raw: Optional[int] = None
 
     def _module_to_slot_channel(self, module: int) -> Tuple[int, int]:
         max_module = len(self.active_slots) * CHANNELS_PER_SLOT
@@ -423,6 +430,55 @@ class L2TriggerBridgeServer:
                                           outputs or [a("result", ua.VariantType.String, "Result message")])
             if func.__doc__: await self._set_node_description(node, func.__doc__.strip())
             return node
+
+        @uamethod
+        async def reset_tib_event_count(parent_node):
+            """Reset the hardware TIB event counter and the 64-bit software accumulator."""
+            logger.info("Resetting TIB event counter")
+            async with self._lock: 
+                if not await self._ensure_connected(): return "ERROR: Device not connected"
+                await self.system.reset_tib_event_count()
+                self._tib_accumulator = 0
+                self._last_tib_raw = 0
+            return "OK: TIB event count reset"
+        await add_described_method("ResetTIBEventCount", reset_tib_event_count)
+
+        @uamethod
+        async def set_all_busy_enabled(parent_node, enabled: bool):
+            """Enable or disable BUSY contribution for all active slots."""
+            logger.info(f"Setting all busy enablement to {enabled}")
+            async with self._lock:
+                if not await self._ensure_connected(): return "ERROR: Device not connected"
+                # Use the validated slot mask from the server config
+                mask = self.system.active_mask if enabled else 0
+                await self.system.set_busy_enable_mask(mask)
+            return f"OK: All busy contribution {'enabled' if enabled else 'disabled'}"
+        await add_described_method("SetAllBusyEnabled", set_all_busy_enabled, inputs=[a("enabled", ua.VariantType.Boolean)])
+
+        @uamethod
+        async def set_board_busy_enabled(parent_node, board: int, enabled: bool):
+            """Enable or disable BUSY contribution for a specific board index."""
+            if not 1 <= board <= len(self.active_slots): return f"ERROR: Board index {board} out of range"
+            slot = self.active_slots[board - 1]
+            logger.info(f"Setting busy enablement for board {board} (slot {slot}) to {enabled}")
+            async with self._lock:
+                if not await self._ensure_connected(): return "ERROR: Device not connected"
+                await self.system.set_busy_enable_slot(slot, enabled)
+            return f"OK: Board {board} busy contribution {'enabled' if enabled else 'disabled'}"
+        await add_described_method("SetBoardBusyEnabled", set_board_busy_enabled, 
+                                   inputs=[a("board", ua.VariantType.Int32), a("enabled", ua.VariantType.Boolean)])
+
+        @uamethod
+        async def set_slot_busy_enabled(parent_node, slot: int, enabled: bool):
+            """Enable or disable BUSY contribution for a specific slot ID."""
+            if slot not in self.active_slots: return f"ERROR: Slot {slot} not active"
+            logger.info(f"Setting busy enablement for slot {slot} to {enabled}")
+            async with self._lock:
+                if not await self._ensure_connected(): return "ERROR: Device not connected"
+                await self.system.set_busy_enable_slot(slot, enabled)
+            return f"OK: Slot {slot} busy contribution {'enabled' if enabled else 'disabled'}"
+        await add_described_method("SetSlotBusyEnabled", set_slot_busy_enabled, 
+                                   inputs=[a("slot", ua.VariantType.Int16), a("enabled", ua.VariantType.Boolean)])
 
         @uamethod
         async def emergency_shutdown(parent_node):
@@ -731,11 +787,23 @@ class L2TriggerBridgeServer:
         await self._set_var("CrateMCFDelay", l2cb.mcf_delay_ns, timestamp, sc)
         await self._set_var("CrateL1Deadtime", l2cb.l1_deadtime_ns, timestamp, sc)
 
+        # Handle TIB counter accumulation (16-bit hardware to 64-bit software)
+        if self._last_tib_raw is not None:
+            # Assumes at most one wrap-around between polls
+            diff = (l2cb.tib_event_count - self._last_tib_raw) & 0xFFFF
+            self._tib_accumulator += diff
+        self._last_tib_raw = l2cb.tib_event_count
+        await self._set_var("CrateTIBEventCount", self._tib_accumulator, timestamp, sc)
+
         bc, bcs, bhe = [], [], []
+        bb_en, bb_stuck = [], []
         mc, ms, mpe = [], [], []
         powered_count = 0
 
         for slot in self.active_slots:
+            bb_en.append(bool(l2cb.busy_mask & (1 << slot)))
+            bb_stuck.append(bool(l2cb.busy_stuck & (1 << slot)))
+            
             m = monitoring.get(slot)
             if m:
                 bc.append(m.ctdb_current_ma)
@@ -763,6 +831,8 @@ class L2TriggerBridgeServer:
         
         self._powered_count = powered_count
         await self._set_var("CrateNumPoweredModules", powered_count, timestamp, sc)
+        await self._set_var("BoardBusyEnabled", bb_en, timestamp, sc)
+        await self._set_var("BoardBusyStuckStatus", bb_stuck, timestamp, sc)
         await self._set_var("BoardCurrent", bc, timestamp, sc)
         await self._set_var("BoardCurrentSum", bcs, timestamp, sc)
         await self._set_var("BoardHasErrors", bhe, timestamp, sc)

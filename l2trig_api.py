@@ -151,6 +151,7 @@ class L2TriggerSystem:
                 pass
         self.reader = None
         self.writer = None
+        self.active_mask = 0
 
     def _next_seq(self) -> int:
         self._seq = (self._seq + 1) & 0xFF
@@ -253,6 +254,7 @@ class L2TriggerSystem:
         active_mask = 0
         for s in active_slots:
             active_mask |= (1 << s)
+        self.active_mask = active_mask
         
         imm_masks = [0] * 22
         for s, m in immutable_masks.items():
