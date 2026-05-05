@@ -61,21 +61,27 @@ void 	smc_wr32(unsigned int _addr, unsigned int _value);
 static inline void IOWR_16DIRECT(unsigned int base, unsigned int offset, unsigned short value)
 {
 	smc_wr16(base + offset, value);
+	__atomic_signal_fence(__ATOMIC_SEQ_CST);
 }
 
 static inline unsigned short IORD_16DIRECT(unsigned int base, unsigned int offset)
 {
-	return smc_rd16(base + offset);
+	unsigned short val = smc_rd16(base + offset);
+	__atomic_signal_fence(__ATOMIC_SEQ_CST);
+	return val;
 }
 
 static inline void IOWR_32DIRECT(unsigned int base, unsigned int offset, unsigned int data)
 {
 	smc_wr32(base + offset, data);
+	__atomic_signal_fence(__ATOMIC_SEQ_CST);
 }
 
 static inline unsigned int IORD_32DIRECT(unsigned int base, unsigned int offset)
 {
-	return smc_rd32(base + offset);
+	unsigned int val = smc_rd32(base + offset);
+	__atomic_signal_fence(__ATOMIC_SEQ_CST);
+	return val;
 }
 
 #ifdef __cplusplus

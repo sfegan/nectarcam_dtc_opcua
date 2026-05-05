@@ -147,26 +147,53 @@ inline static uint32_t cta_l2cb_validSlotMask()
 
 // reads timestamp value
 // for internal use only
+// returns 48-bit timestamp in ticks (8ns per tick)
 static inline uint64_t cta_l2cb_readTimestamp(void)
 {
 	uint64_t tmp=0;
 	
-	// latch timestamp with a 0->1 transition of the latch bit
+	// Latch timestamp with a 0->1 transition of the latch bit.
+	// We use explicit fences (inside IOWR/IORD) and delays to ensure the FPGA 
+	// sees the transition and has time to process the latch.
 	uint16_t ctrl = IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_CTRL);
+	
+	// 1. Ensure bit is 0
 	ctrl = changeBitVal16(ctrl, BIT_CTA_L2CB_CTRL_LATCH_TIMESTAMP, 0);
 	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_CTRL, ctrl);
+	
+	// Small delay to ensure the '0' is registered by the FPGA logic
+	struct timespec edge_delay = {0, 1000}; // 1us
+	nanosleep(&edge_delay, NULL);
+	
+	// 2. 0->1 transition
 	ctrl = changeBitVal16(ctrl, BIT_CTA_L2CB_CTRL_LATCH_TIMESTAMP, 1);
 	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_CTRL, ctrl);
 
-	// wait a short time to ensure timestamp is latched and ready to read
-	struct timespec sleep_ts = {0, 200}; // 200ns delay to ensure timestamp is latched and ready to read
-	nanosleep(&sleep_ts, NULL);
+	// 3. Wait for FPGA to capture and stabilize the 48-bit value in readout registers.
+	// While the FPGA latches in nanoseconds, Linux scheduling granularity 
+	// means nanosleep(200ns) is often effectively 10-50us anyway. 
+	// We use 10us here to be explicitly safe.
+	struct timespec latch_delay = {0, 10000}; // 10us
+	nanosleep(&latch_delay, NULL);
 
-	tmp=IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_TSTMP0);
-	tmp|=(uint64_t)IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_TSTMP1) << 16;
-	tmp|=(uint64_t)IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_TSTMP2) << 32;
+	// Read latched values. Fences are now inside IORD_16DIRECT.
+	uint16_t ts0 = IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_TSTMP0);
+	uint16_t ts1 = IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_TSTMP1);
+	uint16_t ts2 = IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_TSTMP2);
+
+	tmp = ts0;
+	tmp |= (uint64_t)ts1 << 16;
+	tmp |= (uint64_t)ts2 << 32;
 
 	return tmp;
+}
+
+// reads timestamp value in nanoseconds
+static inline int cta_l2cb_readTimestampNS(int64_t* _timestamp_ns)
+{
+	if (!_timestamp_ns) return CTA_L2CB_INVALID_PARAMETER;
+	*_timestamp_ns = (int64_t)(cta_l2cb_readTimestamp() * 8);
+	return CTA_L2CB_NO_ERROR;
 }
 
 // get the firmware revision 16bit value
