@@ -164,10 +164,11 @@ typedef struct {
 } l2tcp_payload_config_t;
 
 /* L2TCP_MSG_BATCH_MONITOR_ALL (Response) */
+/* Complete batch payload with all active monitoring entries sent contiguously */
 typedef struct {
     uint8_t count;
-    /* Followed by 'count' instances of l2tcp_payload_monitoring_t */
-} l2tcp_payload_batch_mon_t;
+    l2tcp_payload_monitoring_t entries[L2TCP_MAX_SLOT+1];  /* Max 18 slots (1-9, 13-21) but let's be safe */
+} l2tcp_payload_batch_monitor_full_t;
 
 #pragma pack(pop)
 

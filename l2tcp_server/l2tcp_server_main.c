@@ -99,18 +99,25 @@ static const char* msg_type_to_str(uint8_t type) {
     }
 }
 
-static int send_all(const void *buf, size_t len) {
-    if (g_server.client_fd == -1) return -1;
-    ssize_t n = send(g_server.client_fd, buf, len, 0);
-    if (n != (ssize_t)len) {
-        if (n < 0) {
-            printf("Send error: %s, closing connection\n", strerror(errno));
-        } else {
-            printf("Partial send (%zd/%zu), closing connection\n", n, len);
+static int send_all(int fd, const void *buf, size_t len) {
+    if (fd == -1) return -1;
+    
+    const uint8_t *p = (const uint8_t *)buf;
+    size_t total = 0;
+
+    while (total < len) {
+        ssize_t n = send(fd, p + total, len - total, 0);
+        if (n <= 0) {
+            if (n < 0) {
+                printf("Send error: %s, closing connection\n", strerror(errno));
+            } else {
+                printf("Send returned 0, closing connection\n");
+            }
+            close(fd);
+            g_server.client_fd = -1;
+            return -1;
         }
-        close(g_server.client_fd);
-        g_server.client_fd = -1;
-        return -1;
+        total += n;
     }
     return 0;
 }
@@ -131,8 +138,8 @@ static void send_error(uint8_t seq, uint8_t code, const char *msg) {
     strncpy(resp_err.message, msg, sizeof(resp_err.message) - 1);
     resp_err.message[sizeof(resp_err.message) - 1] = '\0';
 
-    if (send_all(&resp_hdr, sizeof(resp_hdr)) == 0) {
-        send_all(&resp_err, sizeof(resp_err));
+    if (send_all(g_server.client_fd, &resp_hdr, sizeof(resp_hdr)) == 0) {
+        send_all(g_server.client_fd, &resp_err, sizeof(resp_err));
     }
 }
 
@@ -141,7 +148,7 @@ static void send_ack(uint8_t seq, int show_msg) {
         printf("  -> ACK\n");
     }
     l2tcp_header_t resp_hdr = { L2TCP_MSG_ACK, seq, 0 };
-    send_all(&resp_hdr, sizeof(resp_hdr));
+    send_all(g_server.client_fd, &resp_hdr, sizeof(resp_hdr));
 }
 
 /* --- Power Logic --- */
@@ -333,8 +340,8 @@ static void handle_request() {
                 printf("  -> HELLO (ver: %d, negotiated: %d)\n", resp.value, g_server.is_negotiated);
             }
 
-            if (send_all(&resp_hdr, sizeof(resp_hdr)) == 0) {
-                send_all(&resp, sizeof(resp));
+            if (send_all(g_server.client_fd, &resp_hdr, sizeof(resp_hdr)) == 0) {
+                send_all(g_server.client_fd, &resp, sizeof(resp));
             }
             return;
         }
@@ -448,8 +455,8 @@ static void handle_request() {
             
             if (g_server.verbose > 1) printf("  -> L2CB STATE (fw: 0x%04x, ts: %llu, tib: %u)\n", resp.fw_rev, (unsigned long long)resp.timestamp, resp.tib_event_count);
 
-            if (send_all(&resp_hdr, sizeof(resp_hdr)) == 0) {
-                send_all(&resp, sizeof(resp));
+            if (send_all(g_server.client_fd, &resp_hdr, sizeof(resp_hdr)) == 0) {
+                send_all(g_server.client_fd, &resp, sizeof(resp));
             }
             break;        
         }
@@ -572,8 +579,8 @@ static void handle_request() {
 
                 if (g_server.verbose > 1) printf("  -> MONITORING S%d\n", slot);
 
-                if (send_all(&resp_hdr, sizeof(resp_hdr)) == 0) {
-                    send_all(&resp, sizeof(resp));
+                if (send_all(g_server.client_fd, &resp_hdr, sizeof(resp_hdr)) == 0) {
+                    send_all(g_server.client_fd, &resp, sizeof(resp));
                 }
             }
             break;
@@ -584,25 +591,35 @@ static void handle_request() {
                 if (is_slot_active(s)) count++;
             }
             
-            l2tcp_header_t resp_hdr = { L2TCP_MSG_BATCH_MONITOR_ALL, hdr.seq, 1 + count * sizeof(l2tcp_payload_monitoring_t) };
+            /* Use static buffer to avoid large stack allocation on embedded systems */
+            static l2tcp_payload_batch_monitor_full_t batch;
+            memset(&batch, 0, sizeof(batch));
+            batch.count = (uint8_t)count;
+            
+            int idx = 0;
+            for (int s = L2TCP_MIN_SLOT; s <= L2TCP_MAX_SLOT && idx < count; s++) {
+                if (!is_slot_active(s)) continue;
+                
+                l2tcp_payload_monitoring_t *resp = &batch.entries[idx];
+                resp->slot = (uint8_t)s;
+                cta_ctdb_getPowerCurrent(s, 0, &resp->ctdb_curr);
+                for (int i = 0; i < 15; i++) cta_ctdb_getPowerCurrent(s, i + 1, &resp->ch_curr[i]);
+                cta_ctdb_getOverCurrentErrors(s, &resp->over_curr_mask);
+                cta_ctdb_getUnderCurrentErrors(s, &resp->under_curr_mask);
+                cta_ctdb_getPowerEnabled(s, &resp->pwr_enabled_mask);
+                idx++;
+            }
+            
+            /* Calculate actual payload size: count byte + populated entries */
+            size_t payload_size = sizeof(uint8_t) + count * sizeof(l2tcp_payload_monitoring_t);
+            
+            l2tcp_header_t resp_hdr = { L2TCP_MSG_BATCH_MONITOR_ALL, hdr.seq, (uint16_t)payload_size };
 
-            if (g_server.verbose > 1) printf("  -> BATCH MONITOR (%d slots)\n", count);
+            if (g_server.verbose > 1) printf("  -> BATCH MONITOR (%d slots, %zu bytes)\n", count, payload_size);
 
-            if (send_all(&resp_hdr, sizeof(resp_hdr)) == 0) {
-                uint8_t u8_count = (uint8_t)count;
-                if (send_all(&u8_count, 1) == 0) {
-                    for (int s = L2TCP_MIN_SLOT; s <= L2TCP_MAX_SLOT; s++) {
-                        if (!is_slot_active(s)) continue;
-                        l2tcp_payload_monitoring_t resp;
-                        resp.slot = (uint8_t)s;
-                        cta_ctdb_getPowerCurrent(s, 0, &resp.ctdb_curr);
-                        for (int i = 0; i < 15; i++) cta_ctdb_getPowerCurrent(s, i + 1, &resp.ch_curr[i]);
-                        cta_ctdb_getOverCurrentErrors(s, &resp.over_curr_mask);
-                        cta_ctdb_getUnderCurrentErrors(s, &resp.under_curr_mask);
-                        cta_ctdb_getPowerEnabled(s, &resp.pwr_enabled_mask);
-                        if (send_all(&resp, sizeof(resp)) != 0) break;
-                    }
-                }
+            /* Send header + complete batch payload atomically */
+            if (send_all(g_server.client_fd, &resp_hdr, sizeof(resp_hdr)) == 0) {
+                send_all(g_server.client_fd, &batch, payload_size);
             }
             break;
         }
@@ -623,8 +640,8 @@ static void handle_request() {
 
                 if (g_server.verbose > 1) printf("  -> CONFIG S%d\n", slot);
 
-                if (send_all(&resp_hdr, sizeof(resp_hdr)) == 0) {
-                    send_all(&resp, sizeof(resp));
+                if (send_all(g_server.client_fd, &resp_hdr, sizeof(resp_hdr)) == 0) {
+                    send_all(g_server.client_fd, &resp, sizeof(resp));
                 }
             }
             break;
