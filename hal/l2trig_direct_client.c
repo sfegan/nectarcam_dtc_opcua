@@ -20,6 +20,62 @@
 #include "l2trig_hal.h"
 #include "smc.h"
 
+struct named_reg {
+    const char* name;
+    uint16_t addr;
+};
+
+struct named_reg l2cb_regs[] = {
+    {"CTRL", ADDR_CTA_L2CB_CTRL},
+    {"STAT", ADDR_CTA_L2CB_STAT},
+    {"SPAD", ADDR_CTA_L2CB_SPAD},
+    {"SPTX", ADDR_CTA_L2CB_SPTX},
+    {"SPRX", ADDR_CTA_L2CB_SPRX},
+    {"TSTMP0", ADDR_CTA_L2CB_TSTMP0},
+    {"TSTMP1", ADDR_CTA_L2CB_TSTMP1},
+    {"TSTMP2", ADDR_CTA_L2CB_TSTMP2},
+    {"TEST", ADDR_CTA_L2CB_TEST},
+    {"L1SEL", ADDR_CTA_L2CB_L1SEL},
+    {"L1MSK", ADDR_CTA_L2CB_L1MSK},
+    {"L1DEL", ADDR_CTA_L2CB_L1DEL},
+    {"MUTHR", ADDR_CTA_L2CB_MUTHR},
+    {"MUDEL", ADDR_CTA_L2CB_MUDEL},
+    {"L2DT",  ADDR_CTA_L2CB_L1DT},
+    {"TIBEVCT", ADDR_CTA_L2CB_TIBEVCT},
+    {"BSYMSKL", ADDR_CTA_L2CB_BSYMSKL},
+    {"BSYMSKR", ADDR_CTA_L2CB_BSYMSKR},
+    {"FREV",  ADDR_CTA_L2CB_FREV}
+};
+
+struct named_reg ctdb_regs[] = {
+    {"PONF", ADDR_CTA_CTDB_PONF},
+    {"CUR_00", ADDR_CTA_CTDB_CUR_00},
+    {"CUR_01", ADDR_CTA_CTDB_CUR_00+1},
+    {"CUR_02", ADDR_CTA_CTDB_CUR_00+2},
+    {"CUR_03", ADDR_CTA_CTDB_CUR_00+3},
+    {"CUR_04", ADDR_CTA_CTDB_CUR_00+4},
+    {"CUR_05", ADDR_CTA_CTDB_CUR_00+5},
+    {"CUR_06", ADDR_CTA_CTDB_CUR_00+6},
+    {"CUR_07", ADDR_CTA_CTDB_CUR_00+7},
+    {"CUR_08", ADDR_CTA_CTDB_CUR_00+8},
+    {"CUR_09", ADDR_CTA_CTDB_CUR_00+9},
+    {"CUR_10", ADDR_CTA_CTDB_CUR_00+10},
+    {"CUR_11", ADDR_CTA_CTDB_CUR_00+11},
+    {"CUR_12", ADDR_CTA_CTDB_CUR_00+12},
+    {"CUR_13", ADDR_CTA_CTDB_CUR_00+13},
+    {"CUR_14", ADDR_CTA_CTDB_CUR_00+14},
+    {"CUR_15", ADDR_CTA_CTDB_CUR_00+15},
+    {"CUR_MIN", ADDR_CTA_CTDB_CUR_MIN},
+    {"CUR_MAX", ADDR_CTA_CTDB_CUR_MAX},
+    {"CTRL", ADDR_CTA_CTDB_CTRL},
+    {"STAT", ADDR_CTA_CTDB_STAT},
+    {"PON_TIME", ADDR_CTA_CTDB_PON_TIME},
+    {"POFF_TIME", ADDR_CTA_CTDB_POFF_TIME},
+    {"ADC_SRATE", ADDR_CTA_CTDB_ADC_SRATE},
+    {"DEBUG", ADDR_CTA_CTDB_DEBUG},
+    {"FREV", ADDR_CTA_CTDB_FREV}
+};
+
 // ============================================================================
 // Parsing Utilities
 // ============================================================================
@@ -80,9 +136,9 @@ void print_help() {
     printf("  ctdb_fw <slot>        : Get CTDB firmware revision\n");
     printf("  debug <slot> [val]    : Get or set debug pins\n");
     printf("  sreg <slot> <addr> [v]: Read or write slave register\n");
-    printf("  sregscan <slot>       : Scan and print CTDB slave registers\n");
+    printf("  sregscan <slot> [all] : Scan and print named (or all) CTDB slave registers\n");
     printf("  reg <addr> [val]      : Read or write L2CB register\n");
-    printf("  regscan               : Scan and print L2CB registers\n");
+    printf("  regscan [all]         : Scan and print named (or all) L2CB registers\n");
     printf("  help                  : Show this help message\n");
     printf("  exit/quit             : Exit client\n");
     printf("\nNote: Values can be decimal or hex (0x...). Booleans: on/off, true/false, 1/0, yes/no.\n");
@@ -388,8 +444,9 @@ void process_line(char* line) {
             }
         }
     } else if (strcmp(cmd, "sreg") == 0) {
-        if (n < 3) printf("Usage: sreg <slot> <addr> [val]\n");
-        else {
+        if (n < 3) {
+            printf("Usage: sreg <slot> <addr> [val]\n");
+        } else {
             int slot = parse_int(tokens[1]);
             int addr = parse_int(tokens[2]);
             if (n > 3) cta_ctdb_setSlaveRegister(slot, addr, parse_int(tokens[3]));
@@ -400,8 +457,9 @@ void process_line(char* line) {
             }
         }
     } else if (strcmp(cmd, "sregscan") == 0) {
-        if (n < 2) printf("Usage: sregscan <slot>\n");
-        else {
+        if (n < 2) {
+            printf("Usage: sregscan <slot>\n");
+        }else if (n > 2 && strcmp(tokens[2], "all") == 0) {
             int slot = parse_int(tokens[1]);
             for (int addr = 0x00; addr <= 0xFF; addr++) {
                 uint16_t val;
@@ -409,11 +467,19 @@ void process_line(char* line) {
                 printf("0x%02X: 0x%04X  ", addr, val);
                 if ((addr + 1) % 8 == 0) printf("\n");
             }
-            printf("\n");
+        } else {
+            int slot = parse_int(tokens[1]);
+            for(int i = 0; i < sizeof(ctdb_regs)/sizeof(ctdb_regs[0]); i++) {
+                uint16_t val;
+                cta_ctdb_getSlaveRegister(slot, ctdb_regs[i].addr, &val);
+                printf("0x%02X %-10s : 0x%04X\n", ctdb_regs[i].addr, ctdb_regs[i].name, val);
+            }
         }
+        printf("\n");
     } else if (strcmp(cmd, "reg") == 0) {
-        if (n < 2) printf("Usage: reg <addr> [val]\n");
-        else {
+        if (n < 2) {
+            printf("Usage: reg <addr> [val]\n");
+        } else {
             int addr = parse_int(tokens[1]);
             if (n > 2) IOWR_16DIRECT(BASE_CTA_L2CB, addr, parse_int(tokens[2]));
             else {
@@ -422,10 +488,17 @@ void process_line(char* line) {
             }
         }
     } else if (strcmp(cmd, "regscan") == 0) {
-        for (int addr = 0x00; addr <= 0xFE; addr += 2) {
-            uint16_t val = IORD_16DIRECT(BASE_CTA_L2CB, addr);
-            printf("0x%02X: 0x%04X  ", addr, val);
-            if (((addr / 2) + 1) % 8 == 0) printf("\n");
+        if (n > 1 && strcmp(tokens[1], "all") == 0) {
+            for (int addr = 0x00; addr <= 0xFE; addr += 2) {
+                uint16_t val = IORD_16DIRECT(BASE_CTA_L2CB, addr);
+                printf("0x%02X: 0x%04X  ", addr, val);
+                if (((addr / 2) + 1) % 8 == 0) printf("\n");
+            }
+        } else {
+            for(int i = 0; i < sizeof(l2cb_regs)/sizeof(l2cb_regs[0]); i++) {
+                uint16_t val = IORD_16DIRECT(BASE_CTA_L2CB, l2cb_regs[i].addr);
+                printf("0x%02X %-10s : 0x%04X\n", l2cb_regs[i].addr, l2cb_regs[i].name, val);
+            }
         }
         printf("\n");
     } else if (strcmp(cmd, "help") == 0 || strcmp(cmd, "?") == 0) {

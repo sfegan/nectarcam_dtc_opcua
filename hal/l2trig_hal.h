@@ -98,13 +98,15 @@ CEXTERN void cta_l2cb_spi_set_delay_delays_export(int64_t _min_command_delay_ns,
 #define ADDR_CTA_CTDB_OVER_CUR	0x13		// over current detected status register
 #define ADDR_CTA_CTDB_UNDER_CUR	0x14		// under current detected status register
 #define ADDR_CTA_CTDB_CTRL		0x20		// control register
-#define BIT_CTA_CTDB_STAT_ERROR    0		// over or under current error bit
-#define BIT_CTA_CTDB_STAT_ADC_OK   1		// adc values available
-
 #define ADDR_CTA_CTDB_STAT		0x21		// status register
+#define ADDR_CTA_CTDB_PON_TIME  0xFB		// power on time in seconds, read-only, reset on power cycle
+#define ADDR_CTA_CTDB_POFF_TIME 0xFC		// power off time in seconds, read-only, reset on power cycle
 #define ADDR_CTA_CTDB_ADC_SRATE	0xFD		// adc rate register
 #define ADDR_CTA_CTDB_DEBUG		0xFE		// programmable usage of the test pins sel0..3
 #define ADDR_CTA_CTDB_FREV		0xff		// firmware revision
+
+#define BIT_CTA_CTDB_STAT_ERROR    0		// over or under current error bit
+#define BIT_CTA_CTDB_STAT_ADC_OK   1		// adc values available
 
 // *** HAL error codes definitions
 #define CTA_L2CB_NO_ERROR 			0
