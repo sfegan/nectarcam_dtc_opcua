@@ -75,6 +75,27 @@ class L2CBStatus:
     busy_mask: int
     busy_stuck: int
 
+    @classmethod
+    def disconnected(cls) -> 'L2CBStatus':
+        """Create a status object representing hardware disconnection.
+        
+        All fields are set to zero/False values.
+        """
+        return cls(
+            firmware_version=0,
+            uptime=0,
+            mcf_enabled=False,
+            busy_glitch_filter_enabled=False,
+            tib_trigger_busy_block_enabled=False,
+            mcf_threshold=0,
+            mcf_delay_ns=0.0,
+            l1_deadtime_ns=0.0,
+            tib_event_count=0,
+            busy_mask=0,
+            busy_stuck=0
+        )
+
+
 @dataclass
 class CTDBMonitoringData:
     slot: int
