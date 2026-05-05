@@ -882,7 +882,7 @@ class L2TriggerBridgeServer:
     async def _do_poll_fast(self, now: datetime.datetime):
         """Perform high-frequency polling and update variables"""
         if not await self._ensure_connected():
-            await self._write_fast_data(L2CBStatus(0,0,False,False,False,0,0,0), {}, self._last_fast_poll_time, now)
+            await self._write_fast_data(L2CBStatus(0, 0, False, False, False, 0, 0.0, 0.0, 0, 0, 0), {}, self._last_fast_poll_time, now)
             await self._write_slow_data({}, self._last_slow_poll_time)
             return
 
@@ -896,7 +896,7 @@ class L2TriggerBridgeServer:
         except Exception as e:
             logger.error(f"Fast poll error: {e}")
             self._connected = False
-            await self._write_fast_data(L2CBStatus(0,0,False,False,False,0,0,0), {}, self._last_fast_poll_time, now)
+            await self._write_fast_data(L2CBStatus(0, 0, False, False, False, 0, 0.0, 0.0, 0, 0, 0), {}, self._last_fast_poll_time, now)
             await self._write_slow_data({}, self._last_slow_poll_time)
 
     async def _do_poll_slow(self, now: datetime.datetime):
