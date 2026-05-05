@@ -64,22 +64,23 @@ void print_help() {
     printf("  deadtime [val]        : Get or set L1 deadtime (5ns/step)\n");
     printf("  trigmask <slot> [mask]: Get or set trigger mask (bit 0 masked)\n");
     printf("  trig <slot> <ch> [on/off]: Get or set trigger for channel\n");
-    printf("  alltrig <on|off>      : Set all trigger masks to 0xFFFE or 0x0000\n");
+    printf("  alltrig [on|off]      : Set all or show matrix of trigger masks\n");
     printf("  delay <slot> <ch> [v] : Get or set trigger delay (37ps/step)\n");
-    printf("  alldelay <val>        : Set trigger delay for all channels (37ps/step)\n");
+    printf("  alldelay [val]        : Set all or show matrix of trigger delays\n");
     printf("  powermask <slot> [msk]: Get or set power mask (bit 0 masked)\n");
     printf("  power <slot> <ch> [o/f]: Get or set power for channel\n");
-    printf("  allpower <on|off>     : Set all power channels on all slots\n");
+    printf("  allpower [on|off]     : Set all or show matrix of power channels\n");
     printf("  curmax <slot> [val]   : Get or set max current limit (0.485mA/step)\n");
-    printf("  allcurmax <val>       : Set max current limit for all slots\n");
+    printf("  allcurmax [val]       : Set all or show matrix of max current limits\n");
     printf("  curmin <slot> [val]   : Get or set min current limit (0.485mA/step)\n");
-    printf("  allcurmin <val>       : Set min current limit for all slots\n");
+    printf("  allcurmin [val]       : Set all or show matrix of min current limits\n");
     printf("  cur <slot> <ch>       : Get channel current (code & mA)\n");
     printf("  under <slot>          : Get under-current error mask\n");
     printf("  over <slot>           : Get over-current error mask\n");
     printf("  ctdb_fw <slot>        : Get CTDB firmware revision\n");
     printf("  debug <slot> [val]    : Get or set debug pins\n");
-    printf("  reg <slot> <addr> [v] : Read or write slave register\n");
+    printf("  sreg <slot> <addr> [v]: Read or write slave register\n");
+    printf("  reg <addr> [val]      : Read or write L2CB register\n");
     printf("  help                  : Show this help message\n");
     printf("  exit/quit             : Exit client\n");
     printf("\nNote: Values can be decimal or hex (0x...). Booleans: on/off, true/false, 1/0, yes/no.\n");
@@ -193,11 +194,24 @@ void process_line(char* line) {
             else printf("Slot %d Ch %d Trigger: %s\n", slot, ch, bool_to_str(cta_l2cb_getL1TriggerChannelEnabled(slot, ch)));
         }
     } else if (strcmp(cmd, "alltrig") == 0) {
-        if (n < 2) printf("Usage: alltrig <on|off>\n");
-        else {
+        if (n < 2) {
+            int slots[] = CTA_L2CB_SLOT_LIST;
+            printf("      ");
+            for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) printf("%3d", slots[s]);
+            printf("\n");
+            for (int ch = 1; ch <= 15; ch++) {
+                printf("Ch%02d:", ch);
+                for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
+                    int on = cta_l2cb_getL1TriggerChannelEnabled(slots[s], ch);
+                    printf("%3s", on ? "ON" : ".");
+                }
+                printf("\n");
+            }
+        } else {
             int on = parse_bool(tokens[1]);
             uint16_t mask = on ? 0xFFFE : 0x0000;
-            for (int s = 1; s <= 21; s++) if (cta_l2cb_isValidSLot(s)) cta_l2cb_setL1TriggerEnabled(s, mask);
+            int slots[] = CTA_L2CB_SLOT_LIST;
+            for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) cta_l2cb_setL1TriggerEnabled(slots[s], mask);
         }
     } else if (strcmp(cmd, "delay") == 0) {
         if (n < 3) printf("Usage: delay <slot> <ch> [val]\n");
@@ -211,13 +225,23 @@ void process_line(char* line) {
             }
         }
     } else if (strcmp(cmd, "alldelay") == 0) {
-        if (n < 2) printf("Usage: alldelay <val>\n");
-        else {
-            int val = parse_int(tokens[1]);
-            for (int s = 1; s <= 21; s++) {
-                if (cta_l2cb_isValidSLot(s)) {
-                    for (int ch = 1; ch <= 15; ch++) cta_l2cb_setL1TriggerDelay(s, ch, val);
+        if (n < 2) {
+            int slots[] = CTA_L2CB_SLOT_LIST;
+            printf("      ");
+            for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) printf("%5d", slots[s]);
+            printf("\n");
+            for (int ch = 1; ch <= 15; ch++) {
+                printf("Ch%02d:", ch);
+                for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
+                    printf("%5u", cta_l2cb_getL1TriggerDelay(slots[s], ch));
                 }
+                printf("\n");
+            }
+        } else {
+            int val = parse_int(tokens[1]);
+            int slots[] = CTA_L2CB_SLOT_LIST;
+            for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
+                for (int ch = 1; ch <= 15; ch++) cta_l2cb_setL1TriggerDelay(slots[s], ch, val);
             }
         }
     } else if (strcmp(cmd, "powermask") == 0) {
@@ -244,8 +268,23 @@ void process_line(char* line) {
             }
         }
     } else if (strcmp(cmd, "allpower") == 0) {
-        if (n < 2) printf("Usage: allpower <on|off>\n");
-        else cta_ctdb_setPowerEnabledToAll(parse_bool(tokens[1]));
+        if (n < 2) {
+            int slots[] = CTA_L2CB_SLOT_LIST;
+            printf("      ");
+            for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) printf("%3d", slots[s]);
+            printf("\n");
+            for (int ch = 1; ch <= 15; ch++) {
+                printf("Ch%02d:", ch);
+                for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
+                    int on;
+                    cta_ctdb_getPowerChannelEnabled(slots[s], ch, &on);
+                    printf("%3s", on ? "ON" : ".");
+                }
+                printf("\n");
+            }
+        } else {
+            cta_ctdb_setPowerEnabledToAll(parse_bool(tokens[1]));
+        }
     } else if (strcmp(cmd, "curmax") == 0) {
         if (n < 2) printf("Usage: curmax <slot> [val]\n");
         else {
@@ -258,10 +297,21 @@ void process_line(char* line) {
             }
         }
     } else if (strcmp(cmd, "allcurmax") == 0) {
-        if (n < 2) printf("Usage: allcurmax <val>\n");
-        else {
+        if (n < 2) {
+            int slots[] = CTA_L2CB_SLOT_LIST;
+            printf("Slot: ");
+            for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) printf("%5d", slots[s]);
+            printf("\nVal:  ");
+            for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
+                uint16_t val;
+                cta_ctdb_getPowerCurrentMax(slots[s], &val);
+                printf("%5u", val);
+            }
+            printf("\n");
+        } else {
             int val = parse_int(tokens[1]);
-            for (int s = 1; s <= 21; s++) if (cta_l2cb_isValidSLot(s)) cta_ctdb_setPowerCurrentMax(s, val);
+            int slots[] = CTA_L2CB_SLOT_LIST;
+            for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) cta_ctdb_setPowerCurrentMax(slots[s], val);
         }
     } else if (strcmp(cmd, "curmin") == 0) {
         if (n < 2) printf("Usage: curmin <slot> [val]\n");
@@ -324,8 +374,8 @@ void process_line(char* line) {
                 printf("Slot %d Debug Pins: 0x%04X\n", slot, val);
             }
         }
-    } else if (strcmp(cmd, "reg") == 0) {
-        if (n < 3) printf("Usage: reg <slot> <addr> [val]\n");
+    } else if (strcmp(cmd, "sreg") == 0) {
+        if (n < 3) printf("Usage: sreg <slot> <addr> [val]\n");
         else {
             int slot = parse_int(tokens[1]);
             int addr = parse_int(tokens[2]);
@@ -334,6 +384,16 @@ void process_line(char* line) {
                 uint16_t val;
                 cta_ctdb_getSlaveRegister(slot, addr, &val);
                 printf("Slot %d Reg 0x%02X: 0x%04X\n", slot, addr, val);
+            }
+        }
+    } else if (strcmp(cmd, "reg") == 0) {
+        if (n < 2) printf("Usage: reg <addr> [val]\n");
+        else {
+            int addr = parse_int(tokens[1]);
+            if (n > 2) IOWR_16DIRECT(BASE_CTA_L2CB, addr, parse_int(tokens[2]));
+            else {
+                uint16_t val = IORD_16DIRECT(BASE_CTA_L2CB, addr);
+                printf("L2CB Reg 0x%02X: 0x%04X\n", addr, val);
             }
         }
     } else if (strcmp(cmd, "help") == 0 || strcmp(cmd, "?") == 0) {
