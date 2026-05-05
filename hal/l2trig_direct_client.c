@@ -469,7 +469,7 @@ void process_line(char* line) {
             }
         } else {
             int slot = parse_int(tokens[1]);
-            for(int i = 0; i < sizeof(ctdb_regs)/sizeof(ctdb_regs[0]); i++) {
+            for(unsigned i = 0; i < sizeof(ctdb_regs)/sizeof(ctdb_regs[0]); i++) {
                 uint16_t val;
                 cta_ctdb_getSlaveRegister(slot, ctdb_regs[i].addr, &val);
                 printf("0x%02X %-10s : 0x%04X\n", ctdb_regs[i].addr, ctdb_regs[i].name, val);
@@ -495,7 +495,7 @@ void process_line(char* line) {
                 if (((addr / 2) + 1) % 8 == 0) printf("\n");
             }
         } else {
-            for(int i = 0; i < sizeof(l2cb_regs)/sizeof(l2cb_regs[0]); i++) {
+            for(unsigned i = 0; i < sizeof(l2cb_regs)/sizeof(l2cb_regs[0]); i++) {
                 uint16_t val = IORD_16DIRECT(BASE_CTA_L2CB, l2cb_regs[i].addr);
                 printf("0x%02X %-10s : 0x%04X\n", l2cb_regs[i].addr, l2cb_regs[i].name, val);
             }
