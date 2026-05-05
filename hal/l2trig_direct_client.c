@@ -80,7 +80,9 @@ void print_help() {
     printf("  ctdb_fw <slot>        : Get CTDB firmware revision\n");
     printf("  debug <slot> [val]    : Get or set debug pins\n");
     printf("  sreg <slot> <addr> [v]: Read or write slave register\n");
+    printf("  sregscan <slot>       : Scan and print CTDB slave registers\n");
     printf("  reg <addr> [val]      : Read or write L2CB register\n");
+    printf("  regscan               : Scan and print L2CB registers\n");
     printf("  help                  : Show this help message\n");
     printf("  exit/quit             : Exit client\n");
     printf("\nNote: Values can be decimal or hex (0x...). Booleans: on/off, true/false, 1/0, yes/no.\n");
@@ -397,6 +399,18 @@ void process_line(char* line) {
                 printf("Slot %d Reg 0x%02X: 0x%04X\n", slot, addr, val);
             }
         }
+    } else if (strcmp(cmd, "sregscan") == 0) {
+        if (n < 2) printf("Usage: sregscan <slot>\n");
+        else {
+            int slot = parse_int(tokens[1]);
+            for (int addr = 0x00; addr <= 0xFF; addr++) {
+                uint16_t val;
+                cta_ctdb_getSlaveRegister(slot, addr, &val);
+                printf("0x%02X: 0x%04X  ", addr, val);
+                if ((addr + 1) % 8 == 0) printf("\n");
+            }
+            printf("\n");
+        }
     } else if (strcmp(cmd, "reg") == 0) {
         if (n < 2) printf("Usage: reg <addr> [val]\n");
         else {
@@ -407,6 +421,13 @@ void process_line(char* line) {
                 printf("L2CB Reg 0x%02X: 0x%04X\n", addr, val);
             }
         }
+    } else if (strcmp(cmd, "regscan") == 0) {
+        for (int addr = 0x00; addr <= 0xFE; addr += 2) {
+            uint16_t val = IORD_16DIRECT(BASE_CTA_L2CB, addr);
+            printf("0x%02X: 0x%04X  ", addr, val);
+            if (((addr / 2) + 1) % 8 == 0) printf("\n");
+        }
+        printf("\n");
     } else if (strcmp(cmd, "help") == 0 || strcmp(cmd, "?") == 0) {
         print_help();
     } else if (strcmp(cmd, "exit") == 0 || strcmp(cmd, "quit") == 0) {
