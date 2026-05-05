@@ -96,9 +96,17 @@ The **Direct Client** (`l2trig_direct_client`) provides native access to the har
 | `deadtime [val]` | Get/Set L1 deadtime (5ns steps, 0-255) |
 | `trigmask <slot> [m]` | Get/Set trigger mask (16-bit hex) |
 | `trig <slot> <ch> [o]`| Get/Set trigger for specific channel |
-| `alltrig <on\|off>` | Enable/Disable all trigger channels |
+| `alltrig [on\|off]` | Set all or show matrix of trigger masks |
+| `alldelay [val]` | Set all or show matrix of trigger delays |
+| `reg <addr> [val]` | Read or write L2CB register |
+| `regscan [all]` | Scan and print L2CB named (or all) registers |
+| `sreg <slot> <addr> [v]` | Read or write slave (CTDB) register |
+| `sregscan <slot> [all]` | Scan and print named (or all) CTDB slave registers from one slot|
+| `allsregscan [all]` | Scan and print named (or all) CTDB slave registers from all slots |
 | `powermask <slot> [m]`| Get/Set power mask (16-bit hex) |
-| `allpower <on\|off>` | Set power for all channels |
+| `allpower [on\|off]` | Set all or show matrix of power channels |
+| `allcurmax [val]` | Set all or show vector of max current limits |
+| `allcurmin [val]` | Set all or show vector of min current limits |
 
 The client can be used interactively, allowing commands to be typed from the terminal, or via a script to allow commands to be piped or read from a file. For example, the following will pre-configure the system parameters for the muon candidate flag and disable the trigger from the unused channels in slot 21:
 

@@ -135,10 +135,11 @@ void print_help() {
     printf("  over <slot>           : Get over-current error mask\n");
     printf("  ctdb_fw <slot>        : Get CTDB firmware revision\n");
     printf("  debug <slot> [val]    : Get or set debug pins\n");
-    printf("  sreg <slot> <addr> [v]: Read or write slave register\n");
-    printf("  sregscan <slot> [all] : Scan and print named (or all) CTDB slave registers\n");
     printf("  reg <addr> [val]      : Read or write L2CB register\n");
     printf("  regscan [all]         : Scan and print named (or all) L2CB registers\n");
+    printf("  sreg <slot> <addr> [v]: Read or write slave register\n");
+    printf("  sregscan <slot> [all] : Scan and print named (or all) CTDB slave registers from one slot\n");
+    printf("  allsregscan [all]     : Scan and print named (or all) CTDB slave registers from all slots\n");
     printf("  help                  : Show this help message\n");
     printf("  exit/quit             : Exit client\n");
     printf("\nNote: Values can be decimal or hex (0x...). Booleans: on/off, true/false, 1/0, yes/no.\n");
@@ -473,6 +474,40 @@ void process_line(char* line) {
                 uint16_t val;
                 cta_ctdb_getSlaveRegister(slot, ctdb_regs[i].addr, &val);
                 printf("0x%02X %-10s : 0x%04X\n", ctdb_regs[i].addr, ctdb_regs[i].name, val);
+            }
+        }
+        printf("\n");
+    } else if (strcmp(cmd, "allsregscan") == 0) {
+        int slots[] = CTA_L2CB_SLOT_LIST;
+        if (n > 1 && strcmp(tokens[1], "all") == 0) {
+            printf("     ");
+            for (int slot = 0; slot < CTA_L2CB_SLOT_COUNT; slot++) {
+                printf("  Slot%02d", slots[slot]);
+            }
+            printf("\n");
+            for (int addr = 0x00; addr <= 0xFF; addr++) {
+                printf("0x%02X:", addr);
+                for (int slot = 0; slot < CTA_L2CB_SLOT_COUNT; slot++) {
+                    uint16_t val;
+                    cta_ctdb_getSlaveRegister(slots[slot], addr, &val);
+                    printf("  0x%04X", val);
+                }
+                printf("\n");
+            }
+        } else {
+            printf("                ");
+            for (int slot = 0; slot < CTA_L2CB_SLOT_COUNT; slot++) {
+                printf("  Slot%02d", slots[slot]);
+            }
+            printf("\n");
+            for(unsigned i = 0; i < sizeof(ctdb_regs)/sizeof(ctdb_regs[0]); i++) {
+                printf("0x%02X %-10s:", ctdb_regs[i].addr, ctdb_regs[i].name);
+                for (int slot = 0; slot < CTA_L2CB_SLOT_COUNT; slot++) {
+                    uint16_t val;
+                    cta_ctdb_getSlaveRegister(slots[slot], ctdb_regs[i].addr, &val);
+                    printf("  0x%04X", val);
+                }
+                printf("\n");
             }
         }
         printf("\n");
