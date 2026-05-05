@@ -325,10 +325,21 @@ void process_line(char* line) {
             }
         }
     } else if (strcmp(cmd, "allcurmin") == 0) {
-        if (n < 2) printf("Usage: allcurmin <val>\n");
-        else {
+        if (n < 2) {
+            int slots[] = CTA_L2CB_SLOT_LIST;
+            printf("Slot: ");
+            for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) printf("%5d", slots[s]);
+            printf("\nVal:  ");
+            for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
+                uint16_t val;
+                cta_ctdb_getPowerCurrentMin(slots[s], &val);
+                printf("%5u", val);
+            }
+            printf("\n");
+        } else {
             int val = parse_int(tokens[1]);
-            for (int s = 1; s <= 21; s++) if (cta_l2cb_isValidSLot(s)) cta_ctdb_setPowerCurrentMin(s, val);
+            int slots[] = CTA_L2CB_SLOT_LIST;
+            for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) cta_ctdb_setPowerCurrentMin(slots[s], val);
         }
     } else if (strcmp(cmd, "cur") == 0) {
         if (n < 3) printf("Usage: cur <slot> <ch>\n");
