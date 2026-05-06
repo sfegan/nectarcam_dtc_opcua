@@ -109,7 +109,7 @@ const char* bool_to_str(int val) {
 
 void handle_tcp_test() {
     int slots[] = CTA_L2CB_SLOT_LIST;
-    uint16_t dummy;
+    volatile uint16_t dummy;
 
     printf("\nTCP Emulation Test (exact mon_all sequence):\n");
     struct timespec start, end;
