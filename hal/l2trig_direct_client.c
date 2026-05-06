@@ -131,6 +131,9 @@ void handle_scan_test(int repeat) {
 
     for (int r = 0; r < repeat; r++) {
         for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
+            struct timespec ts0, ts1;
+            if (repeat == 1) clock_gettime(CLOCK_MONOTONIC, &ts0);
+
             for (int i = 0; i < num_regs; i++) {
                 uint16_t val;
                 int err = cta_ctdb_getSlaveRegister(slots[s], ctdb_regs[i].addr, &val);
@@ -142,6 +145,12 @@ void handle_scan_test(int repeat) {
                     }
                 }
                 last_vals[s][i] = val;
+            }
+
+            if (repeat == 1) {
+                clock_gettime(CLOCK_MONOTONIC, &ts1);
+                printf("  Slot %02d: %.2fms\n", slots[s], 
+                       ((double)ts1.tv_sec - ts0.tv_sec) * 1000.0 + (ts1.tv_nsec - ts0.tv_nsec) / 1e6);
             }
         }
     }

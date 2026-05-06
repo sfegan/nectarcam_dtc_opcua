@@ -41,20 +41,21 @@ void cta_l2cb_set_ts_timing_iters(uint32_t _edge, uint32_t _latch)
 
 int cta_l2cb_spi_generalized_wait(cta_l2cb_spi_wait_config_t* _config, int _is_read)
 {
+    (void)_is_read;
     if (!_config) return CTA_L2CB_INVALID_PARAMETER;
 
+    // 1. Initial wait to allow hardware to register start
     cta_l2cb_delay_cycles(_config->initial_wait_iters);
 
+    // 2. Poll bit with timeout
     uint32_t timeout_count = _config->timeout_iters;
     while (testBitVal16(IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_STAT), _config->spi_bit))
     {
         if (--timeout_count == 0) return CTA_L2CB_ERROR_TIMEOUT;
     }
 
-    // After completion, wait the required inter-command delay
-    if (!_is_read) {
-        cta_l2cb_delay_cycles(_config->inter_command_iters);
-    }
+    // 3. Mandatory inter-command delay to ensure bus stability
+    cta_l2cb_delay_cycles(_config->inter_command_iters);
 
     return CTA_L2CB_NO_ERROR;
 }
@@ -62,7 +63,7 @@ int cta_l2cb_spi_generalized_wait(cta_l2cb_spi_wait_config_t* _config, int _is_r
 // wait for a spi transfer to complete
 int cta_l2cb_spi_wait(void)
 {
-    return cta_l2cb_spi_generalized_wait(&cta_l2cb_spi_wait_config_ctdb, 1);
+    return cta_l2cb_spi_generalized_wait(&cta_l2cb_spi_wait_config_ctdb, 0);
 }
 
 // reads a register from a CTDB at slot x
@@ -72,7 +73,6 @@ int cta_l2cb_spi_read(uint8_t _slot, uint8_t _register, uint16_t* _value)
 	if (!cta_l2cb_isValidSLot(_slot)) return CTA_L2CB_INVALID_PARAMETER;
 
 	// wait for completion of previous command
-	// use _is_read=0 because we want the inter-command delay if the previous op was a write
 	int err = cta_l2cb_spi_generalized_wait(&cta_l2cb_spi_wait_config_ctdb, 0);
 	if (err != CTA_L2CB_NO_ERROR) return err;
 
@@ -81,7 +81,7 @@ int cta_l2cb_spi_read(uint8_t _slot, uint8_t _register, uint16_t* _value)
 	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_SPAD, config);
 
 	// wait for completion
-	err = cta_l2cb_spi_generalized_wait(&cta_l2cb_spi_wait_config_ctdb, 1);
+	err = cta_l2cb_spi_generalized_wait(&cta_l2cb_spi_wait_config_ctdb, 0);
 	if (err != CTA_L2CB_NO_ERROR) return err;
 
 	// store return value
