@@ -39,19 +39,26 @@
 
 typedef struct {
 	int spi_bit;
-	struct timespec earliest_command_ts;
-	struct timespec earliest_read_ts;
-	int64_t min_command_delay_ns;
-	int64_t min_read_delay_ns;
-	int64_t timeout_ns;
+	uint32_t initial_wait_iters;
+	uint32_t inter_command_iters;
+	uint32_t timeout_iters;
 } cta_l2cb_spi_wait_config_t;
 
 CEXTERN cta_l2cb_spi_wait_config_t cta_l2cb_spi_wait_config_ctdb;
 CEXTERN cta_l2cb_spi_wait_config_t cta_l2cb_spi_wait_config_delay;
 
-CEXTERN void cta_l2cb_spi_set_delays(cta_l2cb_spi_wait_config_t* _config, int64_t _min_command_delay_ns, int64_t _min_read_delay_ns, int64_t _timeout_ns);
+CEXTERN uint32_t g_l2trig_ts_edge_delay_iters;
+CEXTERN uint32_t g_l2trig_ts_latch_delay_iters;
+
+CEXTERN void cta_l2cb_spi_set_timing_iters(cta_l2cb_spi_wait_config_t* _config, uint32_t _initial, uint32_t _inter, uint32_t _timeout);
+CEXTERN void cta_l2cb_set_ts_timing_iters(uint32_t _edge, uint32_t _latch);
+
 CEXTERN int cta_l2cb_spi_generalized_wait(cta_l2cb_spi_wait_config_t* _config, int _is_read);
-CEXTERN void cta_l2cb_spi_mark_command_sent(cta_l2cb_spi_wait_config_t* _config);
+
+static inline void cta_l2cb_delay_cycles(volatile uint32_t cycles)
+{
+    while(cycles--);
+}
 
 CEXTERN void cta_l2cb_spi_set_ctdb_delays_export(int64_t _min_command_delay_ns, int64_t _min_read_delay_ns, int64_t _timeout_ns);
 CEXTERN void cta_l2cb_spi_set_delay_delays_export(int64_t _min_command_delay_ns, int64_t _min_read_delay_ns, int64_t _timeout_ns);
@@ -155,8 +162,6 @@ static inline uint64_t cta_l2cb_readTimestamp(void)
 	uint64_t tmp=0;
 	
 	// Latch timestamp with a 0->1 transition of the latch bit.
-	// We use explicit fences (inside IOWR/IORD) and delays to ensure the FPGA 
-	// sees the transition and has time to process the latch.
 	uint16_t ctrl = IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_CTRL);
 	
 	// 1. Ensure bit is 0
@@ -164,19 +169,14 @@ static inline uint64_t cta_l2cb_readTimestamp(void)
 	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_CTRL, ctrl);
 	
 	// Small delay to ensure the '0' is registered by the FPGA logic
-	struct timespec edge_delay = {0, 1000}; // 1us
-	nanosleep(&edge_delay, NULL);
+	cta_l2cb_delay_cycles(g_l2trig_ts_edge_delay_iters);
 	
 	// 2. 0->1 transition
 	ctrl = changeBitVal16(ctrl, BIT_CTA_L2CB_CTRL_LATCH_TIMESTAMP, 1);
 	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_CTRL, ctrl);
 
 	// 3. Wait for FPGA to capture and stabilize the 48-bit value in readout registers.
-	// While the FPGA latches in nanoseconds, Linux scheduling granularity 
-	// means nanosleep(200ns) is often effectively 10-50us anyway. 
-	// We use 10us here to be explicitly safe.
-	struct timespec latch_delay = {0, 10000}; // 10us
-	nanosleep(&latch_delay, NULL);
+	cta_l2cb_delay_cycles(g_l2trig_ts_latch_delay_iters);
 
 	// Read latched values. Fences are now inside IORD_16DIRECT.
 	uint16_t ts0 = IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_TSTMP0);

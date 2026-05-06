@@ -16,9 +16,12 @@
 #include <unistd.h>
 #include <strings.h>
 #include <ctype.h>
+#include <time.h>
 
 #include "l2trig_hal.h"
 #include "smc.h"
+
+static int g_in_debug_menu = 0;
 
 struct named_reg {
     const char* name;
@@ -104,7 +107,73 @@ const char* bool_to_str(int val) {
 // Command Handlers
 // ============================================================================
 
+void print_debug_help() {
+    printf("\nDebug Sub-Menu Commands:\n");
+    printf("  timing [type] [init] [inter] [timeout]: Get or set HAL timing\n");
+    printf("  pins <slot> [val] : Get or set CTDB debug pins (SEL0..3)\n");
+    printf("  scan_test [repeat]: Timed stability test of all named CTDB registers\n");
+    printf("  help              : Show this help message\n");
+    printf("  exit              : Return to main menu\n");
+}
+
+void handle_scan_test(int repeat) {
+    if (repeat < 1) repeat = 1;
+    int slots[] = CTA_L2CB_SLOT_LIST;
+    int num_regs = sizeof(ctdb_regs)/sizeof(ctdb_regs[0]);
+    
+    // Tracking arrays
+    uint16_t last_vals[CTA_L2CB_SLOT_COUNT][num_regs];
+    uint32_t ndiff[CTA_L2CB_SLOT_COUNT][num_regs];
+    memset(ndiff, 0, sizeof(ndiff));
+
+    struct timespec start, end;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+
+    for (int r = 0; r < repeat; r++) {
+        for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
+            for (int i = 0; i < num_regs; i++) {
+                uint16_t val;
+                int err = cta_ctdb_getSlaveRegister(slots[s], ctdb_regs[i].addr, &val);
+                if (err != CTA_L2CB_NO_ERROR) val = 0xDEAD; // Mark error
+                
+                if (r > 0) {
+                    if (val != last_vals[s][i]) {
+                        ndiff[s][i]++;
+                    }
+                }
+                last_vals[s][i] = val;
+            }
+        }
+    }
+
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    double elapsed = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
+    
+    printf("\nScan test completed in %.6f seconds (%d iterations, %.2f ms/iter)\n", 
+           elapsed, repeat, (elapsed * 1000.0) / repeat);
+
+    if (repeat > 1) {
+        printf("Stability check (difference counts per register/slot):\n");
+        printf("                ");
+        for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
+            printf("  Slot%02d", slots[s]);
+        }
+        printf("\n");
+        for(int i = 0; i < num_regs; i++) {
+            printf("0x%02X %-10s:", ctdb_regs[i].addr, ctdb_regs[i].name);
+            for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
+                printf("  %6u", ndiff[s][i]);
+            }
+            printf("\n");
+        }
+    }
+}
+
 void print_help() {
+    if (g_in_debug_menu) {
+        print_debug_help();
+        return;
+    }
     printf("\nAvailable Commands:\n");
     printf("  l2cb_fw               : Get L2CB firmware revision\n");
     printf("  ts                    : Get L2CB timestamp\n");
@@ -136,7 +205,6 @@ void print_help() {
     printf("  under <slot>          : Get under-current error mask\n");
     printf("  over <slot>           : Get over-current error mask\n");
     printf("  ctdb_fw <slot>        : Get CTDB firmware revision\n");
-    printf("  debug <slot> [val]    : Get or set debug pins\n");
     printf("  reg <addr> [val]      : Read or write L2CB register\n");
     printf("  regscan [all]         : Scan and print named (or all) L2CB registers\n");
     printf("  sreg <slot> <addr> [v]: Read or write slave register\n");
@@ -164,6 +232,61 @@ void process_line(char* line) {
     if (n == 0) return;
 
     char* cmd = tokens[0];
+
+    // Debug Sub-Menu Logic
+    if (g_in_debug_menu) {
+        if (strcmp(cmd, "timing") == 0) {
+            if (n < 2) {
+                printf("HAL Timing (iters):\n");
+                printf("  CTDB:  init=%u, inter=%u, timeout=%u\n", 
+                       cta_l2cb_spi_wait_config_ctdb.initial_wait_iters, 
+                       cta_l2cb_spi_wait_config_ctdb.inter_command_iters, 
+                       cta_l2cb_spi_wait_config_ctdb.timeout_iters);
+                printf("  DELAY: init=%u, inter=%u, timeout=%u\n", 
+                       cta_l2cb_spi_wait_config_delay.initial_wait_iters, 
+                       cta_l2cb_spi_wait_config_delay.inter_command_iters, 
+                       cta_l2cb_spi_wait_config_delay.timeout_iters);
+                printf("  TS:    edge=%u, latch=%u\n", 
+                       g_l2trig_ts_edge_delay_iters, 
+                       g_l2trig_ts_latch_delay_iters);
+            } else {
+                const char* type = tokens[1];
+                if (strcmp(type, "ctdb") == 0) {
+                    if (n < 5) printf("Usage: timing ctdb <init> <inter> <timeout>\n");
+                    else cta_l2cb_spi_set_timing_iters(&cta_l2cb_spi_wait_config_ctdb, parse_int(tokens[2]), parse_int(tokens[3]), parse_int(tokens[4]));
+                } else if (strcmp(type, "delay") == 0) {
+                    if (n < 5) printf("Usage: timing delay <init> <inter> <timeout>\n");
+                    else cta_l2cb_spi_set_timing_iters(&cta_l2cb_spi_wait_config_delay, parse_int(tokens[2]), parse_int(tokens[3]), parse_int(tokens[4]));
+                } else if (strcmp(type, "ts") == 0) {
+                    if (n < 4) printf("Usage: timing ts <edge> <latch>\n");
+                    else cta_l2cb_set_ts_timing_iters(parse_int(tokens[2]), parse_int(tokens[3]));
+                } else {
+                    printf("Unknown timing type: %s (use ctdb, delay, or ts)\n", type);
+                }
+            }
+        } else if (strcmp(cmd, "pins") == 0) {
+            if (n < 2) printf("Usage: pins <slot> [val]\n");
+            else {
+                int slot = parse_int(tokens[1]);
+                if (n > 2) cta_ctdb_setDebugPins(slot, parse_int(tokens[2]));
+                else {
+                    uint16_t val;
+                    cta_ctdb_getDebugPins(slot, &val);
+                    printf("Slot %d Debug Pins: 0x%04X\n", slot, val);
+                }
+            }
+        } else if (strcmp(cmd, "scan_test") == 0) {
+            handle_scan_test(n > 1 ? parse_int(tokens[1]) : 1);
+        } else if (strcmp(cmd, "help") == 0 || strcmp(cmd, "?") == 0) {
+            print_debug_help();
+        } else if (strcmp(cmd, "exit") == 0) {
+            g_in_debug_menu = 0;
+            printf("Returning to main menu.\n");
+        } else {
+            printf("Unknown debug command: %s. Type 'help' for available debug commands.\n", cmd);
+        }
+        return;
+    }
 
     if (strcmp(cmd, "l2cb_fw") == 0) {
         printf("L2CB Firmware Revision: 0x%04X\n", cta_l2cb_getFirmwareRevision());
@@ -436,16 +559,8 @@ void process_line(char* line) {
             printf("Slot %d CTDB Firmware Revision: 0x%04X\n", slot, val);
         }
     } else if (strcmp(cmd, "debug") == 0) {
-        if (n < 2) printf("Usage: debug <slot> [val]\n");
-        else {
-            int slot = parse_int(tokens[1]);
-            if (n > 2) cta_ctdb_setDebugPins(slot, parse_int(tokens[2]));
-            else {
-                uint16_t val;
-                cta_ctdb_getDebugPins(slot, &val);
-                printf("Slot %d Debug Pins: 0x%04X\n", slot, val);
-            }
-        }
+        g_in_debug_menu = 1;
+        printf("Entered debug sub-menu. Type 'help' for commands or 'exit' to return.\n");
     } else if (strcmp(cmd, "sreg") == 0) {
         if (n < 3) {
             printf("Usage: sreg <slot> <addr> [val]\n");
@@ -595,7 +710,7 @@ int main(int argc, char** argv) {
 
     while (1) {
         if (interactive) {
-            printf("l2trig_direct> ");
+            printf("%s> ", g_in_debug_menu ? "debug" : "l2trig_direct");
             fflush(stdout);
         }
 

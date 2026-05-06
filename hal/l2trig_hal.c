@@ -1,84 +1,60 @@
-#include <time.h>
 #include <stdint.h>
 
 #include "l2trig_hal.h"
 
+// Calibrated for 400MHz ARM9 (~120 iters = 1us)
+// Initial wait: 2us to allow SPI transfer to start
+// Inter-command: 10us delay between commands
+// Timeout: 1000 iters (~100us with ioctl overhead)
+
 cta_l2cb_spi_wait_config_t cta_l2cb_spi_wait_config_ctdb = {
     .spi_bit = BIT_CTA_L2CB_STAT_SPIBUSY,
-    .earliest_command_ts = {0, 0},
-    .earliest_read_ts = {0, 0},
-    .min_command_delay_ns = 10000, // 10us default
-    .min_read_delay_ns = 0,
-    .timeout_ns = 100000 // 100us default
+    .initial_wait_iters = 240, 
+    .inter_command_iters = 1200,
+    .timeout_iters = 10000 
 };
 
 cta_l2cb_spi_wait_config_t cta_l2cb_spi_wait_config_delay = {
     .spi_bit = BIT_CTA_L2CB_STAT_DELAY_BUSY,
-    .earliest_command_ts = {0, 0},
-    .earliest_read_ts = {0, 0},
-    .min_command_delay_ns = 10000, // 10us default
-    .min_read_delay_ns = 0,
-    .timeout_ns = 100000 // 100us default
+    .initial_wait_iters = 240,
+    .inter_command_iters = 1200,
+    .timeout_iters = 10000
 };
 
-void cta_l2cb_spi_set_delays(cta_l2cb_spi_wait_config_t* _config, int64_t _min_command_delay_ns, int64_t _min_read_delay_ns, int64_t _timeout_ns)
+uint32_t g_l2trig_ts_edge_delay_iters = 120;  // 1us
+uint32_t g_l2trig_ts_latch_delay_iters = 1200; // 10us
+
+void cta_l2cb_spi_set_timing_iters(cta_l2cb_spi_wait_config_t* _config, uint32_t _initial, uint32_t _inter, uint32_t _timeout)
 {
     if (!_config) return;
-    _config->min_command_delay_ns = _min_command_delay_ns;
-    _config->min_read_delay_ns = _min_read_delay_ns;
-    _config->timeout_ns = _timeout_ns;
+    _config->initial_wait_iters = _initial;
+    _config->inter_command_iters = _inter;
+    _config->timeout_iters = _timeout;
 }
 
-void cta_l2cb_spi_mark_command_sent(cta_l2cb_spi_wait_config_t* _config)
+void cta_l2cb_set_ts_timing_iters(uint32_t _edge, uint32_t _latch)
 {
-    if (!_config) return;
-    struct timespec now;
-    clock_gettime(CLOCK_MONOTONIC, &now);
-
-    _config->earliest_command_ts = now;
-    _config->earliest_command_ts.tv_nsec += _config->min_command_delay_ns;
-    while (_config->earliest_command_ts.tv_nsec >= 1000000000LL) {
-        _config->earliest_command_ts.tv_nsec -= 1000000000LL;
-        _config->earliest_command_ts.tv_sec += 1;
-    }
-
-    _config->earliest_read_ts = now;
-    _config->earliest_read_ts.tv_nsec += _config->min_read_delay_ns;
-    while (_config->earliest_read_ts.tv_nsec >= 1000000000LL) {
-        _config->earliest_read_ts.tv_nsec -= 1000000000LL;
-        _config->earliest_read_ts.tv_sec += 1;
-    }
+    g_l2trig_ts_edge_delay_iters = _edge;
+    g_l2trig_ts_latch_delay_iters = _latch;
 }
 
 int cta_l2cb_spi_generalized_wait(cta_l2cb_spi_wait_config_t* _config, int _is_read)
 {
     if (!_config) return CTA_L2CB_INVALID_PARAMETER;
 
-    struct timespec now, target;
-    clock_gettime(CLOCK_MONOTONIC, &now);
+    // Wait for the SPI peripheral to indicate it is busy (if it's a new command)
+    // or just perform the initial wait to allow hardware to register the start
+    cta_l2cb_delay_cycles(_config->initial_wait_iters);
 
-    target = _is_read ? _config->earliest_read_ts : _config->earliest_command_ts;
-
-    while (now.tv_sec < target.tv_sec || (now.tv_sec == target.tv_sec && now.tv_nsec < target.tv_nsec))
-    {
-        struct timespec sleep_ts = {0, 10000}; // 10us
-        nanosleep(&sleep_ts, NULL);
-        clock_gettime(CLOCK_MONOTONIC, &now);
-    }
-
-    struct timespec start = now;
+    uint32_t timeout_count = _config->timeout_iters;
     while (testBitVal16(IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_STAT), _config->spi_bit))
     {
-        clock_gettime(CLOCK_MONOTONIC, &now);
-        int64_t elapsed_ns = (int64_t)(now.tv_sec - start.tv_sec) * 1000000000LL + (int64_t)(now.tv_nsec - start.tv_nsec);
-        if (elapsed_ns >= _config->timeout_ns) return CTA_L2CB_ERROR_TIMEOUT;
-
-        struct timespec sleep_ts = {0, 10000};
-        nanosleep(&sleep_ts, NULL);
+        if (--timeout_count == 0) return CTA_L2CB_ERROR_TIMEOUT;
     }
 
+    // After completion, wait the required inter-command delay
     if (!_is_read) {
-        cta_l2cb_spi_mark_command_sent(_config);
+        cta_l2cb_delay_cycles(_config->inter_command_iters);
     }
 
     return CTA_L2CB_NO_ERROR;
@@ -96,8 +72,8 @@ int cta_l2cb_spi_read(uint8_t _slot, uint8_t _register, uint16_t* _value)
 	if (!_value) return CTA_L2CB_INVALID_PARAMETER;
 	if (!cta_l2cb_isValidSLot(_slot)) return CTA_L2CB_INVALID_PARAMETER;
 
-	// wait for completion of previous command and enough delay for next command
-	int err = cta_l2cb_spi_generalized_wait(&cta_l2cb_spi_wait_config_ctdb, 0);
+	// wait for completion of previous command
+	int err = cta_l2cb_spi_generalized_wait(&cta_l2cb_spi_wait_config_ctdb, 1);
 	if (err != CTA_L2CB_NO_ERROR) return err;
 
 	// initiate transfer
@@ -118,8 +94,8 @@ int cta_l2cb_spi_write(uint8_t _slot, uint8_t _register, uint16_t _value)
 {
 	if (!cta_l2cb_isValidSLot(_slot)) return CTA_L2CB_INVALID_PARAMETER;
 
-	// wait for completion of previous command and enough delay for next command
-	int err = cta_l2cb_spi_generalized_wait(&cta_l2cb_spi_wait_config_ctdb, 0);
+	// wait for completion of previous command
+	int err = cta_l2cb_spi_generalized_wait(&cta_l2cb_spi_wait_config_ctdb, 1);
 	if (err != CTA_L2CB_NO_ERROR) return err;
 
 	// initiate transfer
@@ -128,11 +104,22 @@ int cta_l2cb_spi_write(uint8_t _slot, uint8_t _register, uint16_t _value)
 	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_SPAD, config);
 
 	// wait for completion
-	err = cta_l2cb_spi_generalized_wait(&cta_l2cb_spi_wait_config_ctdb, 1);
+	err = cta_l2cb_spi_generalized_wait(&cta_l2cb_spi_wait_config_ctdb, 0);
 	if (err != CTA_L2CB_NO_ERROR) return err;
 
 	return CTA_L2CB_NO_ERROR;
 }
 
+// Compatibility exports
+void cta_l2cb_spi_set_ctdb_delays_export(int64_t _min_command_delay_ns, int64_t _min_read_delay_ns, int64_t _timeout_ns) {
+    // No longer using nanoseconds, but keep for ABI compatibility if needed
+    (void)_min_command_delay_ns; (void)_min_read_delay_ns; (void)_timeout_ns;
+}
 
+void cta_l2cb_spi_set_delay_delays_export(int64_t _min_command_delay_ns, int64_t _min_read_delay_ns, int64_t _timeout_ns) {
+    (void)_min_command_delay_ns; (void)_min_read_delay_ns; (void)_timeout_ns;
+}
 
+void cta_l2cb_spi_set_delays(cta_l2cb_spi_wait_config_t* _config, int64_t _min_command_delay_ns, int64_t _min_read_delay_ns, int64_t _timeout_ns) {
+    (void)_config; (void)_min_command_delay_ns; (void)_min_read_delay_ns; (void)_timeout_ns;
+}
