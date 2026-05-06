@@ -20,12 +20,18 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <sys/select.h>
 #include <time.h>
 #include <signal.h>
 
 #include "l2tcp_protocol.h"
 #include "../hal/l2trig_hal.h"
+
+/* --- Timing Macros --- */
+#define TIMESPEC_DIFF_MS(start, end) \
+    (((double)(end).tv_sec - (start).tv_sec) * 1000.0 + \
+     ((double)(end).tv_nsec - (start).tv_nsec) / 1000000.0)
 
 /* --- Server State --- */
 
@@ -249,6 +255,9 @@ static int is_polling_msg(uint8_t type) {
 
 static void handle_request() {
     l2tcp_header_t hdr;
+    struct timespec trecv0, trecv1, tproc;
+    if (g_server.verbose > 2) get_now(&trecv0);
+
     ssize_t n = recv(g_server.client_fd, &hdr, sizeof(hdr), 0);
     if (n <= 0) {
         if (n < 0) {
@@ -293,6 +302,8 @@ static void handle_request() {
             return;
         }
     }
+
+    if (g_server.verbose > 2) get_now(&trecv1);
 
     int show_msg = g_server.verbose > 1 || (g_server.verbose > 0 && !is_polling_msg(hdr.type));
 
@@ -342,6 +353,12 @@ static void handle_request() {
 
             if (send_all(g_server.client_fd, &resp_hdr, sizeof(resp_hdr)) == 0) {
                 send_all(g_server.client_fd, &resp, sizeof(resp));
+            }
+
+            if (g_server.verbose > 2) {
+                get_now(&tproc);
+                printf("  [DEBUG] HELLO: recv=%.2fms, proc=%.2fms\n", 
+                       TIMESPEC_DIFF_MS(trecv0, trecv1), TIMESPEC_DIFF_MS(trecv1, tproc));
             }
             return;
         }
@@ -586,14 +603,16 @@ static void handle_request() {
             break;
         }
         case L2TCP_MSG_BATCH_MONITOR_ALL: {
+            struct timespec t0, t1, t2;
+            if (g_server.verbose > 2) get_now(&t0);
+
             int count = 0;
             for (int s = L2TCP_MIN_SLOT; s <= L2TCP_MAX_SLOT; s++) {
                 if (is_slot_active(s)) count++;
             }
             
             /* Use static buffer to avoid large stack allocation on embedded systems */
-            /* Warning: This should be replaced if we move to multiple threads */
-            static l2tcp_payload_batch_monitor_full_t batch; 
+            static l2tcp_payload_batch_monitor_full_t batch;
             memset(&batch, 0, sizeof(batch));
             batch.count = (uint8_t)count;
             
@@ -611,6 +630,8 @@ static void handle_request() {
                 idx++;
             }
             
+            if (g_server.verbose > 2) get_now(&t1);
+
             /* Calculate actual payload size: count byte + populated entries */
             size_t payload_size = sizeof(uint8_t) + count * sizeof(l2tcp_payload_monitoring_t);
             
@@ -619,8 +640,15 @@ static void handle_request() {
             if (g_server.verbose > 1) printf("  -> BATCH MONITOR (%d slots, %zu bytes)\n", count, payload_size);
 
             /* Send header + complete batch payload atomically */
+            int err = 0;
             if (send_all(g_server.client_fd, &resp_hdr, sizeof(resp_hdr)) == 0) {
-                send_all(g_server.client_fd, &batch, payload_size);
+                err = send_all(g_server.client_fd, &batch, payload_size);
+            }
+
+            if (g_server.verbose > 2) {
+                get_now(&t2);
+                printf("  [DEBUG] BATCH_MONITOR_ALL: collect=%.2fms, send=%.2fms, total=%.2fms\n",
+                       TIMESPEC_DIFF_MS(t0, t1), TIMESPEC_DIFF_MS(t1, t2), TIMESPEC_DIFF_MS(t0, t2));
             }
             break;
         }
@@ -749,6 +777,10 @@ int main(int argc, char **argv) {
                 tv.tv_usec = (g_server.recv_timeout_ms % 1000) * 1000;
                 setsockopt(g_server.client_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
                 
+                /* Disable Nagle algorithm for low latency */
+                int nodelay = 1;
+                setsockopt(g_server.client_fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
+
                 /* Reset configuration on new client connection */
                 g_server.active_slots_mask = 0;
                 memset(g_server.immutable_masks, 0, sizeof(g_server.immutable_masks));
