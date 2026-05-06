@@ -24,6 +24,7 @@ cta_l2cb_spi_wait_config_t cta_l2cb_spi_wait_config_delay = {
 
 uint32_t g_l2trig_ts_edge_delay_iters = 120;  // 1us
 uint32_t g_l2trig_ts_latch_delay_iters = 1200; // 10us
+uint32_t g_l2trig_ts_unchanged_iters = 5;
 
 void cta_l2cb_spi_set_timing_iters(cta_l2cb_spi_wait_config_t* _config, uint32_t _initial, uint32_t _inter, uint32_t _timeout)
 {
