@@ -107,11 +107,42 @@ const char* bool_to_str(int val) {
 // Command Handlers
 // ============================================================================
 
+void handle_tcp_test() {
+    int slots[] = CTA_L2CB_SLOT_LIST;
+    uint16_t dummy;
+
+    printf("\nTCP Emulation Test (exact mon_all sequence):\n");
+    struct timespec start, end;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+
+    for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
+        int slot = slots[s];
+        struct timespec ts0, ts1;
+        clock_gettime(CLOCK_MONOTONIC, &ts0);
+
+        // Exact sequence from l2tcp_server_main.c:BATCH_MONITOR_ALL
+        cta_ctdb_getPowerCurrent(slot, 0, &dummy);
+        for (int i = 0; i < 15; i++) cta_ctdb_getPowerCurrent(slot, i + 1, &dummy);
+        cta_ctdb_getOverCurrentErrors(slot, &dummy);
+        cta_ctdb_getUnderCurrentErrors(slot, &dummy);
+        cta_ctdb_getPowerEnabled(slot, &dummy);
+
+        clock_gettime(CLOCK_MONOTONIC, &ts1);
+        printf("  Slot %02d: %.2fms\n", slot, 
+               ((double)ts1.tv_sec - ts0.tv_sec) * 1000.0 + (ts1.tv_nsec - ts0.tv_nsec) / 1e6);
+    }
+
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    double elapsed = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
+    printf("Total collection time: %.6f seconds\n", elapsed);
+}
+
 void print_debug_help() {
     printf("\nDebug Sub-Menu Commands:\n");
     printf("  timing [type] [init] [inter] [timeout]: Get or set HAL timing\n");
     printf("  pins <slot> [val] : Get or set CTDB debug pins (SEL0..3)\n");
     printf("  scan_test [repeat]: Timed stability test of all named CTDB registers\n");
+    printf("  tcp_test          : Emulate the exact sequence of the TCP mon_all command\n");
     printf("  help              : Show this help message\n");
     printf("  exit              : Return to main menu\n");
 }
@@ -286,6 +317,8 @@ void process_line(char* line) {
             }
         } else if (strcmp(cmd, "scan_test") == 0) {
             handle_scan_test(n > 1 ? parse_int(tokens[1]) : 1);
+        } else if (strcmp(cmd, "tcp_test") == 0) {
+            handle_tcp_test();
         } else if (strcmp(cmd, "help") == 0 || strcmp(cmd, "?") == 0) {
             print_debug_help();
         } else if (strcmp(cmd, "exit") == 0) {
