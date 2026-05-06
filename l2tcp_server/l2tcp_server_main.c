@@ -640,9 +640,8 @@ static void handle_request() {
             if (g_server.verbose > 1) printf("  -> BATCH MONITOR (%d slots, %zu bytes)\n", count, payload_size);
 
             /* Send header + complete batch payload atomically */
-            int err = 0;
             if (send_all(g_server.client_fd, &resp_hdr, sizeof(resp_hdr)) == 0) {
-                err = send_all(g_server.client_fd, &batch, payload_size);
+                send_all(g_server.client_fd, &batch, payload_size);
             }
 
             if (g_server.verbose > 2) {
