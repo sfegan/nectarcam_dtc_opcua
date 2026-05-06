@@ -109,7 +109,8 @@ const char* bool_to_str(int val) {
 
 void handle_tcp_test() {
     int slots[] = CTA_L2CB_SLOT_LIST;
-    volatile uint16_t dummy;
+    volatile uint32_t dummy_sum = 0;
+    uint16_t dummy;
 
     printf("\nTCP Emulation Test (exact mon_all sequence):\n");
     struct timespec start, end;
@@ -122,10 +123,17 @@ void handle_tcp_test() {
 
         // Exact sequence from l2tcp_server_main.c:BATCH_MONITOR_ALL
         cta_ctdb_getPowerCurrent(slot, 0, &dummy);
-        for (int i = 0; i < 15; i++) cta_ctdb_getPowerCurrent(slot, i + 1, &dummy);
+        dummy_sum += dummy;
+        for (int i = 0; i < 15; i++) {
+            cta_ctdb_getPowerCurrent(slot, i + 1, &dummy);
+            dummy_sum += dummy;
+        }
         cta_ctdb_getOverCurrentErrors(slot, &dummy);
+        dummy_sum += dummy;
         cta_ctdb_getUnderCurrentErrors(slot, &dummy);
+        dummy_sum += dummy;
         cta_ctdb_getPowerEnabled(slot, &dummy);
+        dummy_sum += dummy;
 
         clock_gettime(CLOCK_MONOTONIC, &ts1);
         printf("  Slot %02d: %.2fms\n", slot, 
