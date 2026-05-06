@@ -110,12 +110,31 @@ const char* bool_to_str(int val) {
 void print_debug_help() {
     printf("\nDebug Sub-Menu Commands:\n");
     printf("  timing [type] [init] [inter] [timeout]: Get or set HAL timing\n");
-    printf("  pins <slot> [val] : Get or set CTDB debug pins (SEL0..3)\n");
-    printf("  ctdb_scan [repeat]: Timed stability test of all named CTDB registers\n");
-    printf("  ts_scan [repeat]  : Timed stability test of L2CB timestamp\n");
-    printf("  help              : Show this help message\n");
-    printf("  exit              : Return to main menu\n");
+    printf("  pins <slot> [val]      : Get or set CTDB debug pins (SEL0..3)\n");
+    printf("  ctdb_scan [repeat]     : Timed stability test of all named CTDB registers\n");
+    printf("  ts_scan [repeat]       : Timed stability test of L2CB timestamp\n");
+    printf("  delay <loop> [repeat]  : Delay calibration\n");
+    printf("  help                   : Show this help message\n");
+    printf("  exit                   : Return to main menu\n");
 }
+
+void handle_delay_test(uint32_t loop_count, uint32_t repeat) {
+    if (repeat < 1) repeat = 1;
+
+    struct timespec start, end;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+
+    for (uint32_t i = 0; i < repeat; i++) {
+        cta_l2cb_delay_cycles(loop_count);
+    }
+
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    double elapsed = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
+
+    printf("\nDelay test (%u cycles) completed in %.6f seconds (%u iterations, %.2f us/iter)\n",
+           loop_count, elapsed, repeat, (elapsed * 1000000.0) / repeat);
+}
+
 
 void handle_ctdb_scan(int repeat) {
     if (repeat < 1) repeat = 1;
@@ -316,6 +335,9 @@ void process_line(char* line) {
             handle_ctdb_scan(n > 1 ? parse_int(tokens[1]) : 1);
         } else if (strcmp(cmd, "ts_scan") == 0) {
             handle_ts_scan(n > 1 ? parse_int(tokens[1]) : 1);
+        } else if (strcmp(cmd, "delay") == 0) {
+            if (n < 2) printf("Usage: delay <loop_count> [repeat]\n");
+            else handle_delay_test(parse_int(tokens[1]), n > 2 ? parse_int(tokens[2]) : 1);
         } else if (strcmp(cmd, "help") == 0 || strcmp(cmd, "?") == 0) {
             print_debug_help();
         } else if (strcmp(cmd, "exit") == 0) {
