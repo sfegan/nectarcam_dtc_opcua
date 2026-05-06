@@ -43,23 +43,12 @@ int cta_l2cb_spi_generalized_wait(cta_l2cb_spi_wait_config_t* _config, int _is_r
 {
     if (!_config) return CTA_L2CB_INVALID_PARAMETER;
 
-    // Wait for the SPI peripheral to indicate it is busy (if it's a new command)
-    // or just perform the initial wait to allow hardware to register the start
     cta_l2cb_delay_cycles(_config->initial_wait_iters);
 
     uint32_t timeout_count = _config->timeout_iters;
-    uint16_t last_stat = 0;
-    while (testBitVal16(last_stat = IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_STAT), _config->spi_bit))
+    while (testBitVal16(IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_STAT), _config->spi_bit))
     {
-        if (--timeout_count == 0) {
-            static int timeout_report_count = 0;
-            if (timeout_report_count < 10) {
-                fprintf(stderr, "HAL: SPI Timeout! Stat=0x%04X, Bit=%d, Iters=%u\n", 
-                        last_stat, _config->spi_bit, _config->timeout_iters);
-                timeout_report_count++;
-            }
-            return CTA_L2CB_ERROR_TIMEOUT;
-        }
+        if (--timeout_count == 0) return CTA_L2CB_ERROR_TIMEOUT;
     }
 
     // After completion, wait the required inter-command delay

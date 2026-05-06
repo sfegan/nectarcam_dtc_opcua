@@ -620,6 +620,9 @@ static void handle_request() {
             for (int s = L2TCP_MIN_SLOT; s <= L2TCP_MAX_SLOT && idx < count; s++) {
                 if (!is_slot_active(s)) continue;
                 
+                struct timespec ts0;
+                if (g_server.verbose > 2) get_now(&ts0);
+
                 l2tcp_payload_monitoring_t *resp = &batch.entries[idx];
                 resp->slot = (uint8_t)s;
                 cta_ctdb_getPowerCurrent(s, 0, &resp->ctdb_curr);
@@ -627,6 +630,13 @@ static void handle_request() {
                 cta_ctdb_getOverCurrentErrors(s, &resp->over_curr_mask);
                 cta_ctdb_getUnderCurrentErrors(s, &resp->under_curr_mask);
                 cta_ctdb_getPowerEnabled(s, &resp->pwr_enabled_mask);
+                
+                if (g_server.verbose > 2) {
+                    struct timespec ts1;
+                    get_now(&ts1);
+                    printf("    [DEBUG] S%02d: %.2fms\n", s, TIMESPEC_DIFF_MS(ts0, ts1));
+                }
+
                 idx++;
             }
             
