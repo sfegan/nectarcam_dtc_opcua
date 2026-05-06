@@ -52,7 +52,7 @@ class L2TCPMsgType(IntEnum):
     BATCH_MONITOR_ALL   = 0x32
 
 # Struct formats (Little Endian)
-HEADER_FMT = "<BBH"  # Type, Seq, Len
+HEADER_FMT = "<HHHH"  # Type, Seq, Len, Reserved
 HEADER_SIZE = struct.calcsize(HEADER_FMT)
 
 logger = logging.getLogger(__name__)
@@ -119,7 +119,7 @@ class CTDBConfigData:
 # ============================================================================
 
 class L2TriggerSystem:
-    PROTOCOL_VERSION = 2
+    PROTOCOL_VERSION = 3
 
     def __init__(self, host: str = "127.0.0.1", port: int = DEFAULT_PORT, 
                  connect_timeout: float = 5.0, recv_timeout: float = 5.0):
@@ -175,7 +175,7 @@ class L2TriggerSystem:
         self.active_mask = 0
 
     def _next_seq(self) -> int:
-        self._seq = (self._seq + 1) & 0xFF
+        self._seq = (self._seq + 1) & 0xFFFF
         return self._seq
 
     async def _negotiate_unlocked(self):
@@ -214,7 +214,7 @@ class L2TriggerSystem:
     async def _send_recv_unlocked(self, msg_type: L2TCPMsgType, payload: bytes = b"") -> Tuple[L2TCPMsgType, bytes]:
         try:
             seq = self._next_seq()
-            header = struct.pack(HEADER_FMT, msg_type, seq, len(payload))
+            header = struct.pack(HEADER_FMT, msg_type, seq, len(payload), 0)
             self.writer.write(header + payload)
             await self.writer.drain()
 
@@ -229,7 +229,7 @@ class L2TriggerSystem:
                 await self._disconnect_unlocked()
                 raise RuntimeError(f"Server response timeout after {self.recv_timeout}s")
             
-            rtype, rseq, rlen = struct.unpack(HEADER_FMT, resp_hdr_data)
+            rtype, rseq, rlen, rres = struct.unpack(HEADER_FMT, resp_hdr_data)
             
             # Read payload with timeout
             rpayload = b""
@@ -248,8 +248,8 @@ class L2TriggerSystem:
                 raise RuntimeError(f"Sequence mismatch: expected {seq}, got {rseq}")
 
             if rtype == L2TCPMsgType.ERROR:
-                code = rpayload[0]
-                msg = rpayload[1:].decode('ascii').strip('\x00')
+                code = struct.unpack("<H", rpayload[:2])[0]
+                msg = rpayload[2:].decode('ascii').strip('\x00')
                 raise RuntimeError(f"Server error {code}: {msg}")
 
             return L2TCPMsgType(rtype), rpayload
@@ -287,7 +287,7 @@ class L2TriggerSystem:
 
     async def ramp_power(self, enable: bool):
         """Trigger global power ramp"""
-        payload = struct.pack("<B", 1 if enable else 0)
+        payload = struct.pack("<H", 1 if enable else 0)
         await self._send_recv(L2TCPMsgType.SYS_RAMP_POWER, payload)
 
     async def emergency_shutdown(self):
@@ -308,8 +308,8 @@ class L2TriggerSystem:
 
     async def get_l2cb_status(self) -> L2CBStatus:
         _, data = await self._send_recv(L2TCPMsgType.L2CB_GET_STATE)
-        # fw(u16), ts(u64), ctrl(u16), thresh(u16), delay(u16), dt(u16), tib(u16), bmask(u32), bstuck(u32)
-        fw, ts, ctrl, thresh, delay, dt, tib, bmask, bstuck = struct.unpack("<HQHHHHHII", data)
+        # ts(u64), bmask(u32), bstuck(u32), fw(u16), ctrl(u16), thresh(u16), delay(u16), dt(u16), tib(u16)
+        ts, bmask, bstuck, fw, ctrl, thresh, delay, dt, tib = struct.unpack("<QIIHHHHHH", data)
         return L2CBStatus(
             firmware_version=fw,
             uptime=ts * 8, # convert to ns
@@ -348,7 +348,7 @@ class L2TriggerSystem:
 
     async def set_busy_enable_slot(self, slot: int, enabled: bool):
         """Enable or disable busy for a specific slot"""
-        payload = struct.pack("<BB", slot, 1 if enabled else 0)
+        payload = struct.pack("<HH", slot, 1 if enabled else 0)
         await self._send_recv(L2TCPMsgType.L2CB_SET_BUSY_ENABLE_SLOT, payload)
 
     async def reset_tib_event_count(self):
@@ -358,28 +358,28 @@ class L2TriggerSystem:
     # --- CTDB Controls ---
 
     async def set_channel_power_enabled(self, slot: int, channel: int, enabled: bool):
-        payload = struct.pack("<BBB", slot, channel, 1 if enabled else 0)
+        payload = struct.pack("<HHH", slot, channel, 1 if enabled else 0)
         await self._send_recv(L2TCPMsgType.CTDB_SET_CH_POWER, payload)
 
     async def set_channel_trigger_enabled(self, slot: int, channel: int, enabled: bool):
-        payload = struct.pack("<BBB", slot, channel, 1 if enabled else 0)
+        payload = struct.pack("<HHH", slot, channel, 1 if enabled else 0)
         await self._send_recv(L2TCPMsgType.CTDB_SET_CH_TRIG, payload)
 
     async def set_channel_trigger_delay(self, slot: int, channel: int, delay_raw: int):
-        payload = struct.pack("<BBH", slot, channel, delay_raw)
+        payload = struct.pack("<HHH", slot, channel, delay_raw)
         await self._send_recv(L2TCPMsgType.CTDB_SET_CH_DELAY, payload)
 
     async def set_ctdb_limits(self, slot: int, min_raw: int, max_raw: int):
-        payload = struct.pack("<BHH", slot, min_raw, max_raw)
+        payload = struct.pack("<HHH", slot, min_raw, max_raw)
         await self._send_recv(L2TCPMsgType.CTDB_SET_LIMITS, payload)
 
     # --- Monitoring ---
 
     def _parse_monitoring(self, data: bytes) -> CTDBMonitoringData:
-        # slot(u8), ctdb_curr(u16), ch_curr(u16*15), over(u16), under(u16), pwr(u16)
-        slot, ctdb_curr = struct.unpack_from("<BH", data, 0)
-        ch_curr = list(struct.unpack_from("<" + "H" * 15, data, 3))
-        over, under, pwr = struct.unpack_from("<HHH", data, 3 + 30)
+        # slot(u16), ctdb_curr(u16), ch_curr(u16*15), over(u16), under(u16), pwr(u16)
+        slot, ctdb_curr = struct.unpack_from("<HH", data, 0)
+        ch_curr = list(struct.unpack_from("<" + "H" * 15, data, 4))
+        over, under, pwr = struct.unpack_from("<HHH", data, 4 + 30)
         
         return CTDBMonitoringData(
             slot=slot,
@@ -391,15 +391,15 @@ class L2TriggerSystem:
         )
 
     async def get_ctdb_monitoring(self, slot: int) -> CTDBMonitoringData:
-        _, data = await self._send_recv(L2TCPMsgType.CTDB_GET_MONITORING, struct.pack("<B", slot))
+        _, data = await self._send_recv(L2TCPMsgType.CTDB_GET_MONITORING, struct.pack("<H", slot))
         return self._parse_monitoring(data)
 
     async def get_all_monitoring(self) -> Dict[int, CTDBMonitoringData]:
         _, data = await self._send_recv(L2TCPMsgType.BATCH_MONITOR_ALL)
-        count = data[0]
+        count = struct.unpack("<H", data[:2])[0]
         res = {}
-        offset = 1
-        mon_size = struct.calcsize("<BH" + "H" * 15 + "HHH")
+        offset = 2
+        mon_size = struct.calcsize("<HH" + "H" * 15 + "HHH")
         for _ in range(count):
             mon = self._parse_monitoring(data[offset:offset+mon_size])
             res[mon.slot] = mon
@@ -407,10 +407,10 @@ class L2TriggerSystem:
         return res
 
     async def get_ctdb_config(self, slot: int) -> CTDBConfigData:
-        _, data = await self._send_recv(L2TCPMsgType.CTDB_GET_CONFIG, struct.pack("<B", slot))
-        # slot(u8), fw(u16), min(u16), max(u16), trig_mask(u16), trig_delays(u16*15)
-        slot, fw, cmin, cmax, tmask = struct.unpack_from("<BHHHH", data, 0)
-        tdelays = list(struct.unpack_from("<" + "H" * 15, data, 9))
+        _, data = await self._send_recv(L2TCPMsgType.CTDB_GET_CONFIG, struct.pack("<H", slot))
+        # slot(u16), fw(u16), min(u16), max(u16), trig_mask(u16), trig_delays(u16*15)
+        slot, fw, cmin, cmax, tmask = struct.unpack_from("<HHHHH", data, 0)
+        tdelays = list(struct.unpack_from("<" + "H" * 15, data, 10))
         
         return CTDBConfigData(
             slot=slot,

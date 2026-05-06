@@ -67,10 +67,10 @@ int cta_l2cb_spi_wait(void)
 }
 
 // reads a register from a CTDB at slot x
-int cta_l2cb_spi_read(uint8_t _slot, uint8_t _register, uint16_t* _value)
+int cta_l2cb_spi_read(uint16_t _slot, uint16_t _register, uint16_t* _value)
 {
 	if (!_value) return CTA_L2CB_INVALID_PARAMETER;
-	if (!cta_l2cb_isValidSLot(_slot)) return CTA_L2CB_INVALID_PARAMETER;
+	if (!cta_l2cb_isValidSLot((int)_slot)) return CTA_L2CB_INVALID_PARAMETER;
 
 	// wait for completion of previous command
 	int err = cta_l2cb_spi_generalized_wait(&cta_l2cb_spi_wait_config_ctdb, 0);
@@ -90,9 +90,9 @@ int cta_l2cb_spi_read(uint8_t _slot, uint8_t _register, uint16_t* _value)
 }
 
 // writes a register to a CTDB at slot x
-int cta_l2cb_spi_write(uint8_t _slot, uint8_t _register, uint16_t _value)
+int cta_l2cb_spi_write(uint16_t _slot, uint16_t _register, uint16_t _value)
 {
-	if (!cta_l2cb_isValidSLot(_slot)) return CTA_L2CB_INVALID_PARAMETER;
+	if (!cta_l2cb_isValidSLot((int)_slot)) return CTA_L2CB_INVALID_PARAMETER;
 
 	// wait for completion of previous command
 	int err = cta_l2cb_spi_generalized_wait(&cta_l2cb_spi_wait_config_ctdb, 0);

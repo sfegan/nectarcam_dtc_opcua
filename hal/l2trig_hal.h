@@ -298,7 +298,7 @@ static inline uint32_t cta_l2cb_getBusyEnableMask()
 	return enable_mask;
 }
 
-static inline void cta_l2cb_setBusyEnableSlot(uint8_t _slot, int _on)
+static inline void cta_l2cb_setBusyEnableSlot(uint16_t _slot, int _on)
 {
 	if (!cta_l2cb_isValidSLot(_slot)) return;
 	uint32_t mask = cta_l2cb_getBusyEnableMask();
@@ -322,27 +322,27 @@ static inline uint32_t cta_l2cb_getBusyStuck()
 
 // select CTDB trigger cluster/channels by selecting a CTDB slot and CTDB cluster/channel
 // for internal use only
-static inline void cta_l2cb_l1sel(uint8_t _slot, uint8_t _channel)
+static inline void cta_l2cb_l1sel(uint16_t _slot, uint16_t _channel)
 {
 	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_L1SEL, ((_slot & 0x1f) << 4) | (_channel & 0xf));
 }
 
 // set trigger enabled status for CTDB trigger cluster/channels
-static inline void cta_l2cb_setL1TriggerEnabled(uint8_t _slot, uint16_t _enabled)
+static inline void cta_l2cb_setL1TriggerEnabled(uint16_t _slot, uint16_t _enabled)
 {
 	cta_l2cb_l1sel(_slot, 0); // channel parameter does matter at this point
 	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_L1MSK, _enabled);
 }
 
 // get trigger enabled status for CTDB trigger cluster/channels
-static inline uint16_t cta_l2cb_getL1TriggerEnabled(uint8_t _slot)
+static inline uint16_t cta_l2cb_getL1TriggerEnabled(uint16_t _slot)
 {
 	cta_l2cb_l1sel(_slot, 0); // channel parameter does matter at this point
 	return IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_L1MSK);
 }
 
 // set trigger enabled status for given CTDB trigger cluster/channel
-static inline void cta_l2cb_setL1TriggerChannelEnabled(uint8_t _slot, uint8_t _channel, uint16_t _on)
+static inline void cta_l2cb_setL1TriggerChannelEnabled(uint16_t _slot, uint16_t _channel, uint16_t _on)
 {
 	cta_l2cb_l1sel(_slot, 0); // channel parameter does matter at this point
 	uint16_t val=IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_L1MSK);
@@ -351,7 +351,7 @@ static inline void cta_l2cb_setL1TriggerChannelEnabled(uint8_t _slot, uint8_t _c
 }
 
 // get trigger enabled status for CTDB trigger cluster/channel
-static inline uint16_t cta_l2cb_getL1TriggerChannelEnabled(uint8_t _slot, uint8_t _channel)
+static inline uint16_t cta_l2cb_getL1TriggerChannelEnabled(uint16_t _slot, uint16_t _channel)
 {
 	cta_l2cb_l1sel(_slot, 0); // channel parameter does matter at this point
 	return testBitVal16(IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_L1MSK), _channel);
@@ -361,7 +361,7 @@ static inline uint16_t cta_l2cb_getL1TriggerChannelEnabled(uint8_t _slot, uint8_
 // if a set-delay process for the selected channel is ongoing, it waits until complete or timeout
 // returns CTA_L2CB_NO_ERROR on success,
 // returns CTA_L2CB_ERROR_TIMEOUT on timeout error
-static inline int cta_l2cb_setL1TriggerDelay(uint8_t _slot, uint8_t _channel, uint16_t _delay)
+static inline int cta_l2cb_setL1TriggerDelay(uint16_t _slot, uint16_t _channel, uint16_t _delay)
 {
 	cta_l2cb_l1sel(_slot, _channel);
 
@@ -377,7 +377,7 @@ static inline int cta_l2cb_setL1TriggerDelay(uint8_t _slot, uint8_t _channel, ui
 // get trigger delay for a CTDB trigger cluster/channel
 // if a set-delay process for the selected channel is ongoing, it waits until complete or timeout
 // returns delay value that has been set last time
-static inline uint16_t cta_l2cb_getL1TriggerDelay(uint8_t _slot, uint8_t _channel)
+static inline uint16_t cta_l2cb_getL1TriggerDelay(uint16_t _slot, uint16_t _channel)
 {
 	cta_l2cb_l1sel(_slot, _channel);
 
@@ -402,13 +402,13 @@ CEXTERN int cta_l2cb_spi_wait(void);
 // valid slot are 1..9 and 13..21
 // returns CTA_L2CB_NO_ERROR on success,
 // returns CTA_L2CB_ERROR_TIMEOUT on timeout error
-CEXTERN int cta_l2cb_spi_read(uint8_t _slot, uint8_t _register, uint16_t* _value);
+CEXTERN int cta_l2cb_spi_read(uint16_t _slot, uint16_t _register, uint16_t* _value);
 // reads a register from a CTDB at slot x
 // valid register addresses are 0..255
 // valid slot are 1..9 and 13..21
 // returns CTA_L2CB_NO_ERROR on success,
 // returns CTA_L2CB_ERROR_TIMEOUT on timeout error
-CEXTERN int cta_l2cb_spi_write(uint8_t _slot, uint8_t _register, uint16_t _value);
+CEXTERN int cta_l2cb_spi_write(uint16_t _slot, uint16_t _register, uint16_t _value);
 
 // ***** Helper Functions to access registers aof the CTDB modules
 
@@ -420,7 +420,7 @@ CEXTERN int cta_l2cb_spi_write(uint8_t _slot, uint8_t _register, uint16_t _value
 // bit 1..15 -> power channel 1..15
 // returns CTA_L2CB_NO_ERROR on success,
 // returns CTA_L2CB_ERROR_TIMEOUT on timeout error
-static inline int cta_ctdb_setPowerEnabled(uint8_t _slot, uint16_t _value)
+static inline int cta_ctdb_setPowerEnabled(uint16_t _slot, uint16_t _value)
 {
 	return cta_l2cb_spi_write(_slot, ADDR_CTA_CTDB_PONF, _value);
 }
@@ -435,7 +435,7 @@ static inline void cta_ctdb_setPowerEnabledToAll(uint16_t _on)
 	int value=(_on)?0xfffe:0x0;
 	int slots[] = CTA_L2CB_SLOT_LIST;
 	for(s=0;s<CTA_L2CB_SLOT_COUNT;s++) {
-		cta_l2cb_spi_write(slots[s], ADDR_CTA_CTDB_PONF, value);
+		cta_l2cb_spi_write((uint16_t)slots[s], ADDR_CTA_CTDB_PONF, (uint16_t)value);
 	}
 }
 
@@ -444,7 +444,7 @@ static inline void cta_ctdb_setPowerEnabledToAll(uint16_t _on)
 // returns readback value into *_value pointer
 // returns CTA_L2CB_NO_ERROR on success,
 // returns CTA_L2CB_ERROR_TIMEOUT on timeout error
-static inline int cta_ctdb_getPowerEnabled(uint8_t _slot, uint16_t* _value)
+static inline int cta_ctdb_getPowerEnabled(uint16_t _slot, uint16_t* _value)
 {
 	return cta_l2cb_spi_read(_slot, ADDR_CTA_CTDB_PONF, _value);
 }
@@ -453,7 +453,7 @@ static inline int cta_ctdb_getPowerEnabled(uint8_t _slot, uint16_t* _value)
 // _on : 1 = power requested to switch on , 0 = power requested to switch off
 // returns CTA_L2CB_NO_ERROR on success
 // returns CTA_L2CB_ERROR_TIMEOUT on timeout error
-static inline int cta_ctdb_setPowerChannelEnabled(uint8_t _slot, uint16_t _channel, int _on)
+static inline int cta_ctdb_setPowerChannelEnabled(uint16_t _slot, uint16_t _channel, int _on)
 {
 	uint16_t val=0;
 	int err;
@@ -468,7 +468,7 @@ static inline int cta_ctdb_setPowerChannelEnabled(uint8_t _slot, uint16_t _chann
 // Note: it is possible, that a enabled power channel is not "on" because of an error condition (over/under current)
 // returns CTA_L2CB_NO_ERROR on success
 // returns CTA_L2CB_ERROR_TIMEOUT on timeout error
-static inline int cta_ctdb_getPowerChannelEnabled(uint8_t _slot, uint16_t _channel, int* _isOn)
+static inline int cta_ctdb_getPowerChannelEnabled(uint16_t _slot, uint16_t _channel, int* _isOn)
 {
 	if (!_isOn) return CTA_L2CB_INVALID_PARAMETER;
 	uint16_t val;
@@ -483,7 +483,7 @@ static inline int cta_ctdb_getPowerChannelEnabled(uint8_t _slot, uint16_t _chann
 // bit 0..11 -> max value , 0.485mA / count
 // returns CTA_L2CB_NO_ERROR on success,
 // returns CTA_L2CB_ERROR_TIMEOUT on timeout error
-static inline int cta_ctdb_setPowerCurrentMax(uint8_t _slot, uint16_t _value)
+static inline int cta_ctdb_setPowerCurrentMax(uint16_t _slot, uint16_t _value)
 {
 	return cta_l2cb_spi_write(_slot, ADDR_CTA_CTDB_CUR_MAX, _value);
 }
@@ -493,7 +493,7 @@ static inline int cta_ctdb_setPowerCurrentMax(uint8_t _slot, uint16_t _value)
 // returns readback value via _value pointer
 // returns CTA_L2CB_NO_ERROR on success,
 // returns CTA_L2CB_ERROR_TIMEOUT on timeout error
-static inline int cta_ctdb_getPowerCurrentMax(uint8_t _slot, uint16_t* _value)
+static inline int cta_ctdb_getPowerCurrentMax(uint16_t _slot, uint16_t* _value)
 {
 	return cta_l2cb_spi_read(_slot, ADDR_CTA_CTDB_CUR_MAX, _value);
 }
@@ -502,7 +502,7 @@ static inline int cta_ctdb_getPowerCurrentMax(uint8_t _slot, uint16_t* _value)
 // bit 0..11 -> min value , 0.485mA / count
 // returns CTA_L2CB_NO_ERROR on success,
 // returns CTA_L2CB_ERROR_TIMEOUT on timeout error
-static inline int cta_ctdb_setPowerCurrentMin(uint8_t _slot, uint16_t _value)
+static inline int cta_ctdb_setPowerCurrentMin(uint16_t _slot, uint16_t _value)
 {
 	return cta_l2cb_spi_write(_slot, ADDR_CTA_CTDB_CUR_MIN, _value);
 }
@@ -512,7 +512,7 @@ static inline int cta_ctdb_setPowerCurrentMin(uint8_t _slot, uint16_t _value)
 // returns readback value via _value pointer
 // returns CTA_L2CB_NO_ERROR on success,
 // returns CTA_L2CB_ERROR_TIMEOUT on timeout error
-static inline int cta_ctdb_getPowerCurrentMin(uint8_t _slot, uint16_t* _value)
+static inline int cta_ctdb_getPowerCurrentMin(uint16_t _slot, uint16_t* _value)
 {
 	return cta_l2cb_spi_read(_slot, ADDR_CTA_CTDB_CUR_MIN, _value);
 }
@@ -524,9 +524,9 @@ static inline int cta_ctdb_getPowerCurrentMin(uint8_t _slot, uint16_t* _value)
 // returns adc value is read back into *_value pointer
 // returns CTA_L2CB_NO_ERROR on success
 // returns CTA_L2CB_ERROR_TIMEOUT on timeout error
-static inline int cta_ctdb_getPowerCurrent(uint8_t _slot, uint16_t _channel, uint16_t* _value)
+static inline int cta_ctdb_getPowerCurrent(uint16_t _slot, uint16_t _channel, uint16_t* _value)
 {
-	uint8_t addr=0;
+	uint16_t addr=0;
 	if (_channel>15) return CTA_L2CB_INVALID_PARAMETER;
 	if (_channel>0) addr=BASE_CTA_CTDB_CUR+_channel-1; else addr=ADDR_CTA_CTDB_CUR_00;
 	if (!_value) return CTA_L2CB_INVALID_PARAMETER;
@@ -538,7 +538,7 @@ static inline int cta_ctdb_getPowerCurrent(uint8_t _slot, uint16_t _channel, uin
 // returns readback value via _value pointer
 // returns CTA_L2CB_NO_ERROR on success,
 // returns CTA_L2CB_ERROR_TIMEOUT on timeout error
-static inline int cta_ctdb_getUnderCurrentErrors(uint8_t _slot, uint16_t* _value)
+static inline int cta_ctdb_getUnderCurrentErrors(uint16_t _slot, uint16_t* _value)
 {
 	return cta_l2cb_spi_read(_slot, ADDR_CTA_CTDB_UNDER_CUR, _value);
 }
@@ -548,7 +548,7 @@ static inline int cta_ctdb_getUnderCurrentErrors(uint8_t _slot, uint16_t* _value
 // returns readback value via _value pointer
 // returns CTA_L2CB_NO_ERROR on success,
 // returns CTA_L2CB_ERROR_TIMEOUT on timeout error
-static inline int cta_ctdb_getOverCurrentErrors(uint8_t _slot, uint16_t* _value)
+static inline int cta_ctdb_getOverCurrentErrors(uint16_t _slot, uint16_t* _value)
 {
 	return cta_l2cb_spi_read(_slot, ADDR_CTA_CTDB_OVER_CUR, _value);
 }
@@ -558,7 +558,7 @@ static inline int cta_ctdb_getOverCurrentErrors(uint8_t _slot, uint16_t* _value)
 // returns readback value via _value pointer
 // returns CTA_L2CB_NO_ERROR on success,
 // returns CTA_L2CB_ERROR_TIMEOUT on timeout error
-static inline int cta_ctdb_getFirmwareRevision(uint8_t _slot, uint16_t* _value)
+static inline int cta_ctdb_getFirmwareRevision(uint16_t _slot, uint16_t* _value)
 {
 	return cta_l2cb_spi_read(_slot, ADDR_CTA_CTDB_FREV, _value);
 }
@@ -568,7 +568,7 @@ static inline int cta_ctdb_getFirmwareRevision(uint8_t _slot, uint16_t* _value)
 // for internal use only
 // returns CTA_L2CB_NO_ERROR on success,
 // returns CTA_L2CB_ERROR_TIMEOUT on timeout error
-static inline int cta_ctdb_setDebugPins(uint8_t _slot, uint16_t _value)
+static inline int cta_ctdb_setDebugPins(uint16_t _slot, uint16_t _value)
 {
 	return cta_l2cb_spi_write(_slot, ADDR_CTA_CTDB_DEBUG, _value);
 }
@@ -578,17 +578,17 @@ static inline int cta_ctdb_setDebugPins(uint8_t _slot, uint16_t _value)
 // for internal use only
 // returns CTA_L2CB_NO_ERROR on success,
 // returns CTA_L2CB_ERROR_TIMEOUT on timeout error
-static inline int cta_ctdb_getDebugPins(uint8_t _slot, uint16_t* _value)
+static inline int cta_ctdb_getDebugPins(uint16_t _slot, uint16_t* _value)
 {
 	return cta_l2cb_spi_read(_slot, ADDR_CTA_CTDB_DEBUG, _value);
 }
 
-static inline int cta_ctdb_getSlaveRegister(uint8_t _slot, uint8_t _address, uint16_t* _value)
+static inline int cta_ctdb_getSlaveRegister(uint16_t _slot, uint16_t _address, uint16_t* _value)
 {
 	return cta_l2cb_spi_read(_slot, _address, _value);
 }
 
-static inline int cta_ctdb_setSlaveRegister(uint8_t _slot, uint8_t _address, uint16_t _value)
+static inline int cta_ctdb_setSlaveRegister(uint16_t _slot, uint16_t _address, uint16_t _value)
 {
 	return cta_l2cb_spi_write(_slot, _address, _value);
 }

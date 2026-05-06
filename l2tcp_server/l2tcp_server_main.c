@@ -73,7 +73,7 @@ static int is_ch_immutable(int slot, int ch) {
     return (g_server.immutable_masks[slot] & (1 << ch)) != 0;
 }
 
-static const char* msg_type_to_str(uint8_t type) {
+static const char* msg_type_to_str(uint16_t type) {
     switch (type) {
         case L2TCP_MSG_ACK:                return "ACK";
         case L2TCP_MSG_ERROR:              return "ERROR";
@@ -128,7 +128,7 @@ static int send_all(int fd, const void *buf, size_t len) {
     return 0;
 }
 
-static void send_error(uint8_t seq, uint8_t code, const char *msg) {
+static void send_error(uint16_t seq, uint16_t code, const char *msg) {
     l2tcp_header_t resp_hdr;
     l2tcp_payload_error_t resp_err;
 
@@ -139,6 +139,7 @@ static void send_error(uint8_t seq, uint8_t code, const char *msg) {
     resp_hdr.type = L2TCP_MSG_ERROR;
     resp_hdr.seq = seq;
     resp_hdr.len = sizeof(resp_err);
+    resp_hdr.reserved = 0;
     
     resp_err.code = code;
     strncpy(resp_err.message, msg, sizeof(resp_err.message) - 1);
@@ -149,11 +150,11 @@ static void send_error(uint8_t seq, uint8_t code, const char *msg) {
     }
 }
 
-static void send_ack(uint8_t seq, int show_msg) {
+static void send_ack(uint16_t seq, int show_msg) {
     if (g_server.verbose > 0 && show_msg) {
         printf("  -> ACK\n");
     }
-    l2tcp_header_t resp_hdr = { L2TCP_MSG_ACK, seq, 0 };
+    l2tcp_header_t resp_hdr = { L2TCP_MSG_ACK, seq, 0, 0 };
     send_all(g_server.client_fd, &resp_hdr, sizeof(resp_hdr));
 }
 
@@ -164,16 +165,16 @@ static void handle_ch_power(int slot, int ch, int enable) {
 
     if (enable) {
         uint16_t over, under;
-        cta_ctdb_getOverCurrentErrors(slot, &over);
-        cta_ctdb_getUnderCurrentErrors(slot, &under);
+        cta_ctdb_getOverCurrentErrors((uint16_t)slot, &over);
+        cta_ctdb_getUnderCurrentErrors((uint16_t)slot, &under);
         
         if ((over | under) & (1 << ch)) {
             /* Error detected: explicit OFF to reset latch */
-            cta_ctdb_setPowerChannelEnabled(slot, ch, 0);
+            cta_ctdb_setPowerChannelEnabled((uint16_t)slot, (uint16_t)ch, 0);
         }
-        cta_ctdb_setPowerChannelEnabled(slot, ch, 1);
+        cta_ctdb_setPowerChannelEnabled((uint16_t)slot, (uint16_t)ch, 1);
     } else {
-        cta_ctdb_setPowerChannelEnabled(slot, ch, 0);
+        cta_ctdb_setPowerChannelEnabled((uint16_t)slot, (uint16_t)ch, 0);
     }
 }
 
@@ -190,15 +191,15 @@ static void start_ramp(int enable) {
         for (int s = L2TCP_MIN_SLOT; s <= L2TCP_MAX_SLOT; s++) {
             if (!is_slot_active(s)) continue;
             uint16_t over, under;
-            cta_ctdb_getOverCurrentErrors(s, &over);
-            cta_ctdb_getUnderCurrentErrors(s, &under);
+            cta_ctdb_getOverCurrentErrors((uint16_t)s, &over);
+            cta_ctdb_getUnderCurrentErrors((uint16_t)s, &under);
             uint16_t err_mask = (over | under);
             /* Only reset errors in non-immutable channels */
             uint16_t resetable_err_mask = err_mask & ~g_server.immutable_masks[s];
             if (resetable_err_mask) {
                 uint16_t pwr;
-                cta_ctdb_getPowerEnabled(s, &pwr);
-                cta_ctdb_setPowerEnabled(s, pwr & ~resetable_err_mask);
+                cta_ctdb_getPowerEnabled((uint16_t)s, &pwr);
+                cta_ctdb_setPowerEnabled((uint16_t)s, pwr & ~resetable_err_mask);
             }
         }
     }
@@ -219,7 +220,7 @@ static void process_ramp() {
     for (int s = L2TCP_MIN_SLOT; s <= L2TCP_MAX_SLOT; s++) {
         if (!is_slot_active(s)) continue;
         if (is_ch_immutable(s, g_server.ramp.current_ch)) continue;
-        cta_ctdb_setPowerChannelEnabled(s, g_server.ramp.current_ch, g_server.ramp.enable);
+        cta_ctdb_setPowerChannelEnabled((uint16_t)s, (uint16_t)g_server.ramp.current_ch, g_server.ramp.enable);
     }
 
     g_server.ramp.current_ch++;
@@ -238,7 +239,7 @@ static void process_ramp() {
 
 /* --- Command Processing --- */
 
-static int is_polling_msg(uint8_t type) {
+static int is_polling_msg(uint16_t type) {
     return (type == L2TCP_MSG_KEEPALIVE ||
             type == L2TCP_MSG_L2CB_GET_STATE ||
             type == L2TCP_MSG_CTDB_GET_MONITORING ||
@@ -321,14 +322,14 @@ static void handle_request() {
             case L2TCP_MSG_L2CB_SET_MCF_DELAY:
             case L2TCP_MSG_L2CB_SET_L1_DEADTIME: printf(" val: %d", ((l2tcp_payload_u16_t*)buffer)->value); break;
             case L2TCP_MSG_L2CB_SET_BUSY_ENABLE_MASK: printf(" val: 0x%08x", *((uint32_t*)buffer)); break;
-            case L2TCP_MSG_L2CB_SET_BUSY_ENABLE_SLOT: printf(" S%d en: %d", buffer[0], buffer[1]); break;
+            case L2TCP_MSG_L2CB_SET_BUSY_ENABLE_SLOT: printf(" S%d en: %d", ((uint16_t*)buffer)[0], ((uint16_t*)buffer)[1]); break;
             case L2TCP_MSG_L2CB_RESET_TIB_COUNT: break;
             case L2TCP_MSG_CTDB_SET_CH_POWER:
             case L2TCP_MSG_CTDB_SET_CH_TRIG: printf(" S%dC%d en: %d", ((l2tcp_payload_ch_ctrl_t*)buffer)->slot, ((l2tcp_payload_ch_ctrl_t*)buffer)->channel, ((l2tcp_payload_ch_ctrl_t*)buffer)->enable); break;
             case L2TCP_MSG_CTDB_SET_CH_DELAY: printf(" S%dC%d delay: %d", ((l2tcp_payload_ch_delay_t*)buffer)->slot, ((l2tcp_payload_ch_delay_t*)buffer)->channel, ((l2tcp_payload_ch_delay_t*)buffer)->delay); break;
             case L2TCP_MSG_CTDB_SET_LIMITS: printf(" S%d min: %d, max: %d", ((l2tcp_payload_ctdb_limits_t*)buffer)->slot, ((l2tcp_payload_ctdb_limits_t*)buffer)->curr_limit_min, ((l2tcp_payload_ctdb_limits_t*)buffer)->curr_limit_max); break;
             case L2TCP_MSG_CTDB_GET_MONITORING:
-            case L2TCP_MSG_CTDB_GET_CONFIG: printf(" slot: %d", buffer[0]); break;
+            case L2TCP_MSG_CTDB_GET_CONFIG: printf(" slot: %d", ((uint16_t*)buffer)[0]); break;
         }
         printf("\n");
     }
@@ -344,7 +345,7 @@ static void handle_request() {
                 if (g_server.verbose > 0) printf("  [DEBUG] Negotiation FAIL, version mismatch (%d != %d)\n", p->value, L2TCP_PROTOCOL_VERSION);
             }
             
-            l2tcp_header_t resp_hdr = { L2TCP_MSG_HELLO, hdr.seq, sizeof(l2tcp_payload_u16_t) };
+            l2tcp_header_t resp_hdr = { L2TCP_MSG_HELLO, hdr.seq, sizeof(l2tcp_payload_u16_t), 0 };
             l2tcp_payload_u16_t resp = { L2TCP_PROTOCOL_VERSION };
             
             if (g_server.verbose > 0) {
@@ -429,7 +430,7 @@ static void handle_request() {
             uint16_t enable = ((l2tcp_payload_u16_t*)buffer)->value;
             for (int s = L2TCP_MIN_SLOT; s <= L2TCP_MAX_SLOT; s++) {
                 if (!is_slot_active(s)) continue;
-                uint16_t current_mask = cta_l2cb_getL1TriggerEnabled(s);
+                uint16_t current_mask = cta_l2cb_getL1TriggerEnabled((uint16_t)s);
                 uint16_t immutable_mask = g_server.immutable_masks[s];
                 uint16_t new_mask;
                 if (enable) {
@@ -437,7 +438,7 @@ static void handle_request() {
                 } else {
                     new_mask = current_mask & (0x0001 | immutable_mask);
                 }
-                cta_l2cb_setL1TriggerEnabled(s, new_mask);
+                cta_l2cb_setL1TriggerEnabled((uint16_t)s, new_mask);
             }
             send_ack(hdr.seq, show_msg);
             break;
@@ -449,14 +450,14 @@ static void handle_request() {
                 if (!is_slot_active(s)) continue;
                 for (int ch = 1; ch <= 15; ch++) {
                     if (is_ch_immutable(s, ch)) continue;
-                    cta_l2cb_setL1TriggerDelay(s, ch, delay);
+                    cta_l2cb_setL1TriggerDelay((uint16_t)s, (uint16_t)ch, delay);
                 }
             }
             send_ack(hdr.seq, show_msg);
             break;
         }
         case L2TCP_MSG_L2CB_GET_STATE: {
-            l2tcp_header_t resp_hdr = { L2TCP_MSG_L2CB_GET_STATE, hdr.seq, sizeof(l2tcp_payload_l2cb_state_t) };
+            l2tcp_header_t resp_hdr = { L2TCP_MSG_L2CB_GET_STATE, hdr.seq, sizeof(l2tcp_payload_l2cb_state_t), 0 };
             l2tcp_payload_l2cb_state_t resp;
             resp.fw_rev = cta_l2cb_getFirmwareRevision();
             resp.timestamp = cta_l2cb_readTimestamp();
@@ -517,9 +518,9 @@ static void handle_request() {
             break;
         }
         case L2TCP_MSG_L2CB_SET_BUSY_ENABLE_SLOT: {
-            uint8_t slot = buffer[0];
-            uint8_t on = buffer[1];
-            cta_l2cb_setBusyEnableSlot(slot, on);
+            uint16_t slot = ((uint16_t*)buffer)[0];
+            uint16_t on = ((uint16_t*)buffer)[1];
+            cta_l2cb_setBusyEnableSlot(slot, (int)on);
             send_ack(hdr.seq, show_msg);
             break;
         }
@@ -533,7 +534,7 @@ static void handle_request() {
             if (!is_slot_active(p->slot)) {
                 send_error(hdr.seq, L2TCP_ERR_INVALID_PARAMETER, "Slot not active");
             } else {
-                handle_ch_power(p->slot, p->channel, p->enable);
+                handle_ch_power((int)p->slot, (int)p->channel, (int)p->enable);
                 send_ack(hdr.seq, show_msg);
             }
             break;
@@ -542,7 +543,7 @@ static void handle_request() {
             l2tcp_payload_ch_ctrl_t *p = (l2tcp_payload_ch_ctrl_t *)buffer;
             if (!is_slot_active(p->slot)) {
                 send_error(hdr.seq, L2TCP_ERR_INVALID_PARAMETER, "Slot not active");
-            } else if (is_ch_immutable(p->slot, p->channel)) {
+            } else if (is_ch_immutable((int)p->slot, (int)p->channel)) {
                 send_error(hdr.seq, L2TCP_ERR_INVALID_PARAMETER, "Channel is immutable");
             } else {
                 cta_l2cb_setL1TriggerChannelEnabled(p->slot, p->channel, p->enable);
@@ -554,7 +555,7 @@ static void handle_request() {
             l2tcp_payload_ch_delay_t *p = (l2tcp_payload_ch_delay_t *)buffer;
             if (!is_slot_active(p->slot)) {
                 send_error(hdr.seq, L2TCP_ERR_INVALID_PARAMETER, "Slot not active");
-            } else if (is_ch_immutable(p->slot, p->channel)) {
+            } else if (is_ch_immutable((int)p->slot, (int)p->channel)) {
                 send_error(hdr.seq, L2TCP_ERR_INVALID_PARAMETER, "Channel is immutable");
             } else {
                 uint16_t delay = p->delay;
@@ -580,16 +581,16 @@ static void handle_request() {
             break;
         }
         case L2TCP_MSG_CTDB_GET_MONITORING: {
-            uint8_t slot = buffer[0];
-            if (!is_slot_active(slot)) {
+            uint16_t slot = ((uint16_t*)buffer)[0];
+            if (!is_slot_active((int)slot)) {
                 send_error(hdr.seq, L2TCP_ERR_INVALID_PARAMETER, "Slot not active");
             } else {
-                l2tcp_header_t resp_hdr = { L2TCP_MSG_CTDB_GET_MONITORING, hdr.seq, sizeof(l2tcp_payload_monitoring_t) };
+                l2tcp_header_t resp_hdr = { L2TCP_MSG_CTDB_GET_MONITORING, hdr.seq, sizeof(l2tcp_payload_monitoring_t), 0 };
                 l2tcp_payload_monitoring_t resp;
                 memset(&resp, 0, sizeof(resp));
                 resp.slot = slot;
                 cta_ctdb_getPowerCurrent(slot, 0, &resp.ctdb_curr);
-                for (int i = 0; i < 15; i++) cta_ctdb_getPowerCurrent(slot, i + 1, &resp.ch_curr[i]);
+                for (int i = 0; i < 15; i++) cta_ctdb_getPowerCurrent(slot, (uint16_t)(i + 1), &resp.ch_curr[i]);
                 cta_ctdb_getOverCurrentErrors(slot, &resp.over_curr_mask);
                 cta_ctdb_getUnderCurrentErrors(slot, &resp.under_curr_mask);
                 cta_ctdb_getPowerEnabled(slot, &resp.pwr_enabled_mask);
@@ -614,7 +615,7 @@ static void handle_request() {
             /* Use static buffer to avoid large stack allocation on embedded systems */
             static l2tcp_payload_batch_monitor_full_t batch;
             memset(&batch, 0, sizeof(batch));
-            batch.count = (uint8_t)count;
+            batch.count = (uint16_t)count;
             
             int idx = 0;
             for (int s = L2TCP_MIN_SLOT; s <= L2TCP_MAX_SLOT && idx < count; s++) {
@@ -624,12 +625,12 @@ static void handle_request() {
                 if (g_server.verbose > 2) get_now(&ts0);
 
                 l2tcp_payload_monitoring_t *resp = &batch.entries[idx];
-                resp->slot = (uint8_t)s;
-                cta_ctdb_getPowerCurrent(s, 0, &resp->ctdb_curr);
-                for (int i = 0; i < 15; i++) cta_ctdb_getPowerCurrent(s, i + 1, &resp->ch_curr[i]);
-                cta_ctdb_getOverCurrentErrors(s, &resp->over_curr_mask);
-                cta_ctdb_getUnderCurrentErrors(s, &resp->under_curr_mask);
-                cta_ctdb_getPowerEnabled(s, &resp->pwr_enabled_mask);
+                resp->slot = (uint16_t)s;
+                cta_ctdb_getPowerCurrent((uint16_t)s, 0, &resp->ctdb_curr);
+                for (int i = 0; i < 15; i++) cta_ctdb_getPowerCurrent((uint16_t)s, (uint16_t)(i + 1), &resp->ch_curr[i]);
+                cta_ctdb_getOverCurrentErrors((uint16_t)s, &resp->over_curr_mask);
+                cta_ctdb_getUnderCurrentErrors((uint16_t)s, &resp->under_curr_mask);
+                cta_ctdb_getPowerEnabled((uint16_t)s, &resp->pwr_enabled_mask);
                 
                 if (g_server.verbose > 2) {
                     struct timespec ts1;
@@ -642,10 +643,10 @@ static void handle_request() {
             
             if (g_server.verbose > 2) get_now(&t1);
 
-            /* Calculate actual payload size: count byte + populated entries */
-            size_t payload_size = sizeof(uint8_t) + count * sizeof(l2tcp_payload_monitoring_t);
+            /* Calculate actual payload size: count (u16) + populated entries */
+            size_t payload_size = sizeof(uint16_t) + count * sizeof(l2tcp_payload_monitoring_t);
             
-            l2tcp_header_t resp_hdr = { L2TCP_MSG_BATCH_MONITOR_ALL, hdr.seq, (uint16_t)payload_size };
+            l2tcp_header_t resp_hdr = { L2TCP_MSG_BATCH_MONITOR_ALL, hdr.seq, (uint16_t)payload_size, 0 };
 
             if (g_server.verbose > 1) printf("  -> BATCH MONITOR (%d slots, %zu bytes)\n", count, payload_size);
 
@@ -662,11 +663,11 @@ static void handle_request() {
             break;
         }
         case L2TCP_MSG_CTDB_GET_CONFIG: {
-            uint8_t slot = buffer[0];
-            if (!is_slot_active(slot)) {
+            uint16_t slot = ((uint16_t*)buffer)[0];
+            if (!is_slot_active((int)slot)) {
                 send_error(hdr.seq, L2TCP_ERR_INVALID_PARAMETER, "Slot not active");
             } else {
-                l2tcp_header_t resp_hdr = { L2TCP_MSG_CTDB_GET_CONFIG, hdr.seq, sizeof(l2tcp_payload_config_t) };
+                l2tcp_header_t resp_hdr = { L2TCP_MSG_CTDB_GET_CONFIG, hdr.seq, sizeof(l2tcp_payload_config_t), 0 };
                 l2tcp_payload_config_t resp;
                 memset(&resp, 0, sizeof(resp));
                 resp.slot = slot;
@@ -674,7 +675,7 @@ static void handle_request() {
                 cta_ctdb_getPowerCurrentMin(slot, &resp.curr_limit_min);
                 cta_ctdb_getPowerCurrentMax(slot, &resp.curr_limit_max);
                 resp.trig_enabled_mask = cta_l2cb_getL1TriggerEnabled(slot);
-                for (int i = 0; i < 15; i++) resp.trig_delays[i] = cta_l2cb_getL1TriggerDelay(slot, i + 1);
+                for (int i = 0; i < 15; i++) resp.trig_delays[i] = cta_l2cb_getL1TriggerDelay(slot, (uint16_t)(i + 1));
 
                 if (g_server.verbose > 1) printf("  -> CONFIG S%d\n", slot);
 

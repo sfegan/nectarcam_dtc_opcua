@@ -73,23 +73,24 @@ typedef enum {
     L2TCP_ERR_NOT_INITIALIZED         = 6
 } l2tcp_error_code_t;
 
-#define L2TCP_PROTOCOL_VERSION 2
+#define L2TCP_PROTOCOL_VERSION 3
 
 /* --- Protocol Header --- */
 
 #pragma pack(push, 1)
 
 typedef struct {
-    uint8_t type;     /* l2tcp_msg_type_t */
-    uint8_t seq;      /* Sequence number for matching requests/responses */
-    uint16_t len;     /* Length of payload following header (Little Endian) */
+    uint16_t type;     /* l2tcp_msg_type_t */
+    uint16_t seq;      /* Sequence number for matching requests/responses */
+    uint16_t len;      /* Length of payload following header (Little Endian) */
+    uint16_t reserved; /* Padding for 8-byte alignment */
 } l2tcp_header_t;
 
 /* --- Payloads --- */
 
 /* L2TCP_MSG_ERROR payload */
 typedef struct {
-    uint8_t code;
+    uint16_t code;
     char message[64];
 } l2tcp_payload_error_t;
 
@@ -101,7 +102,7 @@ typedef struct {
 
 /* L2TCP_MSG_SYS_RAMP_POWER */
 typedef struct {
-    uint8_t enable;    /* 1 = ON, 0 = OFF */
+    uint16_t enable;    /* 1 = ON, 0 = OFF */
 } l2tcp_payload_ramp_t;
 
 /* L2CB Setters (Common for uint16 types) */
@@ -111,41 +112,41 @@ typedef struct {
 
 /* L2TCP_MSG_L2CB_GET_STATE (Response) */
 typedef struct {
-    uint16_t fw_rev;
     uint64_t timestamp;
+    uint32_t busy_mask;
+    uint32_t busy_stuck;
+    uint16_t fw_rev;
     uint16_t ctrl_state;
     uint16_t mcf_threshold;
     uint16_t mcf_delay;
     uint16_t l1_deadtime;
     uint16_t tib_event_count;
-    uint32_t busy_mask;
-    uint32_t busy_stuck;
 } l2tcp_payload_l2cb_state_t;
 
 /* L2TCP_MSG_CTDB_SET_CH_POWER, L2TCP_MSG_CTDB_SET_CH_TRIG */
 typedef struct {
-    uint8_t slot;
-    uint8_t channel;
-    uint8_t enable;
+    uint16_t slot;
+    uint16_t channel;
+    uint16_t enable;
 } l2tcp_payload_ch_ctrl_t;
 
 /* L2TCP_MSG_CTDB_SET_CH_DELAY */
 typedef struct {
-    uint8_t slot;
-    uint8_t channel;
+    uint16_t slot;
+    uint16_t channel;
     uint16_t delay;
 } l2tcp_payload_ch_delay_t;
 
 /* L2TCP_MSG_CTDB_SET_LIMITS */
 typedef struct {
-    uint8_t slot;
+    uint16_t slot;
     uint16_t curr_limit_min;
     uint16_t curr_limit_max;
 } l2tcp_payload_ctdb_limits_t;
 
-/* L2TCP_MSG_CTDB_GET_MONITORING (Request: slot u8) (Response: below) */
+/* L2TCP_MSG_CTDB_GET_MONITORING (Request: slot u16) (Response: below) */
 typedef struct {
-    uint8_t slot;
+    uint16_t slot;
     uint16_t ctdb_curr;
     uint16_t ch_curr[15];
     uint16_t over_curr_mask;
@@ -153,9 +154,9 @@ typedef struct {
     uint16_t pwr_enabled_mask;
 } l2tcp_payload_monitoring_t;
 
-/* L2TCP_MSG_CTDB_GET_CONFIG (Request: slot u8) (Response: below) */
+/* L2TCP_MSG_CTDB_GET_CONFIG (Request: slot u16) (Response: below) */
 typedef struct {
-    uint8_t slot;
+    uint16_t slot;
     uint16_t fw_rev;
     uint16_t curr_limit_min;
     uint16_t curr_limit_max;
@@ -166,7 +167,7 @@ typedef struct {
 /* L2TCP_MSG_BATCH_MONITOR_ALL (Response) */
 /* Complete batch payload with all active monitoring entries sent contiguously */
 typedef struct {
-    uint8_t count;
+    uint16_t count;
     l2tcp_payload_monitoring_t entries[L2TCP_MAX_SLOT+1];  /* Max 18 slots (1-9, 13-21) but let's be safe */
 } l2tcp_payload_batch_monitor_full_t;
 
