@@ -742,6 +742,10 @@ int main(int argc, char **argv) {
     sigaction(SIGPIPE, &sa, NULL);
 
     printf("L2TCP Server listening on port %d, ramp delay %d ms\n", port, g_server.ramp_delay_ms);
+    printf("  [DEBUG] HAL Timing: init=%u, inter=%u, timeout=%u\n", 
+           cta_l2cb_spi_wait_config_ctdb.initial_wait_iters,
+           cta_l2cb_spi_wait_config_ctdb.inter_command_iters,
+           cta_l2cb_spi_wait_config_ctdb.timeout_iters);
 
     while (g_running) {
         fd_set fds;

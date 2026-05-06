@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <stdio.h>
 
 #include "l2trig_hal.h"
 
@@ -47,9 +48,18 @@ int cta_l2cb_spi_generalized_wait(cta_l2cb_spi_wait_config_t* _config, int _is_r
     cta_l2cb_delay_cycles(_config->initial_wait_iters);
 
     uint32_t timeout_count = _config->timeout_iters;
-    while (testBitVal16(IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_STAT), _config->spi_bit))
+    uint16_t last_stat = 0;
+    while (testBitVal16(last_stat = IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_STAT), _config->spi_bit))
     {
-        if (--timeout_count == 0) return CTA_L2CB_ERROR_TIMEOUT;
+        if (--timeout_count == 0) {
+            static int timeout_report_count = 0;
+            if (timeout_report_count < 10) {
+                fprintf(stderr, "HAL: SPI Timeout! Stat=0x%04X, Bit=%d, Iters=%u\n", 
+                        last_stat, _config->spi_bit, _config->timeout_iters);
+                timeout_report_count++;
+            }
+            return CTA_L2CB_ERROR_TIMEOUT;
+        }
     }
 
     // After completion, wait the required inter-command delay
@@ -73,14 +83,15 @@ int cta_l2cb_spi_read(uint8_t _slot, uint8_t _register, uint16_t* _value)
 	if (!cta_l2cb_isValidSLot(_slot)) return CTA_L2CB_INVALID_PARAMETER;
 
 	// wait for completion of previous command
-	int err = cta_l2cb_spi_generalized_wait(&cta_l2cb_spi_wait_config_ctdb, 1);
+	// use _is_read=0 because we want the inter-command delay if the previous op was a write
+	int err = cta_l2cb_spi_generalized_wait(&cta_l2cb_spi_wait_config_ctdb, 0);
 	if (err != CTA_L2CB_NO_ERROR) return err;
 
 	// initiate transfer
 	uint16_t config = (_register & 0xff) | ((_slot & 0x1f) << 8);
 	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_SPAD, config);
 
-	// wait for completion and enough delay for read
+	// wait for completion
 	err = cta_l2cb_spi_generalized_wait(&cta_l2cb_spi_wait_config_ctdb, 1);
 	if (err != CTA_L2CB_NO_ERROR) return err;
 
@@ -95,7 +106,7 @@ int cta_l2cb_spi_write(uint8_t _slot, uint8_t _register, uint16_t _value)
 	if (!cta_l2cb_isValidSLot(_slot)) return CTA_L2CB_INVALID_PARAMETER;
 
 	// wait for completion of previous command
-	int err = cta_l2cb_spi_generalized_wait(&cta_l2cb_spi_wait_config_ctdb, 1);
+	int err = cta_l2cb_spi_generalized_wait(&cta_l2cb_spi_wait_config_ctdb, 0);
 	if (err != CTA_L2CB_NO_ERROR) return err;
 
 	// initiate transfer
