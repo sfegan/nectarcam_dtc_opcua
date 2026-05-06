@@ -592,7 +592,8 @@ static void handle_request() {
             }
             
             /* Use static buffer to avoid large stack allocation on embedded systems */
-            static l2tcp_payload_batch_monitor_full_t batch;
+            /* Warning: This should be replaced if we move to multiple threads */
+            static l2tcp_payload_batch_monitor_full_t batch; 
             memset(&batch, 0, sizeof(batch));
             batch.count = (uint8_t)count;
             
