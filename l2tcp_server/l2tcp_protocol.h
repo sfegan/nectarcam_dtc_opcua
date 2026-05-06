@@ -171,6 +171,42 @@ typedef struct {
     l2tcp_payload_monitoring_t entries[L2TCP_MAX_SLOT+1];  /* Max 18 slots (1-9, 13-21) but let's be safe */
 } l2tcp_payload_batch_monitor_full_t;
 
+/* --- Combined Message Structures (Header + Payload) --- */
+
+typedef struct {
+    l2tcp_header_t hdr;
+} l2tcp_msg_ack_t;
+
+typedef struct {
+    l2tcp_header_t hdr;
+    l2tcp_payload_error_t payload;
+} l2tcp_msg_error_t;
+
+typedef struct {
+    l2tcp_header_t hdr;
+    l2tcp_payload_u16_t payload;
+} l2tcp_msg_hello_t;
+
+typedef struct {
+    l2tcp_header_t hdr;
+    l2tcp_payload_l2cb_state_t payload;
+} l2tcp_msg_l2cb_state_t;
+
+typedef struct {
+    l2tcp_header_t hdr;
+    l2tcp_payload_monitoring_t payload;
+} l2tcp_msg_monitoring_t;
+
+typedef struct {
+    l2tcp_header_t hdr;
+    l2tcp_payload_config_t payload;
+} l2tcp_msg_config_t;
+
+typedef struct {
+    l2tcp_header_t hdr;
+    l2tcp_payload_batch_monitor_full_t payload;
+} l2tcp_msg_batch_monitor_full_t;
+
 #pragma pack(pop)
 
 #endif /* L2TCP_PROTOCOL_H */

@@ -11,6 +11,7 @@ Laboratoire Leprince-Ringuet, CNRS/IN2P3, Ecole Polytechnique, Institut Polytech
 import asyncio
 import struct
 import logging
+import socket
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Tuple, Set
 from enum import IntEnum
@@ -149,6 +150,12 @@ class L2TriggerSystem:
                 asyncio.open_connection(self.host, self.port),
                 timeout=self.connect_timeout
             )
+            
+            # Disable Nagle algorithm for low latency
+            sock = self.writer.get_extra_info('socket')
+            if sock:
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                
         except Exception as e:
             logger.error(f"Connection failed to {self.host}:{self.port}: {e}")
             self.reader = None
