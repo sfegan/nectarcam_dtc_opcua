@@ -115,10 +115,34 @@ void print_debug_help() {
     printf("  ts_scan [repeat]      : Timed stability test of L2CB timestamp\n");
     printf("  delay_scan [repeat]   : Timed stability test of all trigger delays\n");
     printf("  delay_rw_scan [repeat]: Read-write stability test of all trigger delays\n");
+    printf("  regdelay <reg> [rep]  : Register read performance test\n");
     printf("  set_delay_pattern     : Set a deterministic pattern to trigger delays\n");
     printf("  delay <loop> [repeat] : Delay calibration\n");
     printf("  help                  : Show this help message\n");
     printf("  exit                  : Return to main menu\n");
+}
+
+void handle_reg_delay_test(uint16_t addr, uint32_t repeat) {
+    if (addr > 254 || (addr % 2) != 0) {
+        printf("Error: Register address must be even and between 0 and 254.\n");
+        return;
+    }
+    if (repeat < 1) repeat = 1;
+
+    volatile uint16_t val;
+    struct timespec start, end;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+
+    for (uint32_t i = 0; i < repeat; i++) {
+        val = IORD_16DIRECT(BASE_CTA_L2CB, addr);
+    }
+    (void)val;
+
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    double elapsed = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
+
+    printf("\nRegister read test (addr 0x%02X) completed in %.6f seconds (%u iterations, %.3f us/read)\n",
+           addr, elapsed, repeat, (elapsed * 1000000.0) / repeat);
 }
 
 void handle_delay_test(uint32_t loop_count, uint32_t repeat) {
@@ -492,10 +516,10 @@ void process_line(char* line) {
         if (strcmp(cmd, "timing") == 0) {
             if (n < 2) {
                 printf("HAL Timing (iters):\n");
-                printf("  CTDB:  init=%u, inter=%u, timeout=%u\n", 
-                       cta_l2cb_spi_wait_config_ctdb.initial_wait_iters, 
-                       cta_l2cb_spi_wait_config_ctdb.inter_command_iters, 
-                       cta_l2cb_spi_wait_config_ctdb.timeout_iters);
+                printf("  CTDB:  addressing=%u, readwrite=%u, timeout=%u\n", 
+                       g_ctdb_spi_timing.addressing_wait_iters, 
+                       g_ctdb_spi_timing.readwrite_wait_iters, 
+                       g_ctdb_spi_timing.timeout_iters);
                 printf("  DELAY: init=%u, inter=%u, timeout=%u\n", 
                        cta_l2cb_spi_wait_config_delay.initial_wait_iters, 
                        cta_l2cb_spi_wait_config_delay.inter_command_iters, 
@@ -507,8 +531,12 @@ void process_line(char* line) {
             } else {
                 const char* type = tokens[1];
                 if (strcmp(type, "ctdb") == 0) {
-                    if (n < 5) printf("Usage: timing ctdb <init> <inter> <timeout>\n");
-                    else cta_l2cb_spi_set_timing_iters(&cta_l2cb_spi_wait_config_ctdb, parse_int(tokens[2]), parse_int(tokens[3]), parse_int(tokens[4]));
+                    if (n < 5) printf("Usage: timing ctdb <addressing> <readwrite> <timeout>\n");
+                    else {
+                        g_ctdb_spi_timing.addressing_wait_iters = parse_int(tokens[2]);
+                        g_ctdb_spi_timing.readwrite_wait_iters = parse_int(tokens[3]);
+                        g_ctdb_spi_timing.timeout_iters = parse_int(tokens[4]);
+                    }
                 } else if (strcmp(type, "delay") == 0) {
                     if (n < 5) printf("Usage: timing delay <init> <inter> <timeout>\n");
                     else cta_l2cb_spi_set_timing_iters(&cta_l2cb_spi_wait_config_delay, parse_int(tokens[2]), parse_int(tokens[3]), parse_int(tokens[4]));
@@ -541,6 +569,9 @@ void process_line(char* line) {
             handle_delay_scan(n > 1 ? parse_int(tokens[1]) : 1);
         } else if (strcmp(cmd, "delay_rw_scan") == 0) {
             handle_delay_rw_scan(n > 1 ? parse_int(tokens[1]) : 1);
+        } else if (strcmp(cmd, "regdelay") == 0) {
+            if (n < 2) printf("Usage: regdelay <reg_addr> [repeat]\n");
+            else handle_reg_delay_test(parse_int(tokens[1]), n > 2 ? parse_int(tokens[2]) : 1000);
         } else if (strcmp(cmd, "set_delay_pattern") == 0) {
             handle_set_delay_pattern();
         } else if (strcmp(cmd, "delay") == 0) {

@@ -38,13 +38,20 @@
 #endif
 
 typedef struct {
+    uint32_t addressing_wait_iters;
+    uint32_t readwrite_wait_iters;
+    uint32_t timeout_iters;
+} ctdb_spi_readwrite_timing_t;
+
+CEXTERN ctdb_spi_readwrite_timing_t g_ctdb_spi_timing;
+
+typedef struct {
 	int spi_bit;
 	uint32_t initial_wait_iters;
 	uint32_t inter_command_iters;
 	uint32_t timeout_iters;
 } cta_l2cb_spi_wait_config_t;
 
-CEXTERN cta_l2cb_spi_wait_config_t cta_l2cb_spi_wait_config_ctdb;
 CEXTERN cta_l2cb_spi_wait_config_t cta_l2cb_spi_wait_config_delay;
 
 CEXTERN uint32_t g_l2trig_ts_edge_delay_iters;
