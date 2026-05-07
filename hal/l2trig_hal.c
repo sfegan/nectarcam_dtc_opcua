@@ -10,21 +10,21 @@
 
 cta_l2cb_spi_wait_config_t cta_l2cb_spi_wait_config_ctdb = {
     .spi_bit = BIT_CTA_L2CB_STAT_SPIBUSY,
-    .initial_wait_iters = 240, 
-    .inter_command_iters = 1200,
-    .timeout_iters = 10000 
+    .initial_wait_iters = 8, // 0.12 us
+    .inter_command_iters = 32, // 0.42 us
+    .timeout_iters = 300 
 };
 
 cta_l2cb_spi_wait_config_t cta_l2cb_spi_wait_config_delay = {
     .spi_bit = BIT_CTA_L2CB_STAT_DELAY_BUSY,
-    .initial_wait_iters = 240,
-    .inter_command_iters = 1200,
-    .timeout_iters = 10000
+    .initial_wait_iters = 8, // 0.12 us
+    .inter_command_iters = 32, // 0.42 us
+    .timeout_iters = 300
 };
 
-uint32_t g_l2trig_ts_edge_delay_iters = 120;  // 1us
-uint32_t g_l2trig_ts_latch_delay_iters = 1200; // 10us
-uint32_t g_l2trig_ts_unchanged_iters = 5;
+uint32_t g_l2trig_ts_edge_delay_iters = 16; // 0.22us 
+uint32_t g_l2trig_ts_latch_delay_iters = 16; // 0.22us
+uint32_t g_l2trig_ts_unchanged_iters = 16;
 
 void cta_l2cb_spi_set_timing_iters(cta_l2cb_spi_wait_config_t* _config, uint32_t _initial, uint32_t _inter, uint32_t _timeout)
 {
