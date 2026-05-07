@@ -110,12 +110,12 @@ const char* bool_to_str(int val) {
 void print_debug_help() {
     printf("\nDebug Sub-Menu Commands:\n");
     printf("  timing [type] [init] [inter] [timeout]: Get or set HAL timing\n");
-    printf("  pins <slot> [val]      : Get or set CTDB debug pins (SEL0..3)\n");
-    printf("  ctdb_scan [repeat]     : Timed stability test of all named CTDB registers\n");
-    printf("  ts_scan [repeat]       : Timed stability test of L2CB timestamp\n");
-    printf("  delay <loop> [repeat]  : Delay calibration\n");
-    printf("  help                   : Show this help message\n");
-    printf("  exit                   : Return to main menu\n");
+    printf("  pins <slot> [val]     : Get or set CTDB debug pins (SEL0..3)\n");
+    printf("  ctdb_scan [repeat]    : Timed stability test of all named CTDB registers\n");
+    printf("  ts_scan [repeat]      : Timed stability test of L2CB timestamp\n");
+    printf("  delay <loop> [repeat] : Delay calibration\n");
+    printf("  help                  : Show this help message\n");
+    printf("  exit                  : Return to main menu\n");
 }
 
 void handle_delay_test(uint32_t loop_count, uint32_t repeat) {
@@ -302,9 +302,10 @@ void process_line(char* line) {
                        cta_l2cb_spi_wait_config_delay.initial_wait_iters, 
                        cta_l2cb_spi_wait_config_delay.inter_command_iters, 
                        cta_l2cb_spi_wait_config_delay.timeout_iters);
-                printf("  TS:    edge=%u, latch=%u\n", 
+                printf("  TS:    edge=%u, latch=%u, retries=%u\n", 
                        g_l2trig_ts_edge_delay_iters, 
-                       g_l2trig_ts_latch_delay_iters);
+                       g_l2trig_ts_latch_delay_iters,
+                       g_l2trig_ts_unchanged_iters);
             } else {
                 const char* type = tokens[1];
                 if (strcmp(type, "ctdb") == 0) {
@@ -314,8 +315,11 @@ void process_line(char* line) {
                     if (n < 5) printf("Usage: timing delay <init> <inter> <timeout>\n");
                     else cta_l2cb_spi_set_timing_iters(&cta_l2cb_spi_wait_config_delay, parse_int(tokens[2]), parse_int(tokens[3]), parse_int(tokens[4]));
                 } else if (strcmp(type, "ts") == 0) {
-                    if (n < 4) printf("Usage: timing ts <edge> <latch>\n");
-                    else cta_l2cb_set_ts_timing_iters(parse_int(tokens[2]), parse_int(tokens[3]));
+                    if (n < 4) printf("Usage: timing ts <edge> <latch> [retries]\n");
+                    else {
+                        cta_l2cb_set_ts_timing_iters(parse_int(tokens[2]), parse_int(tokens[3]));
+                        if (n > 4) g_l2trig_ts_unchanged_iters = parse_int(tokens[4]);
+                    }
                 } else {
                     printf("Unknown timing type: %s (use ctdb, delay, or ts)\n", type);
                 }
