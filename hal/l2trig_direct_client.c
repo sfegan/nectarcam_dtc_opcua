@@ -113,6 +113,8 @@ void print_debug_help() {
     printf("  pins <slot> [val]     : Get or set CTDB debug pins (SEL0..3)\n");
     printf("  ctdb_scan [repeat]    : Timed stability test of all named CTDB registers\n");
     printf("  ts_scan [repeat]      : Timed stability test of L2CB timestamp\n");
+    printf("  delay_scan [repeat]   : Timed stability test of all trigger delays\n");
+    printf("  set_delay_pattern     : Set a deterministic pattern to trigger delays\n");
     printf("  delay <loop> [repeat] : Delay calibration\n");
     printf("  help                  : Show this help message\n");
     printf("  exit                  : Return to main menu\n");
@@ -223,6 +225,66 @@ void handle_ts_scan(int repeat) {
     if (repeat > 1) {
         printf("Update failures (timestamp equal to previous): %u\n", fail_count);
     }
+}
+
+void handle_delay_scan(int repeat) {
+    if (repeat < 1) repeat = 1;
+    int slots[] = CTA_L2CB_SLOT_LIST;
+    
+    // Tracking arrays
+    uint16_t last_vals[CTA_L2CB_SLOT_COUNT][16];
+    uint32_t ndiff[CTA_L2CB_SLOT_COUNT][16];
+    memset(ndiff, 0, sizeof(ndiff));
+
+    struct timespec start, end;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+
+    for (int r = 0; r < repeat; r++) {
+        for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
+            for (int ch = 1; ch <= 15; ch++) {
+                uint16_t val = cta_l2cb_getL1TriggerDelay(slots[s], ch);
+                if (r > 0) {
+                    if (val != last_vals[s][ch]) {
+                        ndiff[s][ch]++;
+                    }
+                }
+                last_vals[s][ch] = val;
+            }
+        }
+    }
+
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    double elapsed = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
+    
+    printf("\nDelay scan completed in %.6f seconds (%d iterations, %.2f ms/iter)\n", 
+           elapsed, repeat, (elapsed * 1000.0) / repeat);
+
+    if (repeat > 1) {
+        printf("Stability check (difference counts per channel/slot):\n");
+        printf("      ");
+        for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
+            printf("%5d", slots[s]);
+        }
+        printf("\n");
+        for (int ch = 1; ch <= 15; ch++) {
+            printf("Ch%02d:", ch);
+            for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
+                printf("%5u", ndiff[s][ch]);
+            }
+            printf("\n");
+        }
+    }
+}
+
+void handle_set_delay_pattern() {
+    int slots[] = CTA_L2CB_SLOT_LIST;
+    for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
+        for (int ch = 1; ch <= 15; ch++) {
+            uint16_t val = 15 * (slots[s] - 1) + ch;
+            cta_l2cb_setL1TriggerDelay(slots[s], ch, val);
+        }
+    }
+    printf("Delay pattern set: 15*(slot-1)+channel\n");
 }
 
 void print_help() {
@@ -339,6 +401,10 @@ void process_line(char* line) {
             handle_ctdb_scan(n > 1 ? parse_int(tokens[1]) : 1);
         } else if (strcmp(cmd, "ts_scan") == 0) {
             handle_ts_scan(n > 1 ? parse_int(tokens[1]) : 1);
+        } else if (strcmp(cmd, "delay_scan") == 0) {
+            handle_delay_scan(n > 1 ? parse_int(tokens[1]) : 1);
+        } else if (strcmp(cmd, "set_delay_pattern") == 0) {
+            handle_set_delay_pattern();
         } else if (strcmp(cmd, "delay") == 0) {
             if (n < 2) printf("Usage: delay <loop_count> [repeat]\n");
             else handle_delay_test(parse_int(tokens[1]), n > 2 ? parse_int(tokens[2]) : 1);
