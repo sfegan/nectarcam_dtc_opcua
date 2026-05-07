@@ -449,14 +449,26 @@ static void handle_request() {
         case L2TCP_MSG_SYS_SET_ALL_TRIG_DELAY: {
             uint16_t delay = ((l2tcp_payload_u16_t*)buffer)->value;
             if (delay > LIMIT_TRIG_DELAY) delay = LIMIT_TRIG_DELAY;
+            int err_count = 0;
+            int last_err = CTA_L2CB_NO_ERROR;
             for (int s = L2TCP_MIN_SLOT; s <= L2TCP_MAX_SLOT; s++) {
                 if (!is_slot_active(s)) continue;
                 for (int ch = 1; ch <= 15; ch++) {
                     if (is_ch_immutable(s, ch)) continue;
-                    cta_l2cb_setL1TriggerDelay((uint16_t)s, (uint16_t)ch, delay);
+                    int err = cta_l2cb_setL1TriggerDelay((uint16_t)s, (uint16_t)ch, delay);
+                    if (err != CTA_L2CB_NO_ERROR) {
+                        err_count++;
+                        last_err = err;
+                    }
                 }
             }
-            send_ack(hdr.seq, show_msg);
+            if (err_count > 0) {
+                char errmsg[64];
+                snprintf(errmsg, sizeof(errmsg), "Fail %d ch (Last: %s)", err_count, cta_l2cb_getErrorString(last_err));
+                send_error(hdr.seq, L2TCP_ERR_HARDWARE_ERROR, errmsg);
+            } else {
+                send_ack(hdr.seq, show_msg);
+            }
             break;
         }
         case L2TCP_MSG_L2CB_GET_STATE: {
@@ -565,8 +577,12 @@ static void handle_request() {
             } else {
                 uint16_t delay = p->delay;
                 if (delay > LIMIT_TRIG_DELAY) delay = LIMIT_TRIG_DELAY;
-                cta_l2cb_setL1TriggerDelay(p->slot, p->channel, delay);
-                send_ack(hdr.seq, show_msg);
+                int err = cta_l2cb_setL1TriggerDelay(p->slot, p->channel, delay);
+                if (err != CTA_L2CB_NO_ERROR) {
+                    send_error(hdr.seq, L2TCP_ERR_HARDWARE_ERROR, cta_l2cb_getErrorString(err));
+                } else {
+                    send_ack(hdr.seq, show_msg);
+                }
             }
             break;
         }

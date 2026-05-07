@@ -398,9 +398,11 @@ static inline int cta_l2cb_setL1TriggerDelay(uint16_t _slot, uint16_t _channel, 
 
 // get trigger delay for a CTDB trigger cluster/channel
 // if a set-delay process for the selected channel is ongoing, it waits until complete or timeout
-// returns delay value that has been set last time
-static inline uint16_t cta_l2cb_getL1TriggerDelay(uint16_t _slot, uint16_t _channel)
+// returns CTA_L2CB_NO_ERROR on success,
+// returns CTA_L2CB_ERROR_TIMEOUT on timeout error
+static inline int cta_l2cb_getL1TriggerDelay_err(uint16_t _slot, uint16_t _channel, uint16_t* _delay)
 {
+	if (!_delay) return CTA_L2CB_INVALID_PARAMETER;
 	if (!cta_l2cb_isValidSLot(_slot)) return CTA_L2CB_INVALID_PARAMETER;
 	if(_channel < CTA_L2CB_CHANNEL_MIN || _channel > CTA_L2CB_CHANNEL_MAX) return CTA_L2CB_INVALID_PARAMETER;
 
@@ -411,7 +413,18 @@ static inline uint16_t cta_l2cb_getL1TriggerDelay(uint16_t _slot, uint16_t _chan
 	if (err != CTA_L2CB_NO_ERROR) return err;
 
 	// get delay
-	return IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_L1DEL);
+	*_delay = IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_L1DEL);
+	return CTA_L2CB_NO_ERROR;
+}
+
+// get trigger delay for a CTDB trigger cluster/channel
+// if a set-delay process for the selected channel is ongoing, it waits until complete or timeout
+// returns delay value that has been set last time
+static inline uint16_t cta_l2cb_getL1TriggerDelay(uint16_t _slot, uint16_t _channel)
+{
+	uint16_t val = 0;
+	cta_l2cb_getL1TriggerDelay_err(_slot, _channel, &val);
+	return val;
 }
 
 // ***** Helper Functions for the SPI Interface to access registers of the CTDB modules

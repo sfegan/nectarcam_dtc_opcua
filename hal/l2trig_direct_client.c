@@ -114,6 +114,7 @@ void print_debug_help() {
     printf("  ctdb_scan [repeat]    : Timed stability test of all named CTDB registers\n");
     printf("  ts_scan [repeat]      : Timed stability test of L2CB timestamp\n");
     printf("  delay_scan [repeat]   : Timed stability test of all trigger delays\n");
+    printf("  delay_rw_scan [repeat]: Read-write stability test of all trigger delays\n");
     printf("  set_delay_pattern     : Set a deterministic pattern to trigger delays\n");
     printf("  delay <loop> [repeat] : Delay calibration\n");
     printf("  help                  : Show this help message\n");
@@ -146,7 +147,9 @@ void handle_ctdb_scan(int repeat) {
     // Tracking arrays
     uint16_t last_vals[CTA_L2CB_SLOT_COUNT][num_regs];
     uint32_t ndiff[CTA_L2CB_SLOT_COUNT][num_regs];
+    uint32_t nerr[CTA_L2CB_SLOT_COUNT][num_regs];
     memset(ndiff, 0, sizeof(ndiff));
+    memset(nerr, 0, sizeof(nerr));
 
     struct timespec start, end;
     clock_gettime(CLOCK_MONOTONIC, &start);
@@ -159,7 +162,10 @@ void handle_ctdb_scan(int repeat) {
             for (int i = 0; i < num_regs; i++) {
                 uint16_t val;
                 int err = cta_ctdb_getSlaveRegister(slots[s], ctdb_regs[i].addr, &val);
-                if (err != CTA_L2CB_NO_ERROR) val = 0xDEAD; // Mark error
+                if (err != CTA_L2CB_NO_ERROR) {
+                    nerr[s][i]++;
+                    val = 0xDEAD; // Mark error
+                }
                 
                 if (r > 0) {
                     if (val != last_vals[s][i]) {
@@ -196,6 +202,27 @@ void handle_ctdb_scan(int repeat) {
                 printf("  %6u", ndiff[s][i]);
             }
             printf("\n");
+        }
+
+        uint32_t total_err = 0;
+        for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
+            for (int i = 0; i < num_regs; i++) total_err += nerr[s][i];
+        }
+
+        if (total_err > 0) {
+            printf("\nTimeout check (error counts per register/slot):\n");
+            printf("                ");
+            for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
+                printf("  Slot%02d", slots[s]);
+            }
+            printf("\n");
+            for(int i = 0; i < num_regs; i++) {
+                printf("0x%02X %-10s:", ctdb_regs[i].addr, ctdb_regs[i].name);
+                for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
+                    printf("  %6u", nerr[s][i]);
+                }
+                printf("\n");
+            }
         }
     }
 }
@@ -234,7 +261,9 @@ void handle_delay_scan(int repeat) {
     // Tracking arrays
     uint16_t last_vals[CTA_L2CB_SLOT_COUNT][16];
     uint32_t ndiff[CTA_L2CB_SLOT_COUNT][16];
+    uint32_t nerr[CTA_L2CB_SLOT_COUNT][16];
     memset(ndiff, 0, sizeof(ndiff));
+    memset(nerr, 0, sizeof(nerr));
 
     struct timespec start, end;
     clock_gettime(CLOCK_MONOTONIC, &start);
@@ -242,7 +271,13 @@ void handle_delay_scan(int repeat) {
     for (int r = 0; r < repeat; r++) {
         for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
             for (int ch = 1; ch <= 15; ch++) {
-                uint16_t val = cta_l2cb_getL1TriggerDelay(slots[s], ch);
+                uint16_t val;
+                int err = cta_l2cb_getL1TriggerDelay_err(slots[s], ch, &val);
+                if (err != CTA_L2CB_NO_ERROR) {
+                    nerr[s][ch]++;
+                    val = 0xFFFF;
+                }
+
                 if (r > 0) {
                     if (val != last_vals[s][ch]) {
                         ndiff[s][ch]++;
@@ -273,6 +308,27 @@ void handle_delay_scan(int repeat) {
             }
             printf("\n");
         }
+
+        uint32_t total_err = 0;
+        for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
+            for (int ch = 1; ch <= 15; ch++) total_err += nerr[s][ch];
+        }
+
+        if (total_err > 0) {
+            printf("\nTimeout check (error counts per channel/slot):\n");
+            printf("      ");
+            for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
+                printf("%5d", slots[s]);
+            }
+            printf("\n");
+            for (int ch = 1; ch <= 15; ch++) {
+                printf("Ch%02d:", ch);
+                for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
+                    printf("%5u", nerr[s][ch]);
+                }
+                printf("\n");
+            }
+        }
     }
 }
 
@@ -285,6 +341,86 @@ void handle_set_delay_pattern() {
         }
     }
     printf("Delay pattern set: 15*(slot-1)+channel\n");
+}
+
+void handle_delay_rw_scan(int repeat) {
+    if (repeat < 1) repeat = 1;
+    int slots[] = CTA_L2CB_SLOT_LIST;
+    
+    uint32_t nerr[CTA_L2CB_SLOT_COUNT][16];
+    uint32_t ntimeout[CTA_L2CB_SLOT_COUNT][16];
+    memset(nerr, 0, sizeof(nerr));
+    memset(ntimeout, 0, sizeof(ntimeout));
+
+    struct timespec start, end;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+
+    for (int r = 0; r < repeat; r++) {
+        // Write phase
+        for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
+            for (int ch = 1; ch <= 15; ch++) {
+                uint16_t val_write = ((slots[s]-1) + ch + r) & 0x7F;
+                int err = cta_l2cb_setL1TriggerDelay(slots[s], ch, val_write);
+                if (err != CTA_L2CB_NO_ERROR) {
+                    ntimeout[s][ch]++;
+                }
+            }
+        }
+        // Read phase
+        for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
+            for (int ch = 1; ch <= 15; ch++) {
+                uint16_t val_write = ((slots[s]-1) + ch + r) & 0x7F;
+                uint16_t val_read;
+                int err = cta_l2cb_getL1TriggerDelay_err(slots[s], ch, &val_read);
+                if (err != CTA_L2CB_NO_ERROR) {
+                    ntimeout[s][ch]++;
+                } else if (val_read != val_write) {
+                    nerr[s][ch]++;
+                }
+            }
+        }
+    }
+
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    double elapsed = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
+    
+    printf("\nDelay read-write scan completed in %.6f seconds (%d iterations, %.2f ms/iter)\n", 
+           elapsed, repeat, (elapsed * 1000.0) / repeat);
+
+    printf("Read-back error counts per channel/slot:\n");
+    printf("      ");
+    for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
+        printf("%5d", slots[s]);
+    }
+    printf("\n");
+    for (int ch = 1; ch <= 15; ch++) {
+        printf("Ch%02d:", ch);
+        for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
+            printf("%5u", nerr[s][ch]);
+        }
+        printf("\n");
+    }
+
+    uint32_t total_timeout = 0;
+    for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
+        for (int ch = 1; ch <= 15; ch++) total_timeout += ntimeout[s][ch];
+    }
+
+    if (total_timeout > 0) {
+        printf("\nTimeout check (error counts per channel/slot):\n");
+        printf("      ");
+        for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
+            printf("%5d", slots[s]);
+        }
+        printf("\n");
+        for (int ch = 1; ch <= 15; ch++) {
+            printf("Ch%02d:", ch);
+            for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
+                printf("%5u", ntimeout[s][ch]);
+            }
+            printf("\n");
+        }
+    }
 }
 
 void print_help() {
@@ -403,6 +539,8 @@ void process_line(char* line) {
             handle_ts_scan(n > 1 ? parse_int(tokens[1]) : 1);
         } else if (strcmp(cmd, "delay_scan") == 0) {
             handle_delay_scan(n > 1 ? parse_int(tokens[1]) : 1);
+        } else if (strcmp(cmd, "delay_rw_scan") == 0) {
+            handle_delay_rw_scan(n > 1 ? parse_int(tokens[1]) : 1);
         } else if (strcmp(cmd, "set_delay_pattern") == 0) {
             handle_set_delay_pattern();
         } else if (strcmp(cmd, "delay") == 0) {
