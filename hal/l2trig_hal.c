@@ -64,6 +64,9 @@ int cta_l2cb_spi_wait(void)
 
 int cta_l2cb_spi_read(uint16_t _slot, uint16_t _register, uint16_t* _value)
 {
+    // Ansatz: no previous SPI read/write is in progress when this function is called.
+    // cta_l2cb_spi_read and cta_l2cb_spi_write wait for completion before returning
+
     if (!_value) return CTA_L2CB_INVALID_PARAMETER;
     if (!cta_l2cb_isValidSLot((int)_slot)) return CTA_L2CB_INVALID_PARAMETER;
 
@@ -86,6 +89,9 @@ int cta_l2cb_spi_read(uint16_t _slot, uint16_t _register, uint16_t* _value)
 
 int cta_l2cb_spi_write(uint16_t _slot, uint16_t _register, uint16_t _value)
 {
+    // Ansatz: no previous SPI read/write is in progress when this function is called.
+    // cta_l2cb_spi_read and cta_l2cb_spi_write wait for completion before returning
+
     if (!cta_l2cb_isValidSLot((int)_slot)) return CTA_L2CB_INVALID_PARAMETER;
 
     IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_SPTX, _value);
@@ -104,16 +110,4 @@ int cta_l2cb_spi_write(uint16_t _slot, uint16_t _register, uint16_t _value)
     }
 
     return CTA_L2CB_NO_ERROR;
-}
-
-void cta_l2cb_spi_set_ctdb_delays_export(int64_t _min_command_delay_ns, int64_t _min_read_delay_ns, int64_t _timeout_ns) {
-    (void)_min_command_delay_ns; (void)_min_read_delay_ns; (void)_timeout_ns;
-}
-
-void cta_l2cb_spi_set_delay_delays_export(int64_t _min_command_delay_ns, int64_t _min_read_delay_ns, int64_t _timeout_ns) {
-    (void)_min_command_delay_ns; (void)_min_read_delay_ns; (void)_timeout_ns;
-}
-
-void cta_l2cb_spi_set_delays(cta_l2cb_spi_wait_config_t* _config, int64_t _min_command_delay_ns, int64_t _min_read_delay_ns, int64_t _timeout_ns) {
-    (void)_config; (void)_min_command_delay_ns; (void)_min_read_delay_ns; (void)_timeout_ns;
 }

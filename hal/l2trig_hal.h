@@ -68,9 +68,6 @@ static inline void cta_l2cb_delay_cycles(volatile uint32_t cycles)
     while(cycles--);
 }
 
-CEXTERN void cta_l2cb_spi_set_ctdb_delays_export(int64_t _min_command_delay_ns, int64_t _min_read_delay_ns, int64_t _timeout_ns);
-CEXTERN void cta_l2cb_spi_set_delay_delays_export(int64_t _min_command_delay_ns, int64_t _min_read_delay_ns, int64_t _timeout_ns);
-
 #define BASE_CTA_L2CB			0x00
 
 #define ADDR_CTA_L2CB_CTRL		0x00
