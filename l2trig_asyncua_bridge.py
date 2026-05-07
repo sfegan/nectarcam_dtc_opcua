@@ -887,8 +887,7 @@ class L2TriggerBridgeServer:
             return
 
         try:
-            l2cb = await self.system.get_l2cb_status()
-            mon = await self.system.get_all_monitoring()
+            l2cb, mon = await self.system.get_fast_poll()
             self._connected = True
             self._last_contact = time.monotonic()
             self._last_fast_poll_time = now
@@ -906,9 +905,7 @@ class L2TriggerBridgeServer:
             return
 
         try:
-            configs = {}
-            for slot in self.active_slots:
-                configs[slot] = await self.system.get_ctdb_config(slot)
+            configs = await self.system.get_slow_poll()
             self._last_slow_poll_time = now
             await self._write_slow_data(configs, self._last_slow_poll_time)
         except Exception as e:

@@ -101,6 +101,8 @@ static const char* msg_type_to_str(uint16_t type) {
         case L2TCP_MSG_CTDB_GET_MONITORING: return "CTDB_GET_MONITORING";
         case L2TCP_MSG_CTDB_GET_CONFIG:     return "CTDB_GET_CONFIG";
         case L2TCP_MSG_BATCH_MONITOR_ALL:   return "BATCH_MONITOR_ALL";
+        case L2TCP_MSG_FAST_POLL:           return "FAST_POLL";
+        case L2TCP_MSG_SLOW_POLL:           return "SLOW_POLL";
         default: return "UNKNOWN";
     }
 }
@@ -241,6 +243,8 @@ static int is_polling_msg(uint16_t type) {
             type == L2TCP_MSG_L2CB_GET_STATE ||
             type == L2TCP_MSG_CTDB_GET_MONITORING ||
             type == L2TCP_MSG_BATCH_MONITOR_ALL ||
+            type == L2TCP_MSG_FAST_POLL ||
+            type == L2TCP_MSG_SLOW_POLL ||
             type == L2TCP_MSG_CTDB_GET_CONFIG);
 }
 
@@ -662,6 +666,112 @@ static void handle_request() {
             if (g_server.verbose > 2) {
                 get_now(&t2);
                 printf("  [DEBUG] BATCH_MONITOR_ALL: collect=%.2fms, send=%.2fms, total=%.2fms\n",
+                       TIMESPEC_DIFF_MS(t0, t1), TIMESPEC_DIFF_MS(t1, t2), TIMESPEC_DIFF_MS(t0, t2));
+            }
+            break;
+        }
+        case L2TCP_MSG_FAST_POLL: {
+            struct timespec t0, t1, t2;
+            if (g_server.verbose > 2) get_now(&t0);
+
+            static l2tcp_msg_fast_poll_t msg;
+            memset(&msg, 0, sizeof(msg));
+
+            /* Part 1: L2CB State */
+            msg.payload.l2cb.fw_rev = cta_l2cb_getFirmwareRevision();
+            msg.payload.l2cb.timestamp = cta_l2cb_readTimestamp();
+            uint16_t mcf, busy, tib;
+            cta_l2cb_getControlState(&mcf, &busy, &tib);
+            msg.payload.l2cb.ctrl_state = (mcf ? 0x1 : 0) | (busy ? 0x2 : 0) | (tib ? 0x4 : 0);
+            msg.payload.l2cb.mcf_threshold = cta_l2cb_getMCFThreshold();
+            msg.payload.l2cb.mcf_delay = cta_l2cb_getMCFDelay();
+            msg.payload.l2cb.l1_deadtime = cta_l2cb_getL1Deadtime();
+            msg.payload.l2cb.tib_event_count = cta_l2cb_getTIBEventCount();
+            msg.payload.l2cb.busy_mask = cta_l2cb_getBusyEnableMask();
+            msg.payload.l2cb.busy_stuck = cta_l2cb_getBusyStuck();
+
+            /* Part 2: Batch Monitoring */
+            int count = 0;
+            for (int s = L2TCP_MIN_SLOT; s <= L2TCP_MAX_SLOT; s++) {
+                if (is_slot_active(s)) count++;
+            }
+            msg.payload.monitor.count = (uint16_t)count;
+            int idx = 0;
+            for (int s = L2TCP_MIN_SLOT; s <= L2TCP_MAX_SLOT && idx < count; s++) {
+                if (!is_slot_active(s)) continue;
+                l2tcp_payload_monitoring_t *resp = &msg.payload.monitor.entries[idx];
+                resp->slot = (uint16_t)s;
+                cta_ctdb_getPowerCurrent((uint16_t)s, 0, &resp->ctdb_curr);
+                for (int i = 0; i < 15; i++) cta_ctdb_getPowerCurrent((uint16_t)s, (uint16_t)(i + 1), &resp->ch_curr[i]);
+                cta_ctdb_getOverCurrentErrors((uint16_t)s, &resp->over_curr_mask);
+                cta_ctdb_getUnderCurrentErrors((uint16_t)s, &resp->under_curr_mask);
+                cta_ctdb_getPowerEnabled((uint16_t)s, &resp->pwr_enabled_mask);
+                idx++;
+            }
+
+            if (g_server.verbose > 2) get_now(&t1);
+
+            uint16_t monitor_payload_size = (uint16_t)(sizeof(uint16_t) + count * sizeof(l2tcp_payload_monitoring_t));
+            uint16_t total_payload_size = (uint16_t)(sizeof(l2tcp_payload_l2cb_state_t) + monitor_payload_size);
+
+            msg.hdr.type = L2TCP_MSG_FAST_POLL;
+            msg.hdr.seq = hdr.seq;
+            msg.hdr.len = total_payload_size;
+            msg.hdr.reserved = 0;
+
+            if (g_server.verbose > 1) printf("  -> FAST POLL (%d slots, %u bytes)\n", count, total_payload_size);
+
+            send_all(g_server.client_fd, &msg, sizeof(l2tcp_header_t) + total_payload_size);
+
+            if (g_server.verbose > 2) {
+                get_now(&t2);
+                printf("  [DEBUG] FAST_POLL: collect=%.2fms, send=%.2fms, total=%.2fms\n",
+                       TIMESPEC_DIFF_MS(t0, t1), TIMESPEC_DIFF_MS(t1, t2), TIMESPEC_DIFF_MS(t0, t2));
+            }
+            break;
+        }
+        case L2TCP_MSG_SLOW_POLL: {
+            struct timespec t0, t1, t2;
+            if (g_server.verbose > 2) get_now(&t0);
+
+            int count = 0;
+            for (int s = L2TCP_MIN_SLOT; s <= L2TCP_MAX_SLOT; s++) {
+                if (is_slot_active(s)) count++;
+            }
+
+            static l2tcp_msg_batch_config_full_t msg;
+            memset(&msg, 0, sizeof(msg));
+            msg.payload.count = (uint16_t)count;
+
+            int idx = 0;
+            for (int s = L2TCP_MIN_SLOT; s <= L2TCP_MAX_SLOT && idx < count; s++) {
+                if (!is_slot_active(s)) continue;
+                l2tcp_payload_config_t *resp = &msg.payload.entries[idx];
+                resp->slot = (uint16_t)s;
+                cta_ctdb_getFirmwareRevision((uint16_t)s, &resp->fw_rev);
+                cta_ctdb_getPowerCurrentMin((uint16_t)s, &resp->curr_limit_min);
+                cta_ctdb_getPowerCurrentMax((uint16_t)s, &resp->curr_limit_max);
+                resp->trig_enabled_mask = cta_l2cb_getL1TriggerEnabled((uint16_t)s);
+                for (int i = 0; i < 15; i++) resp->trig_delays[i] = cta_l2cb_getL1TriggerDelay((uint16_t)s, (uint16_t)(i + 1));
+                idx++;
+            }
+
+            if (g_server.verbose > 2) get_now(&t1);
+
+            uint16_t payload_size = (uint16_t)(sizeof(uint16_t) + count * sizeof(l2tcp_payload_config_t));
+
+            msg.hdr.type = L2TCP_MSG_SLOW_POLL;
+            msg.hdr.seq = hdr.seq;
+            msg.hdr.len = payload_size;
+            msg.hdr.reserved = 0;
+
+            if (g_server.verbose > 1) printf("  -> SLOW POLL (%d slots, %u bytes)\n", count, payload_size);
+
+            send_all(g_server.client_fd, &msg, sizeof(l2tcp_header_t) + payload_size);
+
+            if (g_server.verbose > 2) {
+                get_now(&t2);
+                printf("  [DEBUG] SLOW_POLL: collect=%.2fms, send=%.2fms, total=%.2fms\n",
                        TIMESPEC_DIFF_MS(t0, t1), TIMESPEC_DIFF_MS(t1, t2), TIMESPEC_DIFF_MS(t0, t2));
             }
             break;

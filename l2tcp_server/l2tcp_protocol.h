@@ -59,7 +59,9 @@ typedef enum {
     /* Monitoring & Batch */
     L2TCP_MSG_CTDB_GET_MONITORING     = 0x30,
     L2TCP_MSG_CTDB_GET_CONFIG         = 0x31,
-    L2TCP_MSG_BATCH_MONITOR_ALL       = 0x32
+    L2TCP_MSG_BATCH_MONITOR_ALL       = 0x32,
+    L2TCP_MSG_FAST_POLL               = 0x33,
+    L2TCP_MSG_SLOW_POLL               = 0x34
 } l2tcp_msg_type_t;
 
 /* --- Error Codes --- */
@@ -73,7 +75,7 @@ typedef enum {
     L2TCP_ERR_NOT_INITIALIZED         = 6
 } l2tcp_error_code_t;
 
-#define L2TCP_PROTOCOL_VERSION 3
+#define L2TCP_PROTOCOL_VERSION 4
 
 /* --- Protocol Header --- */
 
@@ -171,6 +173,18 @@ typedef struct {
     l2tcp_payload_monitoring_t entries[L2TCP_MAX_SLOT+1];  /* Max 18 slots (1-9, 13-21) but let's be safe */
 } l2tcp_payload_batch_monitor_full_t;
 
+/* L2TCP_MSG_FAST_POLL (Response) */
+typedef struct {
+    l2tcp_payload_l2cb_state_t l2cb;
+    l2tcp_payload_batch_monitor_full_t monitor;
+} l2tcp_payload_fast_poll_t;
+
+/* L2TCP_MSG_SLOW_POLL (Response) */
+typedef struct {
+    uint16_t count;
+    l2tcp_payload_config_t entries[L2TCP_MAX_SLOT+1];
+} l2tcp_payload_batch_config_full_t;
+
 /* --- Combined Message Structures (Header + Payload) --- */
 
 typedef struct {
@@ -206,6 +220,16 @@ typedef struct {
     l2tcp_header_t hdr;
     l2tcp_payload_batch_monitor_full_t payload;
 } l2tcp_msg_batch_monitor_full_t;
+
+typedef struct {
+    l2tcp_header_t hdr;
+    l2tcp_payload_fast_poll_t payload;
+} l2tcp_msg_fast_poll_t;
+
+typedef struct {
+    l2tcp_header_t hdr;
+    l2tcp_payload_batch_config_full_t payload;
+} l2tcp_msg_batch_config_full_t;
 
 #pragma pack(pop)
 

@@ -100,6 +100,8 @@ def print_help():
     print("  mon <slot>               - Get monitoring for a slot (currents, errors, pwr mask)")
     print("  mon_all                  - Get monitoring for all active slots")
     print("  cfg <slot>               - Get configuration for a slot (fw, limits, trig mask/delays)")
+    print("  fast_poll                - Get fast poll (L2CB + All Monitoring)")
+    print("  slow_poll                - Get slow poll (All Configuration)")
     print("  pwr <slot> <ch> <0|1>    - Set channel power")
     print("  trig <slot> <ch> <0|1>   - Set channel trigger contribution")
     print("  trig_delay <slot> <ch> <v>- Set channel trigger delay (0-255, 37ps steps)")
@@ -289,6 +291,34 @@ async def run_cli(host, port, keepalive_enabled):
                     m = data[slot]
                     err = m.over_current_errors | m.under_current_errors
                     print(f"Slot {slot:2d}: CTDB={m.ctdb_current_ma:6.1f} mA, Pwr=0x{m.power_enabled_mask:04x}, Err=0x{err:04x}")
+
+            elif cmd == "fast_poll":
+                s, data = await system.get_fast_poll()
+                print(f"L2CB Status:")
+                print(f"  Firmware:  0x{s.firmware_version:04x}")
+                print(f"  Uptime:    {s.uptime} ns")
+                print(f"  Control:   MCF={s.mcf_enabled}, Glitch={s.busy_glitch_filter_enabled}, TIB_Block={s.tib_trigger_busy_block_enabled}")
+                print(f"  MCF Thr:   {s.mcf_threshold}")
+                print(f"  MCF Delay: {s.mcf_delay_ns} ns")
+                print(f"  L1 Dead:   {s.l1_deadtime_ns} ns")
+                print(f"  TIB Count: {s.tib_event_count}")
+                print(f"  Busy Mask: 0x{s.busy_mask:08x}")
+                print(f"  Busy Stuck: 0x{s.busy_stuck:08x}")
+                print(f"Monitoring:")
+                if not data:
+                    print("  No active slots monitored.")
+                for slot in sorted(data.keys()):
+                    m = data[slot]
+                    err = m.over_current_errors | m.under_current_errors
+                    print(f"  Slot {slot:2d}: CTDB={m.ctdb_current_ma:6.1f} mA, Pwr=0x{m.power_enabled_mask:04x}, Err=0x{err:04x}")
+
+            elif cmd == "slow_poll":
+                data = await system.get_slow_poll()
+                if not data:
+                    print("No active slots configured.")
+                for slot in sorted(data.keys()):
+                    c = data[slot]
+                    print(f"Slot {c.slot:2d} Config: FW=0x{c.firmware_version:04x}, Limits={c.current_limit_min_ma:.1f}-{c.current_limit_max_ma:.1f} mA, Trig=0x{c.trig_enabled_mask:04x}")
 
             elif cmd == "cfg":
                 slot = int(parts[1])

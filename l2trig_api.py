@@ -51,6 +51,8 @@ class L2TCPMsgType(IntEnum):
     CTDB_GET_MONITORING = 0x30
     CTDB_GET_CONFIG     = 0x31
     BATCH_MONITOR_ALL   = 0x32
+    FAST_POLL           = 0x33
+    SLOW_POLL           = 0x34
 
 # Struct formats (Little Endian)
 HEADER_FMT = "<HHHH"  # Type, Seq, Len, Reserved
@@ -120,7 +122,7 @@ class CTDBConfigData:
 # ============================================================================
 
 class L2TriggerSystem:
-    PROTOCOL_VERSION = 3
+    PROTOCOL_VERSION = 4
 
     def __init__(self, host: str = "127.0.0.1", port: int = DEFAULT_PORT, 
                  connect_timeout: float = 5.0, recv_timeout: float = 5.0):
@@ -313,8 +315,7 @@ class L2TriggerSystem:
 
     # --- L2CB Controls ---
 
-    async def get_l2cb_status(self) -> L2CBStatus:
-        _, data = await self._send_recv(L2TCPMsgType.L2CB_GET_STATE)
+    def _parse_l2cb(self, data: bytes) -> L2CBStatus:
         # ts(u64), bmask(u32), bstuck(u32), fw(u16), ctrl(u16), thresh(u16), delay(u16), dt(u16), tib(u16)
         ts, bmask, bstuck, fw, ctrl, thresh, delay, dt, tib = struct.unpack("<QIIHHHHHH", data)
         return L2CBStatus(
@@ -330,6 +331,10 @@ class L2TriggerSystem:
             busy_mask=bmask,
             busy_stuck=bstuck
         )
+
+    async def get_l2cb_status(self) -> L2CBStatus:
+        _, data = await self._send_recv(L2TCPMsgType.L2CB_GET_STATE)
+        return self._parse_l2cb(data)
 
     async def set_mcf_enabled(self, enabled: bool):
         await self._send_recv(L2TCPMsgType.L2CB_SET_MCF_EN, struct.pack("<H", 1 if enabled else 0))
@@ -413,8 +418,23 @@ class L2TriggerSystem:
             offset += mon_size
         return res
 
-    async def get_ctdb_config(self, slot: int) -> CTDBConfigData:
-        _, data = await self._send_recv(L2TCPMsgType.CTDB_GET_CONFIG, struct.pack("<H", slot))
+    async def get_fast_poll(self) -> Tuple[L2CBStatus, Dict[int, CTDBMonitoringData]]:
+        _, data = await self._send_recv(L2TCPMsgType.FAST_POLL)
+        l2cb_size = struct.calcsize("<QIIHHHHHH")
+        l2cb = self._parse_l2cb(data[:l2cb_size])
+        
+        mon_data = data[l2cb_size:]
+        count = struct.unpack("<H", mon_data[:2])[0]
+        res = {}
+        offset = 2
+        mon_size = struct.calcsize("<HH" + "H" * 15 + "HHH")
+        for _ in range(count):
+            mon = self._parse_monitoring(mon_data[offset:offset+mon_size])
+            res[mon.slot] = mon
+            offset += mon_size
+        return l2cb, res
+
+    def _parse_config(self, data: bytes) -> CTDBConfigData:
         # slot(u16), fw(u16), min(u16), max(u16), trig_mask(u16), trig_delays(u16*15)
         slot, fw, cmin, cmax, tmask = struct.unpack_from("<HHHHH", data, 0)
         tdelays = list(struct.unpack_from("<" + "H" * 15, data, 10))
@@ -427,3 +447,19 @@ class L2TriggerSystem:
             trig_enabled_mask=tmask,
             trig_delays_ns=[d * 0.037 for d in tdelays]
         )
+
+    async def get_ctdb_config(self, slot: int) -> CTDBConfigData:
+        _, data = await self._send_recv(L2TCPMsgType.CTDB_GET_CONFIG, struct.pack("<H", slot))
+        return self._parse_config(data)
+
+    async def get_slow_poll(self) -> Dict[int, CTDBConfigData]:
+        _, data = await self._send_recv(L2TCPMsgType.SLOW_POLL)
+        count = struct.unpack("<H", data[:2])[0]
+        res = {}
+        offset = 2
+        cfg_size = struct.calcsize("<HHHHH" + "H" * 15)
+        for _ in range(count):
+            cfg = self._parse_config(data[offset:offset+cfg_size])
+            res[cfg.slot] = cfg
+            offset += cfg_size
+        return res
