@@ -511,14 +511,14 @@ void process_line(char* line) {
     } else if (strcmp(cmd, "alltrig") == 0) {
         if (n < 2) {
             int slots[] = CTA_L2CB_SLOT_LIST;
-            printf("      ");
-            for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) printf("%3d", slots[s]);
+            printf("     ");
+            for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) printf(" S%02d", slots[s]);
             printf("\n");
             for (int ch = 1; ch <= 15; ch++) {
                 printf("Ch%02d:", ch);
                 for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
                     int on = cta_l2cb_getL1TriggerChannelEnabled(slots[s], ch);
-                    printf("%3s", on ? "ON" : ".");
+                    printf("%4s", on ? "ON" : ".");
                 }
                 printf("\n");
             }
@@ -542,8 +542,8 @@ void process_line(char* line) {
     } else if (strcmp(cmd, "alldelay") == 0) {
         if (n < 2) {
             int slots[] = CTA_L2CB_SLOT_LIST;
-            printf("      ");
-            for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) printf("%5d", slots[s]);
+            printf("     ");
+            for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) printf("  S%02d", slots[s]);
             printf("\n");
             for (int ch = 1; ch <= 15; ch++) {
                 printf("Ch%02d:", ch);
@@ -585,15 +585,15 @@ void process_line(char* line) {
     } else if (strcmp(cmd, "allpower") == 0) {
         if (n < 2) {
             int slots[] = CTA_L2CB_SLOT_LIST;
-            printf("      ");
-            for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) printf("%3d", slots[s]);
+            printf("     ");
+            for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) printf(" S%02d", slots[s]);
             printf("\n");
             for (int ch = 1; ch <= 15; ch++) {
                 printf("Ch%02d:", ch);
                 for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
                     int on;
                     cta_ctdb_getPowerChannelEnabled(slots[s], ch, &on);
-                    printf("%3s", on ? "ON" : ".");
+                    printf("%4s", on ? "ON" : ".");
                 }
                 printf("\n");
             }
