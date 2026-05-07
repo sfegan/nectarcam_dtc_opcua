@@ -46,22 +46,19 @@ typedef struct {
 CEXTERN ctdb_spi_readwrite_timing_t g_ctdb_spi_timing;
 
 typedef struct {
-	int spi_bit;
-	uint32_t initial_wait_iters;
-	uint32_t inter_command_iters;
-	uint32_t timeout_iters;
-} cta_l2cb_spi_wait_config_t;
+	uint32_t addressing_wait_iters;
+    uint32_t timeout_iters;
+} l1_readwrite_timing_t;
 
-CEXTERN cta_l2cb_spi_wait_config_t cta_l2cb_spi_wait_config_delay;
+CEXTERN l1_readwrite_timing_t g_l1_timing;
 
-CEXTERN uint32_t g_l2trig_ts_edge_delay_iters;
-CEXTERN uint32_t g_l2trig_ts_latch_delay_iters;
-CEXTERN uint32_t g_l2trig_ts_unchanged_iters;
+typedef struct {
+	uint32_t edge_delay_iters;
+	uint32_t latch_delay_iters;
+	uint32_t unchanged_iters;
+} ts_trigger_timing_t;
 
-CEXTERN void cta_l2cb_spi_set_timing_iters(cta_l2cb_spi_wait_config_t* _config, uint32_t _initial, uint32_t _inter, uint32_t _timeout);
-CEXTERN void cta_l2cb_set_ts_timing_iters(uint32_t _edge, uint32_t _latch);
-
-CEXTERN int cta_l2cb_spi_generalized_wait(cta_l2cb_spi_wait_config_t* _config, int _is_read);
+CEXTERN ts_trigger_timing_t g_timestamp_timing;
 
 static inline void cta_l2cb_delay_cycles(volatile uint32_t cycles)
 {
@@ -186,14 +183,14 @@ static inline uint64_t cta_l2cb_readTimestamp(void)
 		IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_CTRL, ctrl);
 		
 		// Small delay to ensure the '0' is registered by the FPGA logic
-		cta_l2cb_delay_cycles(g_l2trig_ts_edge_delay_iters);
+		cta_l2cb_delay_cycles(g_timestamp_timing.edge_delay_iters);
 		
 		// 2. 0->1 transition
 		ctrl = changeBitVal16(ctrl, BIT_CTA_L2CB_CTRL_LATCH_TIMESTAMP, 1);
 		IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_CTRL, ctrl);
 
 		// 3. Wait for FPGA to capture and stabilize the 48-bit value in readout registers.
-		cta_l2cb_delay_cycles(g_l2trig_ts_latch_delay_iters);
+		cta_l2cb_delay_cycles(g_timestamp_timing.latch_delay_iters);
 
 		// Read latched values. Fences are now inside IORD_16DIRECT.
 		uint16_t ts0 = IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_TSTMP0);
@@ -203,7 +200,7 @@ static inline uint64_t cta_l2cb_readTimestamp(void)
 		ts = ts0;
 		ts |= (uint64_t)ts1 << 16;
 		ts |= (uint64_t)ts2 << 32;
-	} while (ts == ts_start && ++iter < g_l2trig_ts_unchanged_iters); 
+	} while (ts == ts_start && ++iter < g_timestamp_timing.unchanged_iters); 
 	
 	return ts;
 }
@@ -349,6 +346,7 @@ static inline void cta_l2cb_l1sel(uint16_t _slot, uint16_t _channel)
 static inline void cta_l2cb_setL1TriggerEnabled(uint16_t _slot, uint16_t _enabled)
 {
 	cta_l2cb_l1sel(_slot, 0); // channel parameter does matter at this point
+    cta_l2cb_delay_cycles(g_l1_timing.addressing_wait_iters);
 	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_L1MSK, _enabled & 0xFFFE);
 }
 
@@ -356,6 +354,7 @@ static inline void cta_l2cb_setL1TriggerEnabled(uint16_t _slot, uint16_t _enable
 static inline uint16_t cta_l2cb_getL1TriggerEnabled(uint16_t _slot)
 {
 	cta_l2cb_l1sel(_slot, 0); // channel parameter does matter at this point
+    cta_l2cb_delay_cycles(g_l1_timing.addressing_wait_iters);
 	return IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_L1MSK);
 }
 
@@ -365,6 +364,7 @@ static inline int cta_l2cb_setL1TriggerChannelEnabled(uint16_t _slot, uint16_t _
 	if (!cta_l2cb_isValidSLot(_slot)) return CTA_L2CB_INVALID_PARAMETER;
 	if(_channel < CTA_L2CB_CHANNEL_MIN || _channel > CTA_L2CB_CHANNEL_MAX) return CTA_L2CB_INVALID_PARAMETER;
 	cta_l2cb_l1sel(_slot, 0); // channel parameter does matter at this point
+    cta_l2cb_delay_cycles(g_l1_timing.addressing_wait_iters);
 	uint16_t val=IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_L1MSK);
 	val=changeBitVal16(val,_channel, _on);
 	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_L1MSK, val);
@@ -377,6 +377,7 @@ static inline uint16_t cta_l2cb_getL1TriggerChannelEnabled(uint16_t _slot, uint1
 	if (!cta_l2cb_isValidSLot(_slot)) return 0xFFFF;
 	if(_channel < CTA_L2CB_CHANNEL_MIN || _channel > CTA_L2CB_CHANNEL_MAX) return 0xFFFF;
 	cta_l2cb_l1sel(_slot, 0); // channel parameter does matter at this point
+    cta_l2cb_delay_cycles(g_l1_timing.addressing_wait_iters);
 	return testBitVal16(IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_L1MSK), _channel);
 }
 
@@ -384,42 +385,13 @@ static inline uint16_t cta_l2cb_getL1TriggerChannelEnabled(uint16_t _slot, uint1
 // if a set-delay process for the selected channel is ongoing, it waits until complete or timeout
 // returns CTA_L2CB_NO_ERROR on success,
 // returns CTA_L2CB_ERROR_TIMEOUT on timeout error
-static inline int cta_l2cb_setL1TriggerDelay(uint16_t _slot, uint16_t _channel, uint16_t _delay)
-{
-	if (!cta_l2cb_isValidSLot(_slot)) return CTA_L2CB_INVALID_PARAMETER;
-	if(_channel < CTA_L2CB_CHANNEL_MIN || _channel > CTA_L2CB_CHANNEL_MAX) return CTA_L2CB_INVALID_PARAMETER;
-
-	cta_l2cb_l1sel(_slot, _channel);
-
-	// wait for completion of previous command and enough delay for next command
-	int err = cta_l2cb_spi_generalized_wait(&cta_l2cb_spi_wait_config_delay, 0);
-	if (err != CTA_L2CB_NO_ERROR) return err;
-
-	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_L1DEL, _delay & 0x007F);
-
-	return CTA_L2CB_NO_ERROR;
-}
+CEXTERN int cta_l2cb_setL1TriggerDelay(uint16_t _slot, uint16_t _channel, uint16_t _delay);
 
 // get trigger delay for a CTDB trigger cluster/channel
 // if a set-delay process for the selected channel is ongoing, it waits until complete or timeout
 // returns CTA_L2CB_NO_ERROR on success,
 // returns CTA_L2CB_ERROR_TIMEOUT on timeout error
-static inline int cta_l2cb_getL1TriggerDelay_err(uint16_t _slot, uint16_t _channel, uint16_t* _delay)
-{
-	if (!_delay) return CTA_L2CB_INVALID_PARAMETER;
-	if (!cta_l2cb_isValidSLot(_slot)) return CTA_L2CB_INVALID_PARAMETER;
-	if(_channel < CTA_L2CB_CHANNEL_MIN || _channel > CTA_L2CB_CHANNEL_MAX) return CTA_L2CB_INVALID_PARAMETER;
-
-	cta_l2cb_l1sel(_slot, _channel);
-
-	// wait for completion of previous command and enough delay for next command
-	int err = cta_l2cb_spi_generalized_wait(&cta_l2cb_spi_wait_config_delay, 0);
-	if (err != CTA_L2CB_NO_ERROR) return err;
-
-	// get delay
-	*_delay = IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_L1DEL);
-	return CTA_L2CB_NO_ERROR;
-}
+CEXTERN int cta_l2cb_getL1TriggerDelay_err(uint16_t _slot, uint16_t _channel, uint16_t* _delay);
 
 // get trigger delay for a CTDB trigger cluster/channel
 // if a set-delay process for the selected channel is ongoing, it waits until complete or timeout
@@ -432,12 +404,6 @@ static inline uint16_t cta_l2cb_getL1TriggerDelay(uint16_t _slot, uint16_t _chan
 }
 
 // ***** Helper Functions for the SPI Interface to access registers of the CTDB modules
-
-// wait for a spi transfer to complete
-// if no spi transfer is ongoing, it returns immediate
-// returns CTA_L2CB_NO_ERROR on success,
-// returns CTA_L2CB_ERROR_TIMEOUT on timeout error
-CEXTERN int cta_l2cb_spi_wait(void);
 
 // reads a register from a CTDB at slot x
 // valid register addresses are 0..255

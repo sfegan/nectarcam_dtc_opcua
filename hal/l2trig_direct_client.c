@@ -109,7 +109,7 @@ const char* bool_to_str(int val) {
 
 void print_debug_help() {
     printf("\nDebug Sub-Menu Commands:\n");
-    printf("  timing [type] [init] [inter] [timeout]: Get or set HAL timing\n");
+    printf("  timing [type] [args...] : Get or set HAL timing (ctdb, l1, ts)\n");
     printf("  pins <slot> [val]     : Get or set CTDB debug pins (SEL0..3)\n");
     printf("  ctdb_scan [repeat]    : Timed stability test of all named CTDB registers\n");
     printf("  ts_scan [repeat]      : Timed stability test of L2CB timestamp\n");
@@ -520,14 +520,13 @@ void process_line(char* line) {
                        g_ctdb_spi_timing.addressing_wait_iters, 
                        g_ctdb_spi_timing.readwrite_wait_iters, 
                        g_ctdb_spi_timing.timeout_iters);
-                printf("  DELAY: init=%u, inter=%u, timeout=%u\n", 
-                       cta_l2cb_spi_wait_config_delay.initial_wait_iters, 
-                       cta_l2cb_spi_wait_config_delay.inter_command_iters, 
-                       cta_l2cb_spi_wait_config_delay.timeout_iters);
-                printf("  TS:    edge=%u, latch=%u, retries=%u\n", 
-                       g_l2trig_ts_edge_delay_iters, 
-                       g_l2trig_ts_latch_delay_iters,
-                       g_l2trig_ts_unchanged_iters);
+                printf("  L1:    addressing=%u, timeout=%u\n", 
+                       g_l1_timing.addressing_wait_iters, 
+                       g_l1_timing.timeout_iters);
+                printf("  TS:    edge=%u, latch=%u, unchanged=%u\n", 
+                       g_timestamp_timing.edge_delay_iters, 
+                       g_timestamp_timing.latch_delay_iters,
+                       g_timestamp_timing.unchanged_iters);
             } else {
                 const char* type = tokens[1];
                 if (strcmp(type, "ctdb") == 0) {
@@ -537,17 +536,21 @@ void process_line(char* line) {
                         g_ctdb_spi_timing.readwrite_wait_iters = parse_int(tokens[3]);
                         g_ctdb_spi_timing.timeout_iters = parse_int(tokens[4]);
                     }
-                } else if (strcmp(type, "delay") == 0) {
-                    if (n < 5) printf("Usage: timing delay <init> <inter> <timeout>\n");
-                    else cta_l2cb_spi_set_timing_iters(&cta_l2cb_spi_wait_config_delay, parse_int(tokens[2]), parse_int(tokens[3]), parse_int(tokens[4]));
-                } else if (strcmp(type, "ts") == 0) {
-                    if (n < 4) printf("Usage: timing ts <edge> <latch> [retries]\n");
+                } else if (strcmp(type, "l1") == 0 || strcmp(type, "delay") == 0) {
+                    if (n < 4) printf("Usage: timing l1 <addressing> <timeout>\n");
                     else {
-                        cta_l2cb_set_ts_timing_iters(parse_int(tokens[2]), parse_int(tokens[3]));
-                        if (n > 4) g_l2trig_ts_unchanged_iters = parse_int(tokens[4]);
+                        g_l1_timing.addressing_wait_iters = parse_int(tokens[2]);
+                        g_l1_timing.timeout_iters = parse_int(tokens[3]);
+                    }
+                } else if (strcmp(type, "ts") == 0) {
+                    if (n < 4) printf("Usage: timing ts <edge> <latch> [unchanged]\n");
+                    else {
+                        g_timestamp_timing.edge_delay_iters = parse_int(tokens[2]);
+                        g_timestamp_timing.latch_delay_iters = parse_int(tokens[3]);
+                        if (n > 4) g_timestamp_timing.unchanged_iters = parse_int(tokens[4]);
                     }
                 } else {
-                    printf("Unknown timing type: %s (use ctdb, delay, or ts)\n", type);
+                    printf("Unknown timing type: %s (use ctdb, l1, or ts)\n", type);
                 }
             }
         } else if (strcmp(cmd, "pins") == 0) {
@@ -704,8 +707,13 @@ void process_line(char* line) {
             int ch = parse_int(tokens[2]);
             if (n > 3) cta_l2cb_setL1TriggerDelay(slot, ch, parse_int(tokens[3]));
             else {
-                uint16_t val = cta_l2cb_getL1TriggerDelay(slot, ch);
-                printf("Slot %d Ch %d Delay: %u (%.0f ps)\n", slot, ch, val, val * 37.0);
+                uint16_t val;
+                int err = cta_l2cb_getL1TriggerDelay_err(slot, ch, &val);
+                if (err == CTA_L2CB_NO_ERROR) {
+                    printf("Slot %d Ch %d Delay: %u (%.0f ps)\n", slot, ch, val, val * 37.0);
+                } else {
+                    printf("Slot %d Ch %d Delay: XXXX\n", slot, ch);
+                }
             }
         }
     } else if (strcmp(cmd, "alldelay") == 0) {
@@ -717,7 +725,12 @@ void process_line(char* line) {
             for (int ch = 1; ch <= 15; ch++) {
                 printf("Ch%02d:", ch);
                 for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
-                    printf("%5u", cta_l2cb_getL1TriggerDelay(slots[s], ch));
+                    uint16_t val;
+                    if (cta_l2cb_getL1TriggerDelay_err(slots[s], ch, &val) == CTA_L2CB_NO_ERROR) {
+                        printf("%5u", val);
+                    } else {
+                        printf(" XXXX");
+                    }
                 }
                 printf("\n");
             }
@@ -735,8 +748,11 @@ void process_line(char* line) {
             if (n > 2) cta_ctdb_setPowerEnabled(slot, parse_int(tokens[2]) & 0xFFFE);
             else {
                 uint16_t val;
-                cta_ctdb_getPowerEnabled(slot, &val);
-                printf("Slot %d Power Mask: 0x%04X\n", slot, val);
+                if (cta_ctdb_getPowerEnabled(slot, &val) == CTA_L2CB_NO_ERROR) {
+                    printf("Slot %d Power Mask: 0x%04X\n", slot, val);
+                } else {
+                    printf("Slot %d Power Mask: 0xXXXX\n", slot);
+                }
             }
         }
     } else if (strcmp(cmd, "power") == 0) {
@@ -747,8 +763,11 @@ void process_line(char* line) {
             if (n > 3) cta_ctdb_setPowerChannelEnabled(slot, ch, parse_bool(tokens[3]));
             else {
                 int on;
-                cta_ctdb_getPowerChannelEnabled(slot, ch, &on);
-                printf("Slot %d Ch %d Power: %s\n", slot, ch, bool_to_str(on));
+                if (cta_ctdb_getPowerChannelEnabled(slot, ch, &on) == CTA_L2CB_NO_ERROR) {
+                    printf("Slot %d Ch %d Power: %s\n", slot, ch, bool_to_str(on));
+                } else {
+                    printf("Slot %d Ch %d Power: XXXX\n", slot, ch);
+                }
             }
         }
     } else if (strcmp(cmd, "allpower") == 0) {
@@ -761,8 +780,11 @@ void process_line(char* line) {
                 printf("Ch%02d:", ch);
                 for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
                     int on;
-                    cta_ctdb_getPowerChannelEnabled(slots[s], ch, &on);
-                    printf("%4s", on ? "ON" : ".");
+                    if (cta_ctdb_getPowerChannelEnabled(slots[s], ch, &on) == CTA_L2CB_NO_ERROR) {
+                        printf("%4s", on ? "ON" : ".");
+                    } else {
+                        printf("XXXX");
+                    }
                 }
                 printf("\n");
             }
@@ -776,8 +798,11 @@ void process_line(char* line) {
             if (n > 2) cta_ctdb_setPowerCurrentMax(slot, parse_int(tokens[2]));
             else {
                 uint16_t val;
-                cta_ctdb_getPowerCurrentMax(slot, &val);
-                printf("Slot %d Max Current Limit: %u (%.2f mA)\n", slot, val, val * 0.485);
+                if (cta_ctdb_getPowerCurrentMax(slot, &val) == CTA_L2CB_NO_ERROR) {
+                    printf("Slot %d Max Current Limit: %u (%.2f mA)\n", slot, val, val * 0.485);
+                } else {
+                    printf("Slot %d Max Current Limit: XXXX\n", slot);
+                }
             }
         }
     } else if (strcmp(cmd, "allcurmax") == 0) {
@@ -788,8 +813,11 @@ void process_line(char* line) {
             printf("\nVal:  ");
             for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
                 uint16_t val;
-                cta_ctdb_getPowerCurrentMax(slots[s], &val);
-                printf("%5u", val);
+                if (cta_ctdb_getPowerCurrentMax(slots[s], &val) == CTA_L2CB_NO_ERROR) {
+                    printf("%5u", val);
+                } else {
+                    printf(" XXXX");
+                }
             }
             printf("\n");
         } else {
@@ -804,8 +832,11 @@ void process_line(char* line) {
             if (n > 2) cta_ctdb_setPowerCurrentMin(slot, parse_int(tokens[2]));
             else {
                 uint16_t val;
-                cta_ctdb_getPowerCurrentMin(slot, &val);
-                printf("Slot %d Min Current Limit: %u (%.2f mA)\n", slot, val, val * 0.485);
+                if (cta_ctdb_getPowerCurrentMin(slot, &val) == CTA_L2CB_NO_ERROR) {
+                    printf("Slot %d Min Current Limit: %u (%.2f mA)\n", slot, val, val * 0.485);
+                } else {
+                    printf("Slot %d Min Current Limit: XXXX\n", slot);
+                }
             }
         }
     } else if (strcmp(cmd, "allcurmin") == 0) {
@@ -816,8 +847,11 @@ void process_line(char* line) {
             printf("\nVal:  ");
             for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
                 uint16_t val;
-                cta_ctdb_getPowerCurrentMin(slots[s], &val);
-                printf("%5u", val);
+                if (cta_ctdb_getPowerCurrentMin(slots[s], &val) == CTA_L2CB_NO_ERROR) {
+                    printf("%5u", val);
+                } else {
+                    printf(" XXXX");
+                }
             }
             printf("\n");
         } else {
@@ -831,32 +865,44 @@ void process_line(char* line) {
             int slot = parse_int(tokens[1]);
             int ch = parse_int(tokens[2]);
             uint16_t val;
-            cta_ctdb_getPowerCurrent(slot, ch, &val);
-            printf("Slot %d Ch %d Current: %u (%.2f mA)\n", slot, ch, val, val * 0.485);
+            if (cta_ctdb_getPowerCurrent(slot, ch, &val) == CTA_L2CB_NO_ERROR) {
+                printf("Slot %d Ch %d Current: %u (%.2f mA)\n", slot, ch, val, val * 0.485);
+            } else {
+                printf("Slot %d Ch %d Current: XXXX\n", slot, ch);
+            }
         }
     } else if (strcmp(cmd, "under") == 0) {
         if (n < 2) printf("Usage: under <slot>\n");
         else {
             uint16_t val;
             int slot = parse_int(tokens[1]);
-            cta_ctdb_getUnderCurrentErrors(slot, &val);
-            printf("Slot %d Under-current Errors: 0x%04X\n", slot, val);
+            if (cta_ctdb_getUnderCurrentErrors(slot, &val) == CTA_L2CB_NO_ERROR) {
+                printf("Slot %d Under-current Errors: 0x%04X\n", slot, val);
+            } else {
+                printf("Slot %d Under-current Errors: 0xXXXX\n", slot);
+            }
         }
     } else if (strcmp(cmd, "over") == 0) {
         if (n < 2) printf("Usage: over <slot>\n");
         else {
             uint16_t val;
             int slot = parse_int(tokens[1]);
-            cta_ctdb_getOverCurrentErrors(slot, &val);
-            printf("Slot %d Over-current Errors: 0x%04X\n", slot, val);
+            if (cta_ctdb_getOverCurrentErrors(slot, &val) == CTA_L2CB_NO_ERROR) {
+                printf("Slot %d Over-current Errors: 0x%04X\n", slot, val);
+            } else {
+                printf("Slot %d Over-current Errors: 0xXXXX\n", slot);
+            }
         }
     } else if (strcmp(cmd, "ctdb_fw") == 0) {
         if (n < 2) printf("Usage: ctdb_fw <slot>\n");
         else {
             uint16_t val;
             int slot = parse_int(tokens[1]);
-            cta_ctdb_getFirmwareRevision(slot, &val);
-            printf("Slot %d CTDB Firmware Revision: 0x%04X\n", slot, val);
+            if (cta_ctdb_getFirmwareRevision(slot, &val) == CTA_L2CB_NO_ERROR) {
+                printf("Slot %d CTDB Firmware Revision: 0x%04X\n", slot, val);
+            } else {
+                printf("Slot %d CTDB Firmware Revision: 0xXXXX\n", slot);
+            }
         }
     } else if (strcmp(cmd, "debug") == 0) {
         g_in_debug_menu = 1;
@@ -870,8 +916,11 @@ void process_line(char* line) {
             if (n > 3) cta_ctdb_setSlaveRegister(slot, addr, parse_int(tokens[3]));
             else {
                 uint16_t val;
-                cta_ctdb_getSlaveRegister(slot, addr, &val);
-                printf("Slot %d Reg 0x%02X: 0x%04X\n", slot, addr, val);
+                if (cta_ctdb_getSlaveRegister(slot, addr, &val) == CTA_L2CB_NO_ERROR) {
+                    printf("Slot %d Reg 0x%02X: 0x%04X\n", slot, addr, val);
+                } else {
+                    printf("Slot %d Reg 0x%02X: 0xXXXX\n", slot, addr);
+                }
             }
         }
     } else if (strcmp(cmd, "sregscan") == 0) {
@@ -881,16 +930,22 @@ void process_line(char* line) {
             int slot = parse_int(tokens[1]);
             for (int addr = 0x00; addr <= 0xFF; addr++) {
                 uint16_t val;
-                cta_ctdb_getSlaveRegister(slot, addr, &val);
-                printf("0x%02X: 0x%04X  ", addr, val);
+                if (cta_ctdb_getSlaveRegister(slot, addr, &val) == CTA_L2CB_NO_ERROR) {
+                    printf("0x%02X: 0x%04X  ", addr, val);
+                } else {
+                    printf("0x%02X: 0xXXXX  ", addr);
+                }
                 if ((addr + 1) % 8 == 0) printf("\n");
             }
         } else {
             int slot = parse_int(tokens[1]);
             for(unsigned i = 0; i < sizeof(ctdb_regs)/sizeof(ctdb_regs[0]); i++) {
                 uint16_t val;
-                cta_ctdb_getSlaveRegister(slot, ctdb_regs[i].addr, &val);
-                printf("0x%02X %-10s : 0x%04X\n", ctdb_regs[i].addr, ctdb_regs[i].name, val);
+                if (cta_ctdb_getSlaveRegister(slot, ctdb_regs[i].addr, &val) == CTA_L2CB_NO_ERROR) {
+                    printf("0x%02X %-10s : 0x%04X\n", ctdb_regs[i].addr, ctdb_regs[i].name, val);
+                } else {
+                    printf("0x%02X %-10s : 0xXXXX\n", ctdb_regs[i].addr, ctdb_regs[i].name);
+                }
             }
         }
         printf("\n");
@@ -906,8 +961,11 @@ void process_line(char* line) {
                 printf("0x%02X:", addr);
                 for (int slot = 0; slot < CTA_L2CB_SLOT_COUNT; slot++) {
                     uint16_t val;
-                    cta_ctdb_getSlaveRegister(slots[slot], addr, &val);
-                    printf("  0x%04X", val);
+                    if (cta_ctdb_getSlaveRegister(slots[slot], addr, &val) == CTA_L2CB_NO_ERROR) {
+                        printf("  0x%04X", val);
+                    } else {
+                        printf("  0xXXXX");
+                    }
                 }
                 printf("\n");
             }
@@ -921,8 +979,11 @@ void process_line(char* line) {
                 printf("0x%02X %-10s:", ctdb_regs[i].addr, ctdb_regs[i].name);
                 for (int slot = 0; slot < CTA_L2CB_SLOT_COUNT; slot++) {
                     uint16_t val;
-                    cta_ctdb_getSlaveRegister(slots[slot], ctdb_regs[i].addr, &val);
-                    printf("  0x%04X", val);
+                    if (cta_ctdb_getSlaveRegister(slots[slot], ctdb_regs[i].addr, &val) == CTA_L2CB_NO_ERROR) {
+                        printf("  0x%04X", val);
+                    } else {
+                        printf("  0xXXXX");
+                    }
                 }
                 printf("\n");
             }

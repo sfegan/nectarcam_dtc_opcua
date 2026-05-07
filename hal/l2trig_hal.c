@@ -4,62 +4,77 @@
 #include "l2trig_hal.h"
 
 ctdb_spi_readwrite_timing_t g_ctdb_spi_timing = {
-    .addressing_wait_iters = 8,
-    .readwrite_wait_iters = 32,
-    .timeout_iters = 1000
+    .addressing_wait_iters = 16,  // about 0.2us
+    .readwrite_wait_iters = 16,  // about 0.2us
+    .timeout_iters = 10  // 20us (more than enough to cover 8.4 us SPI read/write cycle)
 };
 
-cta_l2cb_spi_wait_config_t cta_l2cb_spi_wait_config_delay = {
-    .spi_bit = BIT_CTA_L2CB_STAT_DELAY_BUSY,
-    .initial_wait_iters = 8,
-    .inter_command_iters = 32,
-    .timeout_iters = 1000
+l1_readwrite_timing_t g_l1_timing = {
+    .addressing_wait_iters = 16,  // about 0.2us
+    .timeout_iters = 10  // 20us (more than enough to cover 8.4 us SPI read/write cycle)
 };
 
-uint32_t g_l2trig_ts_edge_delay_iters = 16;
-uint32_t g_l2trig_ts_latch_delay_iters = 16;
-uint32_t g_l2trig_ts_unchanged_iters = 16;
+ts_trigger_timing_t g_timestamp_timing = {
+    .edge_delay_iters = 16,  // about 0.2us
+    .latch_delay_iters = 64, // about 0.8us
+    .unchanged_iters = 16
+};
 
-void cta_l2cb_spi_set_timing_iters(cta_l2cb_spi_wait_config_t* _config, uint32_t _initial, uint32_t _inter, uint32_t _timeout)
+int cta_l2cb_l1_wait(void)
 {
-    if (!_config) return;
-    _config->initial_wait_iters = _initial;
-    _config->inter_command_iters = _inter;
-    _config->timeout_iters = _timeout;
-}
-
-void cta_l2cb_set_ts_timing_iters(uint32_t _edge, uint32_t _latch)
-{
-    g_l2trig_ts_edge_delay_iters = _edge;
-    g_l2trig_ts_latch_delay_iters = _latch;
-}
-
-int cta_l2cb_spi_generalized_wait(cta_l2cb_spi_wait_config_t* _config, int _is_read)
-{
-    (void)_is_read;
-    if (!_config) return CTA_L2CB_INVALID_PARAMETER;
-
-    cta_l2cb_delay_cycles(_config->initial_wait_iters);
-
-    uint32_t timeout_count = _config->timeout_iters;
-    while (testBitVal16(IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_STAT), _config->spi_bit))
+    uint32_t timeout_count = g_l1_timing.timeout_iters;
+    while (testBitVal16(IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_STAT), BIT_CTA_L2CB_STAT_DELAY_BUSY))
     {
         if (--timeout_count == 0) return CTA_L2CB_ERROR_TIMEOUT;
     }
-
-    cta_l2cb_delay_cycles(_config->inter_command_iters);
-
     return CTA_L2CB_NO_ERROR;
 }
 
-int cta_l2cb_spi_wait(void)
+// set trigger delay for a CTDB trigger cluster/channel
+// if a set-delay process for the selected channel is ongoing, it waits until complete or timeout
+// returns CTA_L2CB_NO_ERROR on success,
+// returns CTA_L2CB_ERROR_TIMEOUT on timeout error
+int cta_l2cb_setL1TriggerDelay(uint16_t _slot, uint16_t _channel, uint16_t _delay)
 {
-    uint32_t timeout_count = g_ctdb_spi_timing.timeout_iters;
+	if (!cta_l2cb_isValidSLot(_slot)) return CTA_L2CB_INVALID_PARAMETER;
+	if(_channel < CTA_L2CB_CHANNEL_MIN || _channel > CTA_L2CB_CHANNEL_MAX) return CTA_L2CB_INVALID_PARAMETER;
+
+	cta_l2cb_l1sel(_slot, _channel);
+    cta_l2cb_delay_cycles(g_l1_timing.addressing_wait_iters);
+
+	// wait for completion of previous command and enough delay for next command
+    uint32_t timeout_count = g_l1_timing.timeout_iters;
     while (testBitVal16(IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_STAT), BIT_CTA_L2CB_STAT_SPIBUSY))
     {
         if (--timeout_count == 0) return CTA_L2CB_ERROR_TIMEOUT;
     }
-    return CTA_L2CB_NO_ERROR;
+
+	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_L1DEL, _delay & 0x007F);
+	return CTA_L2CB_NO_ERROR;
+}
+
+// get trigger delay for a CTDB trigger cluster/channel
+// if a set-delay process for the selected channel is ongoing, it waits until complete or timeout
+// returns CTA_L2CB_NO_ERROR on success,
+// returns CTA_L2CB_ERROR_TIMEOUT on timeout error
+int cta_l2cb_getL1TriggerDelay_err(uint16_t _slot, uint16_t _channel, uint16_t* _delay)
+{
+	if (!_delay) return CTA_L2CB_INVALID_PARAMETER;
+	if (!cta_l2cb_isValidSLot(_slot)) return CTA_L2CB_INVALID_PARAMETER;
+	if(_channel < CTA_L2CB_CHANNEL_MIN || _channel > CTA_L2CB_CHANNEL_MAX) return CTA_L2CB_INVALID_PARAMETER;
+
+	cta_l2cb_l1sel(_slot, _channel);
+
+	// wait for completion of previous command and enough delay for next command
+    uint32_t timeout_count = g_l1_timing.timeout_iters;
+    while (testBitVal16(IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_STAT), BIT_CTA_L2CB_STAT_SPIBUSY))
+    {
+        if (--timeout_count == 0) return CTA_L2CB_ERROR_TIMEOUT;
+    }
+
+	// get delay
+	*_delay = IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_L1DEL);
+	return CTA_L2CB_NO_ERROR;
 }
 
 int cta_l2cb_spi_read(uint16_t _slot, uint16_t _register, uint16_t* _value)
