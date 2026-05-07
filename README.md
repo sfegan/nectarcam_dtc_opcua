@@ -15,6 +15,7 @@ The L2 Trigger System manages 270 trigger modules across 18 crate slots (15 chan
 2.  **OPC UA Bridge (`l2trig_asyncua_bridge.py`):** A Python-based server that runs on a control PC. It connects to the backend server over TCP and exposes the system state and control methods via the OPC UA protocol.
 3.  **Direct Client (`l2trig_direct_client`):** A native C command-line tool for the ARM board, used for low-level pre-configuration and diagnostics.
 4.  **GUI (`l2tring_gui.py`):** A GUI test application for monitoring and controlling the system via OPC UA.
+5.  **TUI (`l2trig_tui.py`):** A terminal-based interactive interface for real-time monitoring and control via OPC UA.
 
 ---
 
@@ -85,6 +86,8 @@ The **Direct Client** (`l2trig_direct_client`) provides native access to the har
 | Command | Description |
 | :--- | :--- |
 | `l2cb_fw` | Get L2CB firmware revision |
+| `ts` | Get L2CB timestamp |
+| `state` | Get L2CB control state (MCF, Glitch, TIB block) |
 | `tib_count` | Get TIB event count |
 | `tib_reset` | Reset TIB event count |
 | `busy_mask [m]` | Get/Set 32-bit busy mask (hex) |
@@ -93,19 +96,29 @@ The **Direct Client** (`l2trig_direct_client`) provides native access to the har
 | `mcf <on\|off>` | Enable/Disable MCF propagation |
 | `mcfthr [val]` | Get/Set MCF threshold (L1 counts) |
 | `mcfdel [val]` | Get/Set MCF delay (5ns steps, 0-15) |
+| `glitch <on\|off>` | Enable/Disable busy glitch filter |
+| `tibblock <on\|off>` | Enable/Disable TIB trigger busy block |
 | `deadtime [val]` | Get/Set L1 deadtime (5ns steps, 0-255) |
 | `trigmask <slot> [m]` | Get/Set trigger mask (16-bit hex) |
 | `trig <slot> <ch> [o]`| Get/Set trigger for specific channel |
 | `alltrig [on\|off]` | Set all or show matrix of trigger masks |
+| `delay <slot> <ch> [v]`| Get/Set trigger delay (37ps steps, 0-127) |
 | `alldelay [val]` | Set all or show matrix of trigger delays |
 | `reg <addr> [val]` | Read or write L2CB register |
 | `regscan [all]` | Scan and print L2CB named (or all) registers |
 | `sreg <slot> <addr> [v]` | Read or write slave (CTDB) register |
 | `sregscan <slot> [all]` | Scan and print named (or all) CTDB slave registers from one slot|
 | `allsregscan [all]` | Scan and print named (or all) CTDB slave registers from all slots |
+| `ctdb_fw <slot>` | Get CTDB firmware revision |
 | `powermask <slot> [m]`| Get/Set power mask (16-bit hex) |
+| `power <s> <c> [o]`| Get/Set power for specific channel |
 | `allpower [on\|off]` | Set all or show matrix of power channels |
+| `cur <slot> <ch>` | Get channel current (code and mA) |
+| `under <slot>` | Get under-current error mask |
+| `over <slot>` | Get over-current error mask |
+| `curmax <slot> [val]`| Get/Set max current limit for slot |
 | `allcurmax [val]` | Set all or show vector of max current limits |
+| `curmin <slot> [val]`| Get/Set min current limit for slot |
 | `allcurmin [val]` | Set all or show vector of min current limits |
 
 The client can be used interactively, allowing commands to be typed from the terminal, or via a script to allow commands to be piped or read from a file. For example, the following will pre-configure the system parameters for the muon candidate flag and disable the trigger from the unused channels in slot 21:
@@ -244,11 +257,13 @@ graph TD
         direction TB
         User(("👤 User"))
         GUI["GUI Client<br/>(l2trig_gui.py)"]
+        TUI["TUI Client<br/>(l2trig_tui.py)"]
         OPC_CLI["OPC UA Test Client CLI<br/>(l2trig_test_opcua_cli.py)"]
         TCP_CLI["TCP Test Client CLI<br/>(l2trig_test_tcp_cli.py)"]
         
         %% Internal links
         User --- GUI
+        User --- TUI
         User --- OPC_CLI
         User --- TCP_CLI
     end
@@ -279,6 +294,7 @@ graph TD
     %% Cross-layer links
     User -.-|SSH| DirectCLI
     GUI ---|OPC UA| Bridge
+    TUI ---|OPC UA| Bridge
     OPC_CLI ---|OPC UA| Bridge
     Bridge ---|TCP/IP| Backend
     TCP_CLI ---|TCP/IP| Backend
@@ -303,9 +319,10 @@ graph TD
 
 ### Client Applications
 
-Four client applications are included in the repository for different use cases. Three of them are implemented in Python and run on the control PC, while the `l2trig_direct_client` is a native C application that runs on the ARM board for direct hardware access. Of the three Python applications, two are OPC UA clients that connect to the `l2trig_asyncua_bridge.py` server, while the third is a TCP client that connects directly to the `l2tcp_server` backend for low-level testing.
+Five client applications are included in the repository for different use cases. Four of them are implemented in Python and run on the control PC, while the `l2trig_direct_client` is a native C application that runs on the ARM board for direct hardware access. Of the four Python applications, three are OPC UA clients that connect to the `l2trig_asyncua_bridge.py` server, while the fourth is a TCP client that connects directly to the `l2tcp_server` backend for low-level testing.
 
-- `l2tring_gui.py`: A GUI application for monitoring and controlling the system via OPC UA. It provides real-time status updates and interactive controls for power and trigger settings.
+- `l2trig_gui.py`: A GUI application for monitoring and controlling the system via OPC UA. It provides real-time status updates and interactive controls for power and trigger settings.
+- `l2trig_tui.py`: A text-based terminal interface (TUI) for monitoring and control via OPC UA. It provides a dense, real-time overview of the system state and is ideal for use over remote terminal connections.
 - `l2trig_test_opcua_cli.py`: An interactive command-line client for testing and debugging the OPC UA interface. It allows users to read monitoring variables and call control methods directly from the terminal, making it useful for quick tests and automation scripts.
 - `l2trig_test_tcp_client.py`: A simple TCP client for testing the backend server's binary protocol. It can be used to send raw commands and receive responses, bypassing the OPC UA layer for low-level diagnostics.
 - `l2trig_direct_client`: A command-line tool that runs on the ARM board, allowing direct access to the hardware for pre-configuration and diagnostics. It supports commands for reading firmware versions, configuring power and trigger settings, and more.
