@@ -62,6 +62,40 @@ static void get_now(struct timespec *ts) {
     clock_gettime(CLOCK_MONOTONIC, ts);
 }
 
+static size_t get_expected_payload_len(uint16_t type) {
+    switch (type) {
+        case L2TCP_MSG_ACK:                return 0;
+        case L2TCP_MSG_ERROR:              return sizeof(l2tcp_payload_error_t);
+        case L2TCP_MSG_SYS_SET_CONFIG:     return sizeof(l2tcp_payload_sys_config_t);
+        case L2TCP_MSG_SYS_RAMP_POWER:     return sizeof(l2tcp_payload_ramp_t);
+        case L2TCP_MSG_SYS_EMERGENCY_OFF:  return 0;
+        case L2TCP_MSG_SYS_SET_ALL_TRIG_EN: return sizeof(l2tcp_payload_u16_t);
+        case L2TCP_MSG_SYS_SET_ALL_TRIG_DELAY: return sizeof(l2tcp_payload_u16_t);
+        case L2TCP_MSG_KEEPALIVE:          return 0;
+        case L2TCP_MSG_HELLO:              return sizeof(l2tcp_payload_u16_t);
+        case L2TCP_MSG_L2CB_GET_STATE:     return 0;
+        case L2TCP_MSG_L2CB_SET_MCF_EN:    return sizeof(l2tcp_payload_u16_t);
+        case L2TCP_MSG_L2CB_SET_GLITCH_EN: return sizeof(l2tcp_payload_u16_t);
+        case L2TCP_MSG_L2CB_SET_TIB_BLOCK_EN: return sizeof(l2tcp_payload_u16_t);
+        case L2TCP_MSG_L2CB_SET_MCF_THRESH: return sizeof(l2tcp_payload_u16_t);
+        case L2TCP_MSG_L2CB_SET_MCF_DELAY:  return sizeof(l2tcp_payload_u16_t);
+        case L2TCP_MSG_L2CB_SET_L1_DEADTIME: return sizeof(l2tcp_payload_u16_t);
+        case L2TCP_MSG_L2CB_SET_BUSY_ENABLE_MASK: return 4;
+        case L2TCP_MSG_L2CB_SET_BUSY_ENABLE_SLOT: return 4;
+        case L2TCP_MSG_L2CB_RESET_TIB_COUNT: return 0;
+        case L2TCP_MSG_CTDB_SET_CH_POWER:  return sizeof(l2tcp_payload_ch_ctrl_t);
+        case L2TCP_MSG_CTDB_SET_CH_TRIG:   return sizeof(l2tcp_payload_ch_ctrl_t);
+        case L2TCP_MSG_CTDB_SET_CH_DELAY:  return sizeof(l2tcp_payload_ch_delay_t);
+        case L2TCP_MSG_CTDB_SET_LIMITS:    return sizeof(l2tcp_payload_ctdb_limits_t);
+        case L2TCP_MSG_CTDB_GET_MONITORING: return 2;
+        case L2TCP_MSG_CTDB_GET_CONFIG:     return 2;
+        case L2TCP_MSG_BATCH_MONITOR_ALL:   return 0;
+        case L2TCP_MSG_FAST_POLL:           return 0;
+        case L2TCP_MSG_SLOW_POLL:           return 0;
+        default: return 0;
+    }
+}
+
 static int is_slot_active(int slot) {
     if (slot < L2TCP_MIN_SLOT || slot > L2TCP_MAX_SLOT) return 0;
     return (g_server.active_slots_mask & (1 << slot)) != 0;
@@ -159,21 +193,22 @@ static void send_ack(uint16_t seq, int show_msg) {
 
 /* --- Power Logic --- */
 
-static void handle_ch_power(int slot, int ch, int enable) {
-    if (!is_slot_active(slot) || is_ch_immutable(slot, ch)) return;
+static int handle_ch_power(int slot, int ch, int enable) {
+    if (!is_slot_active(slot) || is_ch_immutable(slot, ch)) return CTA_L2CB_NO_ERROR;
 
+    int err;
     if (enable) {
         uint16_t over, under;
-        cta_ctdb_getOverCurrentErrors((uint16_t)slot, &over);
-        cta_ctdb_getUnderCurrentErrors((uint16_t)slot, &under);
+        if ((err = cta_ctdb_getOverCurrentErrors((uint16_t)slot, &over)) != CTA_L2CB_NO_ERROR) return err;
+        if ((err = cta_ctdb_getUnderCurrentErrors((uint16_t)slot, &under)) != CTA_L2CB_NO_ERROR) return err;
         
         if ((over | under) & (1 << ch)) {
             /* Error detected: explicit OFF to reset latch */
             cta_ctdb_setPowerChannelEnabled((uint16_t)slot, (uint16_t)ch, 0);
         }
-        cta_ctdb_setPowerChannelEnabled((uint16_t)slot, (uint16_t)ch, 1);
+        return cta_ctdb_setPowerChannelEnabled((uint16_t)slot, (uint16_t)ch, 1);
     } else {
-        cta_ctdb_setPowerChannelEnabled((uint16_t)slot, (uint16_t)ch, 0);
+        return cta_ctdb_setPowerChannelEnabled((uint16_t)slot, (uint16_t)ch, 0);
     }
 }
 
@@ -260,7 +295,7 @@ static void handle_request() {
     struct timespec trecv0, trecv1, tproc;
     if (g_server.verbose > 2) get_now(&trecv0);
 
-    ssize_t n = recv(g_server.client_fd, &hdr, sizeof(hdr), 0);
+    ssize_t n = recv(g_server.client_fd, &hdr, sizeof(hdr), MSG_WAITALL);
     if (n <= 0) {
         if (n < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -268,17 +303,37 @@ static void handle_request() {
             } else {
                 printf("Header recv error: %s, closing connection\n", strerror(errno));
             }
+        } else {
+            printf("Client disconnected (0 bytes read)\n");
         }
         close(g_server.client_fd);
         g_server.client_fd = -1;
-        printf("Client disconnected\n");
         return;
     }
     
+    if (n != sizeof(hdr)) {
+        printf("Incomplete header: received %zd bytes, expected %zu bytes, closing connection\n", n, sizeof(hdr));
+        close(g_server.client_fd);
+        g_server.client_fd = -1;
+        return;
+    }
+
     /* Update last activity timestamp */
     get_now(&g_server.last_activity_ts);
 
-    uint8_t buffer[4096];
+    uint8_t buffer[4096] __attribute__((aligned(4)));
+    size_t expected_len = get_expected_payload_len(hdr.type);
+
+    if (hdr.len != expected_len) {
+        printf("Payload length mismatch for %s: received %d, expected %zu\n", 
+               msg_type_to_str(hdr.type), hdr.len, expected_len);
+        send_error(hdr.seq, L2TCP_ERR_MALFORMED_PAYLOAD, "Payload length mismatch");
+        /* Skip rest of payload if any, or just close to be safe from desync */
+        close(g_server.client_fd);
+        g_server.client_fd = -1;
+        return;
+    }
+
     if (hdr.len > sizeof(buffer)) {
         send_error(hdr.seq, L2TCP_ERR_PAYLOAD_TOO_LARGE, "Payload too large");
         return;
@@ -551,8 +606,12 @@ static void handle_request() {
             if (!is_slot_active(p->slot)) {
                 send_error(hdr.seq, L2TCP_ERR_INVALID_PARAMETER, "Slot not active");
             } else {
-                handle_ch_power((int)p->slot, (int)p->channel, (int)p->enable);
-                send_ack(hdr.seq, show_msg);
+                int err = handle_ch_power((int)p->slot, (int)p->channel, (int)p->enable);
+                if (err != CTA_L2CB_NO_ERROR) {
+                    send_error(hdr.seq, L2TCP_ERR_HARDWARE_ERROR, cta_l2cb_getErrorString(err));
+                } else {
+                    send_ack(hdr.seq, show_msg);
+                }
             }
             break;
         }
@@ -563,8 +622,12 @@ static void handle_request() {
             } else if (is_ch_immutable((int)p->slot, (int)p->channel)) {
                 send_error(hdr.seq, L2TCP_ERR_INVALID_PARAMETER, "Channel is immutable");
             } else {
-                cta_l2cb_setL1TriggerChannelEnabled(p->slot, p->channel, p->enable);
-                send_ack(hdr.seq, show_msg);
+                int err = cta_l2cb_setL1TriggerChannelEnabled(p->slot, p->channel, p->enable);
+                if (err != CTA_L2CB_NO_ERROR) {
+                    send_error(hdr.seq, L2TCP_ERR_HARDWARE_ERROR, cta_l2cb_getErrorString(err));
+                } else {
+                    send_ack(hdr.seq, show_msg);
+                }
             }
             break;
         }
@@ -595,9 +658,13 @@ static void handle_request() {
                 uint16_t max = p->curr_limit_max;
                 if (min > LIMIT_CURR_CODE) min = LIMIT_CURR_CODE;
                 if (max > LIMIT_CURR_CODE) max = LIMIT_CURR_CODE;
-                cta_ctdb_setPowerCurrentMin(p->slot, min);
-                cta_ctdb_setPowerCurrentMax(p->slot, max);
-                send_ack(hdr.seq, show_msg);
+                int err1 = cta_ctdb_setPowerCurrentMin(p->slot, min);
+                int err2 = cta_ctdb_setPowerCurrentMax(p->slot, max);
+                if (err1 != CTA_L2CB_NO_ERROR || err2 != CTA_L2CB_NO_ERROR) {
+                    send_error(hdr.seq, L2TCP_ERR_HARDWARE_ERROR, cta_l2cb_getErrorString(err1 != CTA_L2CB_NO_ERROR ? err1 : err2));
+                } else {
+                    send_ack(hdr.seq, show_msg);
+                }
             }
             break;
         }
@@ -614,15 +681,23 @@ static void handle_request() {
                 resp.hdr.reserved = 0;
 
                 resp.payload.slot = slot;
-                cta_ctdb_getPowerCurrent(slot, 0, &resp.payload.ctdb_curr);
-                for (int i = 0; i < 15; i++) cta_ctdb_getPowerCurrent(slot, (uint16_t)(i + 1), &resp.payload.ch_curr[i]);
-                cta_ctdb_getOverCurrentErrors(slot, &resp.payload.over_curr_mask);
-                cta_ctdb_getUnderCurrentErrors(slot, &resp.payload.under_curr_mask);
-                cta_ctdb_getPowerEnabled(slot, &resp.payload.pwr_enabled_mask);
+                int err = CTA_L2CB_NO_ERROR;
+                int last_err = CTA_L2CB_NO_ERROR;
+                
+                if ((err = cta_ctdb_getPowerCurrent(slot, 0, &resp.payload.ctdb_curr)) != CTA_L2CB_NO_ERROR) last_err = err;
+                for (int i = 0; i < 15; i++) {
+                    if ((err = cta_ctdb_getPowerCurrent(slot, (uint16_t)(i + 1), &resp.payload.ch_curr[i])) != CTA_L2CB_NO_ERROR) last_err = err;
+                }
+                if ((err = cta_ctdb_getOverCurrentErrors(slot, &resp.payload.over_curr_mask)) != CTA_L2CB_NO_ERROR) last_err = err;
+                if ((err = cta_ctdb_getUnderCurrentErrors(slot, &resp.payload.under_curr_mask)) != CTA_L2CB_NO_ERROR) last_err = err;
+                if ((err = cta_ctdb_getPowerEnabled(slot, &resp.payload.pwr_enabled_mask)) != CTA_L2CB_NO_ERROR) last_err = err;
 
-                if (g_server.verbose > 1) printf("  -> MONITORING S%d\n", slot);
-
-                send_all(g_server.client_fd, &resp, sizeof(resp));
+                if (last_err != CTA_L2CB_NO_ERROR) {
+                    send_error(hdr.seq, L2TCP_ERR_HARDWARE_ERROR, cta_l2cb_getErrorString(last_err));
+                } else {
+                    if (g_server.verbose > 1) printf("  -> MONITORING S%d\n", slot);
+                    send_all(g_server.client_fd, &resp, sizeof(resp));
+                }
             }
             break;
         }
@@ -641,6 +716,7 @@ static void handle_request() {
             msg.payload.count = (uint16_t)count;
             
             int idx = 0;
+            int last_err = CTA_L2CB_NO_ERROR;
             for (int s = L2TCP_MIN_SLOT; s <= L2TCP_MAX_SLOT && idx < count; s++) {
                 if (!is_slot_active(s)) continue;
                 
@@ -649,11 +725,14 @@ static void handle_request() {
 
                 l2tcp_payload_monitoring_t *resp = &msg.payload.entries[idx];
                 resp->slot = (uint16_t)s;
-                cta_ctdb_getPowerCurrent((uint16_t)s, 0, &resp->ctdb_curr);
-                for (int i = 0; i < 15; i++) cta_ctdb_getPowerCurrent((uint16_t)s, (uint16_t)(i + 1), &resp->ch_curr[i]);
-                cta_ctdb_getOverCurrentErrors((uint16_t)s, &resp->over_curr_mask);
-                cta_ctdb_getUnderCurrentErrors((uint16_t)s, &resp->under_curr_mask);
-                cta_ctdb_getPowerEnabled((uint16_t)s, &resp->pwr_enabled_mask);
+                int err;
+                if ((err = cta_ctdb_getPowerCurrent((uint16_t)s, 0, &resp->ctdb_curr)) != CTA_L2CB_NO_ERROR) last_err = err;
+                for (int i = 0; i < 15; i++) {
+                    if ((err = cta_ctdb_getPowerCurrent((uint16_t)s, (uint16_t)(i + 1), &resp->ch_curr[i])) != CTA_L2CB_NO_ERROR) last_err = err;
+                }
+                if ((err = cta_ctdb_getOverCurrentErrors((uint16_t)s, &resp->over_curr_mask)) != CTA_L2CB_NO_ERROR) last_err = err;
+                if ((err = cta_ctdb_getUnderCurrentErrors((uint16_t)s, &resp->under_curr_mask)) != CTA_L2CB_NO_ERROR) last_err = err;
+                if ((err = cta_ctdb_getPowerEnabled((uint16_t)s, &resp->pwr_enabled_mask)) != CTA_L2CB_NO_ERROR) last_err = err;
                 
                 if (g_server.verbose > 2) {
                     struct timespec ts1;
@@ -664,25 +743,29 @@ static void handle_request() {
                 idx++;
             }
             
-            if (g_server.verbose > 2) get_now(&t1);
+            if (last_err != CTA_L2CB_NO_ERROR) {
+                send_error(hdr.seq, L2TCP_ERR_HARDWARE_ERROR, cta_l2cb_getErrorString(last_err));
+            } else {
+                if (g_server.verbose > 2) get_now(&t1);
 
-            /* Calculate actual payload size: count (u16) + populated entries */
-            uint16_t payload_size = (uint16_t)(sizeof(uint16_t) + count * sizeof(l2tcp_payload_monitoring_t));
-            
-            msg.hdr.type = L2TCP_MSG_BATCH_MONITOR_ALL;
-            msg.hdr.seq = hdr.seq;
-            msg.hdr.len = payload_size;
-            msg.hdr.reserved = 0;
+                /* Calculate actual payload size: count (u16) + populated entries */
+                uint16_t payload_size = (uint16_t)(sizeof(uint16_t) + count * sizeof(l2tcp_payload_monitoring_t));
+                
+                msg.hdr.type = L2TCP_MSG_BATCH_MONITOR_ALL;
+                msg.hdr.seq = hdr.seq;
+                msg.hdr.len = payload_size;
+                msg.hdr.reserved = 0;
 
-            if (g_server.verbose > 1) printf("  -> BATCH MONITOR (%d slots, %u bytes)\n", count, payload_size);
+                if (g_server.verbose > 1) printf("  -> BATCH MONITOR (%d slots, %u bytes)\n", count, payload_size);
 
-            /* Send header + complete batch payload atomically */
-            send_all(g_server.client_fd, &msg, sizeof(l2tcp_header_t) + payload_size);
+                /* Send header + complete batch payload atomically */
+                send_all(g_server.client_fd, &msg, sizeof(l2tcp_header_t) + payload_size);
 
-            if (g_server.verbose > 2) {
-                get_now(&t2);
-                printf("  [DEBUG] BATCH_MONITOR_ALL: collect=%.2fms, send=%.2fms, total=%.2fms\n",
-                       TIMESPEC_DIFF_MS(t0, t1), TIMESPEC_DIFF_MS(t1, t2), TIMESPEC_DIFF_MS(t0, t2));
+                if (g_server.verbose > 2) {
+                    get_now(&t2);
+                    printf("  [DEBUG] BATCH_MONITOR_ALL: collect=%.2fms, send=%.2fms, total=%.2fms\n",
+                           TIMESPEC_DIFF_MS(t0, t1), TIMESPEC_DIFF_MS(t1, t2), TIMESPEC_DIFF_MS(t0, t2));
+                }
             }
             break;
         }
@@ -713,36 +796,44 @@ static void handle_request() {
             }
             msg.payload.monitor.count = (uint16_t)count;
             int idx = 0;
+            int last_err = CTA_L2CB_NO_ERROR;
             for (int s = L2TCP_MIN_SLOT; s <= L2TCP_MAX_SLOT && idx < count; s++) {
                 if (!is_slot_active(s)) continue;
                 l2tcp_payload_monitoring_t *resp = &msg.payload.monitor.entries[idx];
                 resp->slot = (uint16_t)s;
-                cta_ctdb_getPowerCurrent((uint16_t)s, 0, &resp->ctdb_curr);
-                for (int i = 0; i < 15; i++) cta_ctdb_getPowerCurrent((uint16_t)s, (uint16_t)(i + 1), &resp->ch_curr[i]);
-                cta_ctdb_getOverCurrentErrors((uint16_t)s, &resp->over_curr_mask);
-                cta_ctdb_getUnderCurrentErrors((uint16_t)s, &resp->under_curr_mask);
-                cta_ctdb_getPowerEnabled((uint16_t)s, &resp->pwr_enabled_mask);
+                int err;
+                if ((err = cta_ctdb_getPowerCurrent((uint16_t)s, 0, &resp->ctdb_curr)) != CTA_L2CB_NO_ERROR) last_err = err;
+                for (int i = 0; i < 15; i++) {
+                    if ((err = cta_ctdb_getPowerCurrent((uint16_t)s, (uint16_t)(i + 1), &resp->ch_curr[i])) != CTA_L2CB_NO_ERROR) last_err = err;
+                }
+                if ((err = cta_ctdb_getOverCurrentErrors((uint16_t)s, &resp->over_curr_mask)) != CTA_L2CB_NO_ERROR) last_err = err;
+                if ((err = cta_ctdb_getUnderCurrentErrors((uint16_t)s, &resp->under_curr_mask)) != CTA_L2CB_NO_ERROR) last_err = err;
+                if ((err = cta_ctdb_getPowerEnabled((uint16_t)s, &resp->pwr_enabled_mask)) != CTA_L2CB_NO_ERROR) last_err = err;
                 idx++;
             }
 
-            if (g_server.verbose > 2) get_now(&t1);
+            if (last_err != CTA_L2CB_NO_ERROR) {
+                send_error(hdr.seq, L2TCP_ERR_HARDWARE_ERROR, cta_l2cb_getErrorString(last_err));
+            } else {
+                if (g_server.verbose > 2) get_now(&t1);
 
-            uint16_t monitor_payload_size = (uint16_t)(sizeof(uint16_t) + count * sizeof(l2tcp_payload_monitoring_t));
-            uint16_t total_payload_size = (uint16_t)(sizeof(l2tcp_payload_l2cb_state_t) + monitor_payload_size);
+                uint16_t monitor_payload_size = (uint16_t)(sizeof(uint16_t) + count * sizeof(l2tcp_payload_monitoring_t));
+                uint16_t total_payload_size = (uint16_t)(sizeof(l2tcp_payload_l2cb_state_t) + monitor_payload_size);
 
-            msg.hdr.type = L2TCP_MSG_FAST_POLL;
-            msg.hdr.seq = hdr.seq;
-            msg.hdr.len = total_payload_size;
-            msg.hdr.reserved = 0;
+                msg.hdr.type = L2TCP_MSG_FAST_POLL;
+                msg.hdr.seq = hdr.seq;
+                msg.hdr.len = total_payload_size;
+                msg.hdr.reserved = 0;
 
-            if (g_server.verbose > 1) printf("  -> FAST POLL (%d slots, %u bytes)\n", count, total_payload_size);
+                if (g_server.verbose > 1) printf("  -> FAST POLL (%d slots, %u bytes)\n", count, total_payload_size);
 
-            send_all(g_server.client_fd, &msg, sizeof(l2tcp_header_t) + total_payload_size);
+                send_all(g_server.client_fd, &msg, sizeof(l2tcp_header_t) + total_payload_size);
 
-            if (g_server.verbose > 2) {
-                get_now(&t2);
-                printf("  [DEBUG] FAST_POLL: collect=%.2fms, send=%.2fms, total=%.2fms\n",
-                       TIMESPEC_DIFF_MS(t0, t1), TIMESPEC_DIFF_MS(t1, t2), TIMESPEC_DIFF_MS(t0, t2));
+                if (g_server.verbose > 2) {
+                    get_now(&t2);
+                    printf("  [DEBUG] FAST_POLL: collect=%.2fms, send=%.2fms, total=%.2fms\n",
+                           TIMESPEC_DIFF_MS(t0, t1), TIMESPEC_DIFF_MS(t1, t2), TIMESPEC_DIFF_MS(t0, t2));
+                }
             }
             break;
         }
@@ -760,35 +851,45 @@ static void handle_request() {
             msg.payload.count = (uint16_t)count;
 
             int idx = 0;
+            int last_err = CTA_L2CB_NO_ERROR;
             for (int s = L2TCP_MIN_SLOT; s <= L2TCP_MAX_SLOT && idx < count; s++) {
                 if (!is_slot_active(s)) continue;
                 l2tcp_payload_config_t *resp = &msg.payload.entries[idx];
                 resp->slot = (uint16_t)s;
-                cta_ctdb_getFirmwareRevision((uint16_t)s, &resp->fw_rev);
-                cta_ctdb_getPowerCurrentMin((uint16_t)s, &resp->curr_limit_min);
-                cta_ctdb_getPowerCurrentMax((uint16_t)s, &resp->curr_limit_max);
+                int err;
+                if ((err = cta_ctdb_getFirmwareRevision((uint16_t)s, &resp->fw_rev)) != CTA_L2CB_NO_ERROR) last_err = err;
+                if ((err = cta_ctdb_getPowerCurrentMin((uint16_t)s, &resp->curr_limit_min)) != CTA_L2CB_NO_ERROR) last_err = err;
+                if ((err = cta_ctdb_getPowerCurrentMax((uint16_t)s, &resp->curr_limit_max)) != CTA_L2CB_NO_ERROR) last_err = err;
                 resp->trig_enabled_mask = cta_l2cb_getL1TriggerEnabled((uint16_t)s);
-                for (int i = 0; i < 15; i++) resp->trig_delays[i] = cta_l2cb_getL1TriggerDelay((uint16_t)s, (uint16_t)(i + 1));
+                for (int i = 0; i < 15; i++) {
+                    uint16_t delay_val = 0;
+                    if ((err = cta_l2cb_getL1TriggerDelay_err((uint16_t)s, (uint16_t)(i + 1), &delay_val)) != CTA_L2CB_NO_ERROR) last_err = err;
+                    resp->trig_delays[i] = delay_val;
+                }
                 idx++;
             }
 
-            if (g_server.verbose > 2) get_now(&t1);
+            if (last_err != CTA_L2CB_NO_ERROR) {
+                send_error(hdr.seq, L2TCP_ERR_HARDWARE_ERROR, cta_l2cb_getErrorString(last_err));
+            } else {
+                if (g_server.verbose > 2) get_now(&t1);
 
-            uint16_t payload_size = (uint16_t)(sizeof(uint16_t) + count * sizeof(l2tcp_payload_config_t));
+                uint16_t payload_size = (uint16_t)(sizeof(uint16_t) + count * sizeof(l2tcp_payload_config_t));
 
-            msg.hdr.type = L2TCP_MSG_SLOW_POLL;
-            msg.hdr.seq = hdr.seq;
-            msg.hdr.len = payload_size;
-            msg.hdr.reserved = 0;
+                msg.hdr.type = L2TCP_MSG_SLOW_POLL;
+                msg.hdr.seq = hdr.seq;
+                msg.hdr.len = payload_size;
+                msg.hdr.reserved = 0;
 
-            if (g_server.verbose > 1) printf("  -> SLOW POLL (%d slots, %u bytes)\n", count, payload_size);
+                if (g_server.verbose > 1) printf("  -> SLOW POLL (%d slots, %u bytes)\n", count, payload_size);
 
-            send_all(g_server.client_fd, &msg, sizeof(l2tcp_header_t) + payload_size);
+                send_all(g_server.client_fd, &msg, sizeof(l2tcp_header_t) + payload_size);
 
-            if (g_server.verbose > 2) {
-                get_now(&t2);
-                printf("  [DEBUG] SLOW_POLL: collect=%.2fms, send=%.2fms, total=%.2fms\n",
-                       TIMESPEC_DIFF_MS(t0, t1), TIMESPEC_DIFF_MS(t1, t2), TIMESPEC_DIFF_MS(t0, t2));
+                if (g_server.verbose > 2) {
+                    get_now(&t2);
+                    printf("  [DEBUG] SLOW_POLL: collect=%.2fms, send=%.2fms, total=%.2fms\n",
+                           TIMESPEC_DIFF_MS(t0, t1), TIMESPEC_DIFF_MS(t1, t2), TIMESPEC_DIFF_MS(t0, t2));
+                }
             }
             break;
         }
@@ -805,15 +906,25 @@ static void handle_request() {
                 resp.hdr.reserved = 0;
 
                 resp.payload.slot = slot;
-                cta_ctdb_getFirmwareRevision(slot, &resp.payload.fw_rev);
-                cta_ctdb_getPowerCurrentMin(slot, &resp.payload.curr_limit_min);
-                cta_ctdb_getPowerCurrentMax(slot, &resp.payload.curr_limit_max);
+                int err = CTA_L2CB_NO_ERROR;
+                int last_err = CTA_L2CB_NO_ERROR;
+
+                if ((err = cta_ctdb_getFirmwareRevision(slot, &resp.payload.fw_rev)) != CTA_L2CB_NO_ERROR) last_err = err;
+                if ((err = cta_ctdb_getPowerCurrentMin(slot, &resp.payload.curr_limit_min)) != CTA_L2CB_NO_ERROR) last_err = err;
+                if ((err = cta_ctdb_getPowerCurrentMax(slot, &resp.payload.curr_limit_max)) != CTA_L2CB_NO_ERROR) last_err = err;
                 resp.payload.trig_enabled_mask = cta_l2cb_getL1TriggerEnabled(slot);
-                for (int i = 0; i < 15; i++) resp.payload.trig_delays[i] = cta_l2cb_getL1TriggerDelay(slot, (uint16_t)(i + 1));
+                for (int i = 0; i < 15; i++) {
+                    uint16_t delay_val = 0;
+                    if ((err = cta_l2cb_getL1TriggerDelay_err(slot, (uint16_t)(i + 1), &delay_val)) != CTA_L2CB_NO_ERROR) last_err = err;
+                    resp.payload.trig_delays[i] = delay_val;
+                }
 
-                if (g_server.verbose > 1) printf("  -> CONFIG S%d\n", slot);
-
-                send_all(g_server.client_fd, &resp, sizeof(resp));
+                if (last_err != CTA_L2CB_NO_ERROR) {
+                    send_error(hdr.seq, L2TCP_ERR_HARDWARE_ERROR, cta_l2cb_getErrorString(last_err));
+                } else {
+                    if (g_server.verbose > 1) printf("  -> CONFIG S%d\n", slot);
+                    send_all(g_server.client_fd, &resp, sizeof(resp));
+                }
             }
             break;
         }
@@ -829,7 +940,7 @@ static void handle_request() {
 
 /* --- Main Loop --- */
 
-static int g_running = 1;
+static volatile sig_atomic_t g_running = 1;
 
 static void signal_handler(int sig) {
     (void)sig;
@@ -838,8 +949,8 @@ static void signal_handler(int sig) {
 
 int main(int argc, char **argv) {
     g_server.ramp_delay_ms = 100;      /* Default: 100ms ramp delay */
-    g_server.client_timeout_ms = 60000; /* Default: 60s client inactivity timeout */
-    g_server.recv_timeout_ms = 1000;    /* Default: 1s recv timeout */
+    g_server.client_timeout_ms = 15000; /* Default: 15s client inactivity timeout */
+    g_server.recv_timeout_ms = 10;      /* Default: 10ms recv timeout */
     int port = L2TCP_PORT;
 
     int opt;
