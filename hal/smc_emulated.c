@@ -562,6 +562,19 @@ void smc_wr32(unsigned int _addr, unsigned int _value)
     smc_wr16(_addr + 2, (_value >> 16) & 0xFFFF);
 }
 
+void smc_busy_wait(unsigned int _iters)
+{
+    if (_iters == 0) return;
+    
+    /* 15ns per iteration */
+    struct timespec ts;
+    uint64_t total_ns = (uint64_t)_iters * 15;
+    ts.tv_sec = total_ns / 1000000000ULL;
+    ts.tv_nsec = total_ns % 1000000000ULL;
+    
+    nanosleep(&ts, NULL);
+}
+
 /* ============================================================================
  * Test Helper Functions
  * ============================================================================ */

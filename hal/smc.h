@@ -56,6 +56,9 @@ void 	smc_wr16(unsigned int _addr, unsigned short _value);
 // writes 32bit word to smc memory location
 void 	smc_wr32(unsigned int _addr, unsigned int _value);
 
+// performs a busy-wait loop for the specified number of iterations
+void    smc_busy_wait(unsigned int _iters);
+
 // ********** IODIRECT_* functions
 
 static inline void IOWR_16DIRECT(unsigned int base, unsigned int offset, unsigned short value)

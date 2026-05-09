@@ -138,3 +138,10 @@ void smc_wr32(unsigned int _addr, unsigned int _value)
 		exit(1);
 	}
 }
+
+// performs a busy-wait loop for the specified number of iterations
+void smc_busy_wait(unsigned int _iters)
+{
+    volatile unsigned int i = _iters;
+    while (i > 0) i--;
+}

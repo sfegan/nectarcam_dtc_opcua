@@ -62,7 +62,7 @@ CEXTERN ts_trigger_timing_t g_timestamp_timing;
 
 static inline void cta_l2cb_delay_cycles(volatile uint32_t cycles)
 {
-    while(cycles--);
+    smc_busy_wait((unsigned int)cycles);
 }
 
 #define BASE_CTA_L2CB			0x00
