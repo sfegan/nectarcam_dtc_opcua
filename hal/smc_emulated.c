@@ -461,6 +461,11 @@ void smc_assertIsOpen(void)
 unsigned short smc_rd16(unsigned int _addr)
 {
     smc_assertIsOpen();
+    
+    /* Emulate hardware I/O latency (approx 2us per access) */
+    struct timespec ts = {0, 2000};
+    nanosleep(&ts, NULL);
+
     pthread_mutex_lock(&emulated_driver.lock);
     
     unsigned short value = 0;
@@ -506,6 +511,11 @@ unsigned int smc_rd32(unsigned int _addr)
 void smc_wr16(unsigned int _addr, unsigned short _value)
 {
     smc_assertIsOpen();
+
+    /* Emulate hardware I/O latency (approx 2us per access) */
+    struct timespec ts = {0, 2000};
+    nanosleep(&ts, NULL);
+
     pthread_mutex_lock(&emulated_driver.lock);
     
     if (_addr < (MAX_L2CB_REGISTERS << 1)) {
