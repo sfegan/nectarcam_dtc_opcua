@@ -285,6 +285,10 @@ class L2TriggerBridgeServer:
             logger.info("TCP server connected and configured (connect: %0.1fs, recv: %0.1fs timeout)",
                        self.tcp_connect_timeout, self.tcp_recv_timeout)
             self._connected = True
+            if now - self._last_contact > self.variable_lifetime:
+                # Reset the TIB event accumulator if we've been disconnected for longer than the 
+                # variable lifetime, to avoid stale counts
+                self._tib_accumulator = 0            
             self._last_contact = now
             self._poll_event.set()
             self._reconnect_delay = 1.0
