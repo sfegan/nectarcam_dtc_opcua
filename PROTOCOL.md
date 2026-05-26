@@ -18,7 +18,7 @@ Every message starts with a fixed-size 8-byte header.
 | 0 | `type` | `uint16` | Message type (see [Message Types](#message-types)). |
 | 2 | `seq` | `uint16` | Sequence number for matching requests and responses. |
 | 4 | `len` | `uint16` | Length of the payload following the header. |
-| 6 | `reserved` | `uint16` | Padding for 8-byte alignment (currently unused). |
+| 6 | `reserved` | `uint16` | Padding for 8-byte (64 bit) alignment (currently unused). |
 
 ## HELLO Exchange (Handshake)
 
