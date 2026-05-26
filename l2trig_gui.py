@@ -266,17 +266,17 @@ class ModuleIndicator(tk.Canvas):
                 text = f"S{self.slot}\nC{self.channel}\nOFF"
         
         elif mode == DisplayMode.CURRENT:
-            # Map current 0-200mA to color
-            # Blue (0) -> Green (50) -> Yellow (100) -> Red (200+)
-            val = min(max(self.current, 0.0), 200.0)
-            if val < 50:
-                r, g, b = 0, int(val * 255 / 50), 255
-            elif val < 100:
-                r, g, b = int((val - 50) * 255 / 50), 255, 255 - int((val - 50) * 255 / 50)
+            # Map current 0-1000mA to color
+            # Blue (0) -> Green (200) -> Yellow (800) -> Red (1000+)
+            val = min(max(self.current, 0.0), 1000.0)
+            if val < 200:
+                r, g, b = 0, int(val * 255 / 200), 255
+            elif val < 800:
+                r, g, b = int((val - 200) * 255 / 600), 255, 255 - int((val - 200) * 255 / 600)
             else:
                 r, g, b = 255, 255 - int((val - 100) * 255 / 100), 0
             bg = f"#{r:02x}{g:02x}{b:02x}"
-            fg = "white" if val > 100 else "black"
+            fg = "white" if val < 200 else "black"
             text = f"S{self.slot}\nC{self.channel}\n{self.current:.1f}"
         
         elif mode == DisplayMode.TRIGGER:
