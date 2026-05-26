@@ -541,7 +541,7 @@ static void handle_request() {
             resp.payload.mcf_threshold = cta_l2cb_getMCFThreshold();
             resp.payload.mcf_delay = cta_l2cb_getMCFDelay();
             resp.payload.l1_deadtime = cta_l2cb_getL1Deadtime();
-            resp.payload.tib_event_count = cta_l2cb_getTIBEventCount();
+            resp.payload.tib_event_count = cta_l2cb_getAndResetTIBEventCount();
             resp.payload.busy_mask = cta_l2cb_getBusyEnableMask();
             resp.payload.busy_stuck = cta_l2cb_getBusyStuck();
             
@@ -785,7 +785,7 @@ static void handle_request() {
             msg.payload.l2cb.mcf_threshold = cta_l2cb_getMCFThreshold();
             msg.payload.l2cb.mcf_delay = cta_l2cb_getMCFDelay();
             msg.payload.l2cb.l1_deadtime = cta_l2cb_getL1Deadtime();
-            msg.payload.l2cb.tib_event_count = cta_l2cb_getTIBEventCount();
+            msg.payload.l2cb.tib_event_count = cta_l2cb_getAndResetTIBEventCount();
             msg.payload.l2cb.busy_mask = cta_l2cb_getBusyEnableMask();
             msg.payload.l2cb.busy_stuck = cta_l2cb_getBusyStuck();
 

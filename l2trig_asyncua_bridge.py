@@ -250,7 +250,6 @@ class L2TriggerBridgeServer:
         
         # TIB counter tracking
         self._tib_accumulator = 0
-        self._last_tib_raw: Optional[int] = None
 
     def _module_to_slot_channel(self, module: int) -> Tuple[int, int]:
         max_module = len(self.active_slots) * CHANNELS_PER_SLOT
@@ -437,7 +436,6 @@ class L2TriggerBridgeServer:
                 if not await self._ensure_connected(): return "ERROR: Device not connected"
                 await self.system.reset_tib_event_count()
                 self._tib_accumulator = 0
-                self._last_tib_raw = 0
             return "OK: TIB event count reset"
         await add_described_method("ResetTIBEventCount", reset_tib_event_count)
 
@@ -786,11 +784,7 @@ class L2TriggerBridgeServer:
         await self._set_var("CrateL1Deadtime", l2cb.l1_deadtime_ns, timestamp, sc)
 
         # Handle TIB counter accumulation (16-bit hardware to 64-bit software)
-        if self._last_tib_raw is not None:
-            # Assumes at most one wrap-around between polls
-            diff = (l2cb.tib_event_count - self._last_tib_raw) & 0xFFFF
-            self._tib_accumulator += diff
-        self._last_tib_raw = l2cb.tib_event_count
+        self._tib_accumulator += l2cb.tib_event_count
         await self._set_var("CrateTIBEventCount", self._tib_accumulator, timestamp, sc)
 
         bc = []

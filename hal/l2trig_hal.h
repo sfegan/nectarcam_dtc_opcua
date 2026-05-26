@@ -295,6 +295,16 @@ static inline void cta_l2cb_resetTIBEventCount(void)
 	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_TIBEVCT, 0);
 }
 
+static inline uint16_t cta_l2cb_getAndResetTIBEventCount(void)
+{
+	// Warning: unfortunately the read and reset are not atomic in the hardware, 
+	// so if a new TIB event arrives between the read and write, it will be lost. 
+	// However, this is the best we can do with the current hardware design.
+	uint16_t count = IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_TIBEVCT);
+	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_TIBEVCT, 0);
+	return count;
+}
+
 // ***** Helper Functions to set and get BUSY enable for all slots (BSYMSKL and BSYMSKR)
 
 static inline void cta_l2cb_setBusyEnableMask(uint32_t enable_mask)
