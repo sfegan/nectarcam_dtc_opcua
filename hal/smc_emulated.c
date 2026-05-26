@@ -38,6 +38,7 @@
 #define ADDR_CTA_L2CB_MUTHR   0x18
 #define ADDR_CTA_L2CB_MUDEL   0x20
 #define ADDR_CTA_L2CB_L1DT    0x22
+#define ADDR_CTA_L2CB_TIBEVCT 0x24
 #define ADDR_CTA_L2CB_FREV    0xFE
 
 /* Status register bits */
@@ -103,6 +104,12 @@ typedef struct {
         int latched;
         struct timespec start_time;
     } timestamp;
+    
+    /* VOLATILE: TIB event count state (always reset on open) */
+    struct {
+        uint64_t ns_accumulator;
+        struct timespec last_update;
+    } tib;
     
     /* PERSISTENT: CTDB register arrays (configuration survives) */
     uint16_t ctdb_registers[MAX_CTDB_SLOTS][CTDB_REGISTER_SIZE];
@@ -241,11 +248,51 @@ static void update_dynamic_state(void)
                             (now.tv_nsec - emulated_driver.state->timestamp.start_time.tv_nsec);
         emulated_driver.state->timestamp.counter = elapsed_ns / 8;  /* 125 MHz clock */
     }
+
+    /* Update TIB event count */
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    
+    uint64_t elapsed_ns = (now.tv_sec - emulated_driver.state->tib.last_update.tv_sec) * 1000000000ULL +
+                          (now.tv_nsec - emulated_driver.state->tib.last_update.tv_nsec);
+    
+    if (elapsed_ns > 0) {
+        int enabled_channels = 0;
+        /* Valid slots are 1-9 and 13-21 */
+        for (int slot = 1; slot < MAX_CTDB_SLOTS; slot++) {
+            if ((slot >= 1 && slot <= 9) || (slot >= 13 && slot <= 21)) {
+                uint16_t ponf = emulated_driver.state->ctdb_registers[slot][ADDR_CTA_CTDB_PONF];
+                uint16_t mask = emulated_driver.state->l1_masks[slot];
+                
+                for (int ch = 1; ch <= 15; ch++) {
+                    if ((ponf & (1 << ch)) && (mask & (1 << ch))) {
+                        enabled_channels++;
+                    }
+                }
+            }
+        }
+        
+        uint64_t rate_hz = enabled_channels * 10;
+        uint64_t total_ns_accum = emulated_driver.state->tib.ns_accumulator + (rate_hz * elapsed_ns);
+        
+        uint64_t new_events = total_ns_accum / 1000000000ULL;
+        emulated_driver.state->tib.ns_accumulator = total_ns_accum % 1000000000ULL;
+        
+        if (new_events > 0) {
+            uint16_t current_count = emulated_driver.state->registers[ADDR_CTA_L2CB_TIBEVCT >> 1];
+            uint32_t next_count = (uint32_t)current_count + new_events;
+            if (next_count > 0xFFFF) {
+                next_count = 0xFFFF;
+            }
+            emulated_driver.state->registers[ADDR_CTA_L2CB_TIBEVCT >> 1] = (uint16_t)next_count;
+        }
+        
+        emulated_driver.state->tib.last_update = now;
+    }
 }
 
 static unsigned short get_stat_register(void)
 {
-    update_dynamic_state();
     unsigned short stat = 0;
     
     if (emulated_driver.state->spi_state.busy) 
@@ -413,6 +460,10 @@ smc_driver_error_t smc_open(const char* devname)
     emulated_driver.state->timestamp.counter = 0;
     clock_gettime(CLOCK_MONOTONIC, &emulated_driver.state->timestamp.start_time);
     
+    /* TIB state reset */
+    emulated_driver.state->tib.ns_accumulator = 0;
+    clock_gettime(CLOCK_MONOTONIC, &emulated_driver.state->tib.last_update);
+    
     /* Seed random number generator for trips */
     srand(time(NULL));
     
@@ -468,6 +519,9 @@ unsigned short smc_rd16(unsigned int _addr)
 
     pthread_mutex_lock(&emulated_driver.lock);
     
+    /* Update all dynamic state before any read */
+    update_dynamic_state();
+
     unsigned short value = 0;
     
     /* Bounds check (256 registers * 2 bytes = 512 byte address space) */
@@ -518,6 +572,9 @@ void smc_wr16(unsigned int _addr, unsigned short _value)
 
     pthread_mutex_lock(&emulated_driver.lock);
     
+    /* Update all dynamic state before any write */
+    update_dynamic_state();
+
     if (_addr < (MAX_L2CB_REGISTERS << 1)) {
         unsigned short old_value = emulated_driver.state->registers[_addr >> 1];
         
@@ -548,6 +605,10 @@ void smc_wr16(unsigned int _addr, unsigned short _value)
                 emulated_driver.state->l1_delays[slot][ch] = _value;
             }
             handle_l1_delay_write();
+        } else if (_addr == ADDR_CTA_L2CB_TIBEVCT) {
+            /* Reset fractional accumulator when counter is reset */
+            emulated_driver.state->tib.ns_accumulator = 0;
+            clock_gettime(CLOCK_MONOTONIC, &emulated_driver.state->tib.last_update);
         }
     }
     /* else: out of range, ignore write */
