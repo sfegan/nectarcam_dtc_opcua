@@ -143,6 +143,7 @@ class L2TriggerBridgeServer:
         ("CrateMCFDelay", 0.0, ua.VariantType.Double, "L2CB MCF delay in ns"),
         ("CrateL1Deadtime", 0.0, ua.VariantType.Double, "L2CB L1 deadtime in ns"),
         ("CrateTIBEventCount", 0, ua.VariantType.UInt64, "Total TIB event count (64-bit software accumulated)"),
+        ("CrateTIBEventRate", 0.0, ua.VariantType.Double, "TIB event rate in Hz"),
         ("CrateNumMutableModules", 0, ua.VariantType.UInt16, "Total number of modules managed by this server"),
         ("CrateNumPoweredModules", 0, ua.VariantType.UInt16, "Total number of modules currently powered on"),
         ("CrateNumTriggerEnabledModules", 0, ua.VariantType.UInt16, "Total number of modules with trigger enabled"),
@@ -250,6 +251,8 @@ class L2TriggerBridgeServer:
         
         # TIB counter tracking
         self._tib_accumulator = 0
+        self._last_rate_time: Optional[float] = None
+        self._tib_rate_ema = 0.0
 
     def _module_to_slot_channel(self, module: int) -> Tuple[int, int]:
         max_module = len(self.active_slots) * CHANNELS_PER_SLOT
@@ -382,7 +385,8 @@ class L2TriggerBridgeServer:
             "CrateFirmwareRevision", "CrateUpTime", 
             "CrateMCFEnabled", "CrateBusyGlitchFilterEnabled", "CrateTIBTriggerBusyBlockEnabled",
             "CrateMCFThreshold", "CrateMCFDelay", "CrateL1Deadtime",
-            "CrateNumPoweredModules", "BoardBaseCurrent",
+            "CrateTIBEventCount", "CrateTIBEventRate",
+            "CrateNumPoweredModules", "CrateNumTriggerEnabledModules", "BoardBaseCurrent",
             "ModuleCurrent", "ModuleState", "ModulePowerEnabled"
         }
         fast_interval = float(self.poll_interval * 1000)
@@ -440,6 +444,8 @@ class L2TriggerBridgeServer:
                 if not await self._ensure_connected(): return "ERROR: Device not connected"
                 await self.system.reset_tib_event_count()
                 self._tib_accumulator = 0
+                self._tib_rate_ema = 0.0
+                self._last_rate_time = None
             return "OK: TIB event count reset"
         await add_described_method("ResetTIBEventCount", reset_tib_event_count)
 
@@ -790,6 +796,25 @@ class L2TriggerBridgeServer:
         # Handle TIB counter accumulation (16-bit hardware to 64-bit software)
         self._tib_accumulator += l2cb.tib_event_count
         await self._set_var("CrateTIBEventCount", self._tib_accumulator, timestamp, sc)
+
+        # Calculate TIB event rate using monotonic time
+        now_mon = time.monotonic()
+        if self._last_rate_time is not None and l2cb.uptime > 0:
+            dt = now_mon - self._last_rate_time
+            if dt > 0:
+                instant_rate = l2cb.tib_event_count / dt
+                # EMA with ~2s time constant: alpha = dt / (tau + dt)
+                tau = 2.0
+                alpha = min(1.0, dt / (tau + dt))
+                self._tib_rate_ema = alpha * instant_rate + (1.0 - alpha) * self._tib_rate_ema
+        elif l2cb.uptime == 0:
+            # Device disconnected or reset
+            self._tib_rate_ema = 0.0
+            self._last_rate_time = None
+            
+        await self._set_var("CrateTIBEventRate", self._tib_rate_ema, timestamp, sc)
+        if l2cb.uptime > 0:
+            self._last_rate_time = now_mon
 
         bc = []
         bb_en, bb_stuck = [], []

@@ -133,10 +133,14 @@ class OPCUAClient:
             nodes_to_subscribe = list(self.monitoring_vars.values())
             await self.subscription.subscribe_data_change(nodes_to_subscribe)
             
-            # Initial read of all variables
+            # Initial read of all variables - wrap in try-except to handle variables with Bad status
             for name, node in self.monitoring_vars.items():
-                value = await node.read_value()
-                self._on_data_change(str(node), value)
+                try:
+                    value = await node.read_value()
+                    self._on_data_change(str(node), value)
+                except UaStatusCodeError:
+                    # If variable status is Bad, we just skip the initial update for it
+                    pass
             
             self.is_connected = True
             return True
@@ -641,6 +645,11 @@ class ControlPanel(tk.Frame):
             trigger_frame, text="Disable All Triggers",
             command=self.on_disable_all_triggers
         ).pack(fill=tk.X, pady=1)
+
+        ttk.Button(
+            trigger_frame, text="Reset TIB Event Counter",
+            command=self.on_reset_tib_events
+        ).pack(fill=tk.X, pady=1)
     
     def on_mcf_enabled_changed(self):
         self.opcua_client.run_async(
@@ -707,6 +716,13 @@ class ControlPanel(tk.Frame):
             self.opcua_client.run_async(
                 self.opcua_client.call_method("SetAllTriggerEnabled", False)
             )
+
+    def on_reset_tib_events(self):
+        if messagebox.askyesno("Reset TIB Event Counter",
+                               "Are you sure you want to reset the TIB event counter?"):
+            self.opcua_client.run_async(
+                self.opcua_client.call_method("ResetTIBEventCount")
+            )
     
     def update_from_data(self, var_name: str, value):
         """Update controls from OPC UA data"""
@@ -730,6 +746,9 @@ class StatusPanel(tk.Frame):
     def __init__(self, parent, opcua_client, **kwargs):
         super().__init__(parent, **kwargs)
         self.opcua_client = opcua_client
+        self.tib_count = 0
+        self.tib_rate = 0.0
+        self.tib_rate_label_kHz = False
         self.init_ui()
     
     def init_ui(self):
@@ -745,14 +764,18 @@ class StatusPanel(tk.Frame):
         ttk.Label(crate_frame, text="Uptime:").grid(row=1, column=0, sticky=tk.W, pady=1)
         self.uptime_label = ttk.Label(crate_frame, text="--")
         self.uptime_label.grid(row=1, column=1, sticky=tk.W, pady=1)
+
+        ttk.Label(crate_frame, text="TIB events:").grid(row=2, column=0, sticky=tk.W, pady=1)
+        self.tib_label = ttk.Label(crate_frame, text="--")
+        self.tib_label.grid(row=2, column=1, sticky=tk.W, pady=1)
         
-        ttk.Label(crate_frame, text="Powered Modules:").grid(row=2, column=0, sticky=tk.W, pady=1)
+        ttk.Label(crate_frame, text="Powered Modules:").grid(row=3, column=0, sticky=tk.W, pady=1)
         self.powered_label = ttk.Label(crate_frame, text="--")
-        self.powered_label.grid(row=2, column=1, sticky=tk.W, pady=1)
+        self.powered_label.grid(row=3, column=1, sticky=tk.W, pady=1)
         
-        ttk.Label(crate_frame, text="Trigger Enabled:").grid(row=3, column=0, sticky=tk.W, pady=1)
+        ttk.Label(crate_frame, text="Trigger Enabled:").grid(row=4, column=0, sticky=tk.W, pady=1)
         self.trigger_label = ttk.Label(crate_frame, text="--")
-        self.trigger_label.grid(row=3, column=1, sticky=tk.W, pady=1)
+        self.trigger_label.grid(row=4, column=1, sticky=tk.W, pady=1)
     
     def update_from_data(self, var_name: str, value):
         """Update status displays from OPC UA data"""
@@ -765,12 +788,32 @@ class StatusPanel(tk.Frame):
             hours = int((seconds % 86400) // 3600)
             minutes = int((seconds % 3600) // 60)
             self.uptime_label.config(text=f"{days}d {hours:02d}h {minutes:02d}m")
+
+        elif var_name == "CrateTIBEventCount":
+            self.tib_count = value
+            self._update_tib_label()
+
+        elif var_name == "CrateTIBEventRate":
+            self.tib_rate = value
+            self._update_tib_label()
         
         elif var_name == "CrateNumPoweredModules":
             self.powered_label.config(text=str(value))
         
         elif var_name == "CrateNumTriggerEnabledModules":
             self.trigger_label.config(text=str(value))
+
+    def _update_tib_label(self):
+        # Hysteresis for Hz/kHz switching (2.0 kHz / 1.2 kHz)
+        if self.tib_rate >= 2000.0:
+            self.tib_rate_label_kHz = True
+        elif self.tib_rate < 1200.0:
+            self.tib_rate_label_kHz = False
+        if self.tib_rate_label_kHz:
+            rate_str = f"{self.tib_rate / 1000.0:.2f} kHz"
+        else:
+            rate_str = f"{self.tib_rate:,.1f} Hz"
+        self.tib_label.config(text=f"{self.tib_count:,} ({rate_str})")
 
 
 class MainWindow:
@@ -926,7 +969,6 @@ class MainWindow:
         """Handle successful connection"""
         self.connect_btn.config(state=tk.DISABLED)
         self.disconnect_btn.config(state=tk.NORMAL)
-        self.status_label.config(text="Connected", foreground="green")
         
         # Request all current state variables
         self.opcua_client.run_async(self.opcua_client.call_method("HealthCheck"))
@@ -1032,6 +1074,12 @@ class MainWindow:
     
     def _update_ui(self, var_name: str, value):
         """Update UI components (runs on main thread)"""
+        if var_name == "device_connected":
+            if value:
+                self.status_label.config(text="Device Connected", foreground="green")
+            else:
+                self.status_label.config(text="OPC UA Connected / Device Offline", foreground="orange")
+
         if self.module_matrix:
             self.module_matrix.update_from_data(var_name, value)
         if self.control_panel:
