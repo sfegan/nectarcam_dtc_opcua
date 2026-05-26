@@ -11,7 +11,7 @@ Laboratoire Leprince-Ringuet, CNRS/IN2P3, Ecole Polytechnique, Institut Polytech
 
 The L2 Trigger System manages 270 trigger modules across 18 crate slots (15 channels per slot). The system uses a split architecture:
 
-1.  **Backend Server (`l2tcp_server`):** A lightweight C-based server running directly on the ARM-based controller board. It manages the low-level SPI hardware interface, implements power ramping, and provides a binary TCP messaging interface for remote control.
+1.  **Backend Server (`l2tcp_server`):** A lightweight C-based server running directly on the ARM-based controller board. It manages the low-level SPI hardware interface, implements power ramping, and provides a binary TCP messaging interface for remote control. See [**`PROTOCOL.md`**](PROTOCOL.md) for details on the binary communication protocol.
 2.  **OPC UA Bridge (`l2trig_asyncua_bridge.py`):** A Python-based server that runs on a control PC. It connects to the backend server over TCP and exposes the system state and control methods via the OPC UA protocol.
 3.  **Direct Client (`l2trig_direct_client`):** A native C command-line tool for the ARM board, used for low-level pre-configuration and diagnostics.
 4.  **GUI (`l2tring_gui.py`):** A GUI test application for monitoring and controlling the system via OPC UA.
