@@ -43,7 +43,7 @@ Immediately after a successful `HELLO` exchange, the client **must** configure t
 Functional commands (like Power Ramp or Monitoring) may return errors or produce incomplete results until the active slots and channel masks are defined.
 
 - **Active Slots Mask**: A bitmask where bit `N` is 1 if slot `N` is present and should be managed.
-- **Immutable Masks**: An array of bitmasks (one per slot) defining channels that are "immutable" (cannot be changed by standard trigger enable/disable commands). This is typically used to protect calibration or special-purpose channels.
+- **Immutable Masks**: An array of bitmasks (one per slot) defining channels that are "immutable" (cannot be changed by standard power and trigger enable/disable commands). This is typically used to protect channels not connected to a module.
 
 ## Message Types
 
