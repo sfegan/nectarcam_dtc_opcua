@@ -159,8 +159,8 @@ static void update_ctdb_dynamic_registers(uint8_t slot)
             if (!(emulated_driver.state->ctdb_tripped_under[slot] & bit) &&
                 !(emulated_driver.state->ctdb_tripped_over[slot] & bit)) {
                 
-                /* Not tripped yet - simulate typical current draw of ~300mA (raw ADC ~619) */
-                current = 619;
+                /* Not tripped yet - simulate typical current draw of ~600mA (raw ADC ~1250) */
+                current = 1250 + (rand() % 100 - 50);  /* Add some random variation +/- 50mA */
                 
                 /* Deterministic limit checking: if limits exceeded, it trips and current goes to 0 */
                 if (current < cur_min) {
