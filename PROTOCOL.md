@@ -7,7 +7,7 @@ This document describes the binary protocol used for communication between the N
 - **Transport:** TCP/IP
 - **Port:** `4242`
 - **Byte Order:** Little Endian
-- **Connection Model:** Single-client (the server accepts one connection at a time; new connections displace the old one).
+- **Connection Model:** Single-client (the server accepts one connection at a time; new connections are rejected while the old remains open).
 
 ## Protocol Header
 
