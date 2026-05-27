@@ -7,7 +7,7 @@ This document describes the binary protocol used for communication between the N
 - **Transport:** TCP/IP
 - **Port:** `4242`
 - **Byte Order:** Little Endian
-- **Connection Model:** Single-client: the server accepts one connection at a time; new connections are rejected while the original remains open (a watchdog timer protects against a client that becomes unresponsive).
+- **Connection Model:** Single-client: the server accepts one connection at a time; new connections are rejected while the original remains open (a watchdog timer protects against clients that become unresponsive).
 
 ## Protocol Header
 
@@ -80,7 +80,7 @@ Functional commands (like Power Ramp or Monitoring) may return errors or produce
 
 ## Payload Structures
 
-All payloads follow the 8-byte header.
+All payloads follow the 8-byte (64-bit) header. **Note:** if you modify the message structure, ensure that the alignment of the payload fields is correct for the ARM system. Typically it is preferable to order the fields by their size, starting with the 64-bit types, then 32-bit, then 16-bit, to avoid adding padding fields. The header is 64-bits to ensure proper alignment of the payload on the ARM architecture.
 
 ### 1. Error Payload (`L2TCP_MSG_ERROR`)
 | Offset | Field | Type | Description |
