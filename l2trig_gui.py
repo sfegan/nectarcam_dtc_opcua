@@ -748,8 +748,10 @@ class StatusPanel(tk.Frame):
         self.opcua_client = opcua_client
         self.tib_in_count = 0
         self.tib_out_count = 0
-        self.tib_rate = 0.0
-        self.tib_rate_label_kHz = False
+        self.tib_in_rate = 0.0
+        self.tib_out_rate = 0.0
+        self.tib_in_rate_label_kHz = False
+        self.tib_out_rate_label_kHz = False
         self.init_ui()
     
     def init_ui(self):
@@ -802,8 +804,12 @@ class StatusPanel(tk.Frame):
             self.tib_out_count = value
             self._update_tib_label()
 
-        elif var_name == "CrateTIBEventRate":
-            self.tib_rate = value
+        elif var_name == "CrateTIBCameraInputRate":
+            self.tib_in_rate = value
+            self._update_tib_label()
+
+        elif var_name == "CrateTIBEventOutputRate":
+            self.tib_out_rate = value
             self._update_tib_label()
         
         elif var_name == "CrateNumPoweredModules":
@@ -814,17 +820,20 @@ class StatusPanel(tk.Frame):
 
     def _update_tib_label(self):
         # Hysteresis for Hz/kHz switching (2.0 kHz / 1.2 kHz)
-        if self.tib_rate >= 2000.0:
-            self.tib_rate_label_kHz = True
-        elif self.tib_rate < 1200.0:
-            self.tib_rate_label_kHz = False
-        if self.tib_rate_label_kHz:
-            rate_str = f"{self.tib_rate / 1000.0:.2f} kHz"
-        else:
-            rate_str = f"{self.tib_rate:,.1f} Hz"
+        def get_rate_str(rate, is_khz):
+            if rate >= 2000.0: is_khz = True
+            elif rate < 1200.0: is_khz = False
+            
+            if is_khz:
+                return f"{rate / 1000.0:.2f} kHz", is_khz
+            else:
+                return f"{rate:,.1f} Hz", is_khz
         
-        self.tib_in_label.config(text=f"{self.tib_in_count:,}")
-        self.tib_out_label.config(text=f"{self.tib_out_count:,} ({rate_str})")
+        in_rate_str, self.tib_in_rate_label_kHz = get_rate_str(self.tib_in_rate, self.tib_in_rate_label_kHz)
+        out_rate_str, self.tib_out_rate_label_kHz = get_rate_str(self.tib_out_rate, self.tib_out_rate_label_kHz)
+        
+        self.tib_in_label.config(text=f"{self.tib_in_count:,} ({in_rate_str})")
+        self.tib_out_label.config(text=f"{self.tib_out_count:,} ({out_rate_str})")
 
 
 class MainWindow:

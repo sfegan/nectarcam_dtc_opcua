@@ -235,10 +235,12 @@ class L2TrigTestClient:
         l2cb_deadtime = await self.read_variable("CrateL1Deadtime")
         l2cb_tib_in = await self.read_variable("CrateTIBCameraInputCount")
         l2cb_tib_out = await self.read_variable("CrateTIBEventOutputCount")
+        l2cb_tib_in_rate = await self.read_variable("CrateTIBCameraInputRate")
+        l2cb_tib_out_rate = await self.read_variable("CrateTIBEventOutputRate")
         
         print(f"L2CB Firmware: 0x{l2cb_fw:04X} | Uptime: {l2cb_uptime/1e9:.3f} s")
         print(f"L2CB Status: MCF={'ON' if l2cb_mcf else 'OFF'}, BusyGlitchFilter={'ON' if l2cb_glitch else 'OFF'}, TIBTriggerBusyBlock={'ON' if l2cb_tib else 'OFF'}, L1Deadtime={l2cb_deadtime:.1f} ns")
-        print(f"TIB Counters: Input={l2cb_tib_in:,}, Output={l2cb_tib_out:,}")
+        print(f"TIB Counters: Input={l2cb_tib_in:,} ({l2cb_tib_in_rate:.1f} Hz), Output={l2cb_tib_out:,} ({l2cb_tib_out_rate:.1f} Hz)")
         
         ctdb_fw = await self.read_variable("BoardFirmwareRevision")
         ctdb_curr = await self.read_variable("BoardBaseCurrent")

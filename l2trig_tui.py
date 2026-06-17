@@ -47,6 +47,8 @@ class SystemState:
         self.uptime = 0
         self.tib_in_count = 0
         self.tib_out_count = 0
+        self.tib_in_rate = 0.0
+        self.tib_out_rate = 0.0
         self.mcf_enabled = False
         self.glitch_enabled = False
         self.tib_block_enabled = False
@@ -134,6 +136,8 @@ class L2TrigTUI:
             s.uptime = await read("CrateUpTime")
             s.tib_in_count = await read("CrateTIBCameraInputCount")
             s.tib_out_count = await read("CrateTIBEventOutputCount")
+            s.tib_in_rate = await read("CrateTIBCameraInputRate")
+            s.tib_out_rate = await read("CrateTIBEventOutputRate")
             s.mcf_enabled = await read("CrateMCFEnabled")
             s.glitch_enabled = await read("CrateBusyGlitchFilterEnabled")
             s.tib_block_enabled = await read("CrateTIBTriggerBusyBlockEnabled")
@@ -185,7 +189,12 @@ class L2TrigTUI:
         conn_str = "CONNECTED" if s.device_connected else "DISCONNECTED"
         conn_dur = s.conn_uptime_ms if s.device_connected else s.conn_downtime_ms
         stdscr.addstr(0, 0, f"DTC TUI | {s.device_host}:{s.device_port} | {conn_str} for {conn_dur/1000:,.0f}s", curses.color_pair(6) | curses.A_BOLD)
-        stdscr.addstr(1, 0, f"FW: 0x{s.fw_rev:04X} | Uptime: {s.uptime/1e9:,.1f}s | TIB In: {s.tib_in_count:,} | Out: {s.tib_out_count:,}")
+        
+        # Format rates
+        in_rate_str = f"{s.tib_in_rate/1000.0:.2f}kHz" if s.tib_in_rate >= 1000 else f"{s.tib_in_rate:.1f}Hz"
+        out_rate_str = f"{s.tib_out_rate/1000.0:.2f}kHz" if s.tib_out_rate >= 1000 else f"{s.tib_out_rate:.1f}Hz"
+        
+        stdscr.addstr(1, 0, f"FW: 0x{s.fw_rev:04X} | Uptime: {s.uptime/1e9:,.1f}s | TIB In: {s.tib_in_count:,} ({in_rate_str}) | Out: {s.tib_out_count:,} ({out_rate_str})")
         mcf_str = f"MCF: {'ON' if s.mcf_enabled else 'OFF'} (Thr: {s.mcf_threshold}, Del: {s.mcf_delay_ns:.0f}ns)"
         tib_str = f"Glitch: {'ON' if s.glitch_enabled else 'OFF'} | TIB Block: {'ON' if s.tib_block_enabled else 'OFF'} | Deadtime: {s.l1_deadtime_ns:.0f}ns"
         stdscr.addstr(2, 0, f"{mcf_str} | {tib_str}")
