@@ -998,7 +998,7 @@ class L2TriggerBridgeServer:
                 "SourceTimestamp": timestamp
             }
             if status is not None:
-                kwargs["StatusCode_"] = status
+                kwargs["StatusCode"] = status
             
             dv = ua.DataValue(**kwargs)
             await node.write_value(dv)
