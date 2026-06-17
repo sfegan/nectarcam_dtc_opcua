@@ -38,12 +38,12 @@ from l2trig_api import (
 # Factors from l2trig_low_level.py
 CURRENT_FACTOR = 0.485
 L1DELAY_FACTOR = 0.037
-MCFDELAY_FACTOR = 5.0
+MCFDELAY_FACTOR = 20.0  # Multiples of 20ns for v14+ (was 5.0ns)
 L1DEADTIME_FACTOR = 5.0
 
 # Hardware Limits (Raw Codes)
 LIMIT_MCF_THRESH = 0x01FF
-LIMIT_MCF_DELAY = 0x000F
+LIMIT_MCF_DELAY = 0x0007  # 3-bit for v14+ (was 0x000F)
 LIMIT_L1_DEADTIME = 0x00FF
 LIMIT_TRIG_DELAY = 0x007F
 LIMIT_CURR_CODE = 0x0FFF
@@ -142,7 +142,8 @@ class L2TriggerBridgeServer:
         ("CrateMCFThreshold", 0, ua.VariantType.UInt16, "L2CB MCF threshold (0-512)"),
         ("CrateMCFDelay", 0.0, ua.VariantType.Double, "L2CB MCF delay in ns"),
         ("CrateL1Deadtime", 0.0, ua.VariantType.Double, "L2CB L1 deadtime in ns"),
-        ("CrateTIBEventCount", 0, ua.VariantType.UInt64, "Total TIB event count (64-bit software accumulated)"),
+        ("CrateTIBCameraInputCount", 0, ua.VariantType.UInt64, "TIB trigger input counter (32-bit hardware, software accumulated)"),
+        ("CrateTIBEventOutputCount", 0, ua.VariantType.UInt64, "TIB trigger output counter (32-bit hardware, software accumulated)"),
         ("CrateTIBEventRate", 0.0, ua.VariantType.Double, "TIB event rate in Hz"),
         ("CrateNumMutableModules", 0, ua.VariantType.UInt16, "Total number of modules managed by this server"),
         ("CrateNumPoweredModules", 0, ua.VariantType.UInt16, "Total number of modules currently powered on"),
@@ -250,7 +251,10 @@ class L2TriggerBridgeServer:
         self._enabled_count = 0
         
         # TIB counter tracking
-        self._tib_accumulator = 0
+        self._tib_in_accumulator = 0
+        self._tib_out_accumulator = 0
+        self._last_tib_in = 0
+        self._last_tib_out = 0
         self._last_rate_time: Optional[float] = None
         self._tib_rate_ema = 0.0
 
@@ -793,16 +797,34 @@ class L2TriggerBridgeServer:
         await self._set_var("CrateMCFDelay", l2cb.mcf_delay_ns, timestamp, sc)
         await self._set_var("CrateL1Deadtime", l2cb.l1_deadtime_ns, timestamp, sc)
 
-        # Handle TIB counter accumulation (16-bit hardware to 64-bit software)
-        self._tib_accumulator += l2cb.tib_event_count
-        await self._set_var("CrateTIBEventCount", self._tib_accumulator, timestamp, sc)
+        # Handle TIB counter accumulation (32-bit hardware to 64-bit software)
+        # Simple accumulation logic for 32-bit counters
+        def accumulate(current, last, total):
+            diff = (current - last) & 0xFFFFFFFF
+            return total + diff
+
+        # If l2cb.uptime == 0, the device was likely reset/reconnected
+        if l2cb.uptime == 0:
+            self._tib_in_accumulator = 0
+            self._tib_out_accumulator = 0
+            self._last_tib_in = l2cb.tib_input_count
+            self._last_tib_out = l2cb.tib_output_count
+        else:
+            self._tib_in_accumulator = accumulate(l2cb.tib_input_count, self._last_tib_in, self._tib_in_accumulator)
+            self._tib_out_accumulator = accumulate(l2cb.tib_output_count, self._last_tib_out, self._tib_out_accumulator)
+            self._last_tib_in = l2cb.tib_input_count
+            self._last_tib_out = l2cb.tib_output_count
+
+        await self._set_var("CrateTIBCameraInputCount", self._tib_in_accumulator, timestamp, sc)
+        await self._set_var("CrateTIBEventOutputCount", self._tib_out_accumulator, timestamp, sc)
 
         # Calculate TIB event rate using monotonic time
         now_mon = time.monotonic()
         if self._last_rate_time is not None and l2cb.uptime > 0:
             dt = now_mon - self._last_rate_time
             if dt > 0:
-                instant_rate = l2cb.tib_event_count / dt
+                # Use the diff of output counter for rate
+                instant_rate = ((l2cb.tib_output_count - self._last_tib_out) & 0xFFFFFFFF) / dt
                 # EMA with ~2s time constant: alpha = dt / (tau + dt)
                 tau = 2.0
                 alpha = min(1.0, dt / (tau + dt))

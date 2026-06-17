@@ -75,7 +75,7 @@ typedef enum {
     L2TCP_ERR_NOT_INITIALIZED         = 6
 } l2tcp_error_code_t;
 
-#define L2TCP_PROTOCOL_VERSION 4
+#define L2TCP_PROTOCOL_VERSION 5
 
 /* --- Protocol Header --- */
 
@@ -117,12 +117,14 @@ typedef struct {
     uint64_t timestamp;
     uint32_t busy_mask;
     uint32_t busy_stuck;
+    uint32_t tib_input_count;   /* 32-bit counter (v5+) */
+    uint32_t tib_output_count;  /* 32-bit counter (v5+) */
     uint16_t fw_rev;
     uint16_t ctrl_state;
     uint16_t mcf_threshold;
     uint16_t mcf_delay;
     uint16_t l1_deadtime;
-    uint16_t tib_event_count;
+    uint16_t reserved;          /* Padding */
 } l2tcp_payload_l2cb_state_t;
 
 /* L2TCP_MSG_CTDB_SET_CH_POWER, L2TCP_MSG_CTDB_SET_CH_TRIG */

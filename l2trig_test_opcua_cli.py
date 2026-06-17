@@ -233,9 +233,12 @@ class L2TrigTestClient:
         l2cb_glitch = await self.read_variable("CrateBusyGlitchFilterEnabled")
         l2cb_tib = await self.read_variable("CrateTIBTriggerBusyBlockEnabled")
         l2cb_deadtime = await self.read_variable("CrateL1Deadtime")
+        l2cb_tib_in = await self.read_variable("CrateTIBCameraInputCount")
+        l2cb_tib_out = await self.read_variable("CrateTIBEventOutputCount")
         
         print(f"L2CB Firmware: 0x{l2cb_fw:04X} | Uptime: {l2cb_uptime/1e9:.3f} s")
         print(f"L2CB Status: MCF={'ON' if l2cb_mcf else 'OFF'}, BusyGlitchFilter={'ON' if l2cb_glitch else 'OFF'}, TIBTriggerBusyBlock={'ON' if l2cb_tib else 'OFF'}, L1Deadtime={l2cb_deadtime:.1f} ns")
+        print(f"TIB Counters: Input={l2cb_tib_in:,}, Output={l2cb_tib_out:,}")
         
         ctdb_fw = await self.read_variable("BoardFirmwareRevision")
         ctdb_curr = await self.read_variable("BoardBaseCurrent")
@@ -349,7 +352,7 @@ async def interactive_loop(client: L2TrigTestClient):
                 print("  limits <board> <min> <max> Set current limits for a board (1-based index)")
                 print("  slotlimits <slot> <min> <max> Set current limits for a board by slot ID")
                 print("  mcf <on|off>         Set L2CB MCF enabled status")
-                print("  mcfdelay <ns>        Set L2CB MCF delay (0-75 ns)")
+                print("  mcfdelay <ns>        Set L2CB MCF delay (0-140 ns, 20ns steps)")
                 print("  mcfthreshold <val>   Set L2CB MCF threshold (0-512)")
                 print("  deadtime <ns>        Set L2CB L1 deadtime (0-1275 ns)")
                 print("  glitch <on|off>      Set L2CB busy glitch filter enabled status")

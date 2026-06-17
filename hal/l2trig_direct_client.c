@@ -611,10 +611,11 @@ void process_line(char* line) {
         if (n < 2) printf("Usage: tibblock <on|off>\n");
         else cta_l2cb_setTIBTriggerBusyBlockEnabled(parse_bool(tokens[1]));
     } else if (strcmp(cmd, "tib_count") == 0) {
-        printf("TIB Event Count: %u\n", cta_l2cb_getTIBEventCount());
+        printf("TIB Camera Input Count:  %u\n", cta_l2cb_getTIBCameraInputCount());
+        printf("TIB Event Output Count:  %u\n", cta_l2cb_getTIBEventOutputCount());
     } else if (strcmp(cmd, "tib_reset") == 0) {
-        cta_l2cb_resetTIBEventCount();
-        printf("TIB Event Count reset.\n");
+        cta_l2cb_resetTIBCounters();
+        printf("TIB Counters reset.\n");
     } else if (strcmp(cmd, "busy_mask") == 0) {
         if (n > 1) {
             cta_l2cb_setBusyEnableMask(parse_int(tokens[1]));

@@ -71,6 +71,7 @@ static inline void cta_l2cb_delay_cycles(volatile uint32_t cycles)
 #define BIT_CTA_L2CB_CTRL_TIB_TRIG_BUSY_BLOCK	 0
 #define BIT_CTA_L2CB_CTRL_BUSY_GLITCH_FILTER_EN	 12
 #define BIT_CTA_L2CB_CTRL_MCF_EN		         13
+#define BIT_CTA_L2CB_CTRL_CT_CLEAR               14
 #define BIT_CTA_L2CB_CTRL_LATCH_TIMESTAMP		 15
 
 #define ADDR_CTA_L2CB_STAT		0x02
@@ -88,13 +89,17 @@ static inline void cta_l2cb_delay_cycles(volatile uint32_t cycles)
 #define ADDR_CTA_L2CB_L1MSK		0x14		// L1 Trigger mask for channels of selected L2-crate slot
 #define ADDR_CTA_L2CB_L1DEL		0x16		// L1 Trigger Delay in 37 ps steps, 0..5ns range
 #define ADDR_CTA_L2CB_MUTHR		0x18		// Muon threshold, amount of L1s, causing a Muon-trigger,
-#define ADDR_CTA_L2CB_MUDEL		0x20		// Muon trigger delay, in steps of 5ns
+#define ADDR_CTA_L2CB_MUDEL		0x20		// Muon trigger window, in multiples of 20ns (3-bit, v14+)
 #define ADDR_CTA_L2CB_L1DT		0x22		// L1 dead time in multiples of 5ns
-#define ADDR_CTA_L2CB_TIBEVCT   0x24        // TIB event count
+#define ADDR_CTA_L2CB_TIBEVCT   0x24        // TIB event count (removed in v027+)
 #define ADDR_CTA_L2CB_BSYMSKL   0x26        // BUSY enable for CTDB slots 1 to 9 (L2-crate, left side), bit0=slot1
 #define ADDR_CTA_L2CB_BSYMSKR   0x28		// BUSY enable for CTDB slots 13 to 21 (L2-crate, right side), bit0=slot13
 #define ADDR_CTA_L2CB_BSYSTATL  0x2A        // CTDB-BUSY stuck at slots 1 to 9 (L2-crate, left side), bit0=slot1
 #define ADDR_CTA_L2CB_BSYSTATR  0x2C        // CTDB-BUSY stuck at slots 13 to 21 (L2-crate, right side), bit0=slot13
+#define ADDR_CTA_L2CB_TIBCAMTCTL  0x2E      // TIB trigger input counter, bits 15..0 (v027+)
+#define ADDR_CTA_L2CB_TIBCAMTCTH  0x30      // TIB trigger input counter, bits 31..16 (v027+)
+#define ADDR_CTA_L2CB_TIBEVENTCTL 0x32      // TIB trigger output counter (L1A), bits 15..0 (v027+)
+#define ADDR_CTA_L2CB_TIBEVENTCTH 0x34      // TIB trigger output counter (L1A), bits 31..16 (v027+)
 
 #define ADDR_CTA_L2CB_FREV		0xfe		// Firmware Revision
 
@@ -283,26 +288,30 @@ static inline void cta_l2cb_setL1Deadtime(uint16_t _delay)
 	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_L1DT, _delay & 0x00FF);
 }
 
-// ***** Helper Functions to get and reset TIB event count (TIBEVCT)
+// ***** Helper Functions to get and reset TIB counters (v027+)
 
-static inline uint16_t cta_l2cb_getTIBEventCount(void)
+static inline uint32_t cta_l2cb_getTIBCameraInputCount(void)
 {
-	return IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_TIBEVCT);
+	// Read low 16 bits first to latch high 16 bits
+	uint16_t in_l = IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_TIBCAMTCTL);
+	uint16_t in_h = IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_TIBCAMTCTH);
+	return (uint32_t)in_l | ((uint32_t)in_h << 16);
 }
 
-static inline void cta_l2cb_resetTIBEventCount(void)
+static inline uint32_t cta_l2cb_getTIBEventOutputCount(void)
 {
-	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_TIBEVCT, 0);
+	// Read low 16 bits first to latch high 16 bits
+	uint16_t out_l = IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_TIBEVENTCTL);
+	uint16_t out_h = IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_TIBEVENTCTH);
+	return (uint32_t)out_l | ((uint32_t)out_h << 16);
 }
 
-static inline uint16_t cta_l2cb_getAndResetTIBEventCount(void)
+static inline void cta_l2cb_resetTIBCounters(void)
 {
-	// Warning: unfortunately the read and reset are not atomic in the hardware, 
-	// so if a new TIB event arrives between the read and write, it will be lost. 
-	// However, this is the best we can do with the current hardware design.
-	uint16_t count = IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_TIBEVCT);
-	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_TIBEVCT, 0);
-	return count;
+	// Use bit 14 (CT_CLEAR) to reset both 32-bit counters (v027+)
+	uint16_t val = IORD_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_CTRL);
+	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_CTRL, val | (1 << BIT_CTA_L2CB_CTRL_CT_CLEAR));
+	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_CTRL, val & ~(1 << BIT_CTA_L2CB_CTRL_CT_CLEAR));
 }
 
 // ***** Helper Functions to set and get BUSY enable for all slots (BSYMSKL and BSYMSKR)

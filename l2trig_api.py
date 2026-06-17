@@ -74,7 +74,8 @@ class L2CBStatus:
     mcf_threshold: int
     mcf_delay_ns: float
     l1_deadtime_ns: float
-    tib_event_count: int
+    tib_input_count: int      # 32-bit input counter (v5+)
+    tib_output_count: int     # 32-bit output counter (v5+)
     busy_mask: int
     busy_stuck: int
 
@@ -93,7 +94,8 @@ class L2CBStatus:
             mcf_threshold=0,
             mcf_delay_ns=0.0,
             l1_deadtime_ns=0.0,
-            tib_event_count=0,
+            tib_input_count=0,
+            tib_output_count=0,
             busy_mask=0,
             busy_stuck=0
         )
@@ -122,7 +124,7 @@ class CTDBConfigData:
 # ============================================================================
 
 class L2TriggerSystem:
-    PROTOCOL_VERSION = 4
+    PROTOCOL_VERSION = 5
 
     def __init__(self, host: str = "127.0.0.1", port: int = DEFAULT_PORT, 
                  connect_timeout: float = 5.0, recv_timeout: float = 5.0):
@@ -316,8 +318,9 @@ class L2TriggerSystem:
     # --- L2CB Controls ---
 
     def _parse_l2cb(self, data: bytes) -> L2CBStatus:
-        # ts(u64), bmask(u32), bstuck(u32), fw(u16), ctrl(u16), thresh(u16), delay(u16), dt(u16), tib(u16)
-        ts, bmask, bstuck, fw, ctrl, thresh, delay, dt, tib = struct.unpack("<QIIHHHHHH", data)
+        # ts(u64), bmask(u32), bstuck(u32), tib_in(u32), tib_out(u32), fw(u16), ctrl(u16), thresh(u16), delay(u16), dt(u16), res(u16)
+        ts, bmask, bstuck, tib_in, tib_out, fw, ctrl, thresh, delay, dt, _ = struct.unpack("<QIIIIHHHHHH", data)
+        
         return L2CBStatus(
             firmware_version=fw,
             uptime=ts * 8, # convert to ns
@@ -325,9 +328,10 @@ class L2TriggerSystem:
             busy_glitch_filter_enabled=bool(ctrl & 0x2),
             tib_trigger_busy_block_enabled=bool(ctrl & 0x4),
             mcf_threshold=thresh,
-            mcf_delay_ns=float(delay * 5),
+            mcf_delay_ns=float(delay * 20.0), # Multiples of 20ns for v14+ (v027+)
             l1_deadtime_ns=float(dt * 5),
-            tib_event_count=tib,
+            tib_input_count=tib_in,
+            tib_output_count=tib_out,
             busy_mask=bmask,
             busy_stuck=bstuck
         )

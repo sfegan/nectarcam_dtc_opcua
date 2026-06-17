@@ -588,7 +588,7 @@ class ControlPanel(tk.Frame):
         ttk.Label(crate_frame, text="MCF Delay (ns):").grid(row=row, column=0, sticky=tk.W, pady=1)
         self.mcf_delay_var = tk.DoubleVar(value=0.0)
         delay_spin = ttk.Spinbox(
-            crate_frame, from_=0, to=75.0, increment=5.0,
+            crate_frame, from_=0, to=140.0, increment=20.0,
             textvariable=self.mcf_delay_var, width=8,
             command=self.on_mcf_delay_changed
         )
@@ -746,7 +746,8 @@ class StatusPanel(tk.Frame):
     def __init__(self, parent, opcua_client, **kwargs):
         super().__init__(parent, **kwargs)
         self.opcua_client = opcua_client
-        self.tib_count = 0
+        self.tib_in_count = 0
+        self.tib_out_count = 0
         self.tib_rate = 0.0
         self.tib_rate_label_kHz = False
         self.init_ui()
@@ -765,17 +766,21 @@ class StatusPanel(tk.Frame):
         self.uptime_label = ttk.Label(crate_frame, text="--")
         self.uptime_label.grid(row=1, column=1, sticky=tk.W, pady=1)
 
-        ttk.Label(crate_frame, text="TIB events:").grid(row=2, column=0, sticky=tk.W, pady=1)
-        self.tib_label = ttk.Label(crate_frame, text="--")
-        self.tib_label.grid(row=2, column=1, sticky=tk.W, pady=1)
+        ttk.Label(crate_frame, text="TIB In:").grid(row=2, column=0, sticky=tk.W, pady=1)
+        self.tib_in_label = ttk.Label(crate_frame, text="--")
+        self.tib_in_label.grid(row=2, column=1, sticky=tk.W, pady=1)
+
+        ttk.Label(crate_frame, text="TIB Out:").grid(row=3, column=0, sticky=tk.W, pady=1)
+        self.tib_out_label = ttk.Label(crate_frame, text="--")
+        self.tib_out_label.grid(row=3, column=1, sticky=tk.W, pady=1)
         
-        ttk.Label(crate_frame, text="Powered Modules:").grid(row=3, column=0, sticky=tk.W, pady=1)
+        ttk.Label(crate_frame, text="Powered Modules:").grid(row=4, column=0, sticky=tk.W, pady=1)
         self.powered_label = ttk.Label(crate_frame, text="--")
-        self.powered_label.grid(row=3, column=1, sticky=tk.W, pady=1)
+        self.powered_label.grid(row=4, column=1, sticky=tk.W, pady=1)
         
-        ttk.Label(crate_frame, text="Trigger Enabled:").grid(row=4, column=0, sticky=tk.W, pady=1)
+        ttk.Label(crate_frame, text="Trigger Enabled:").grid(row=5, column=0, sticky=tk.W, pady=1)
         self.trigger_label = ttk.Label(crate_frame, text="--")
-        self.trigger_label.grid(row=4, column=1, sticky=tk.W, pady=1)
+        self.trigger_label.grid(row=5, column=1, sticky=tk.W, pady=1)
     
     def update_from_data(self, var_name: str, value):
         """Update status displays from OPC UA data"""
@@ -789,8 +794,12 @@ class StatusPanel(tk.Frame):
             minutes = int((seconds % 3600) // 60)
             self.uptime_label.config(text=f"{days}d {hours:02d}h {minutes:02d}m")
 
-        elif var_name == "CrateTIBEventCount":
-            self.tib_count = value
+        elif var_name == "CrateTIBCameraInputCount":
+            self.tib_in_count = value
+            self._update_tib_label()
+
+        elif var_name == "CrateTIBEventOutputCount":
+            self.tib_out_count = value
             self._update_tib_label()
 
         elif var_name == "CrateTIBEventRate":
@@ -813,7 +822,9 @@ class StatusPanel(tk.Frame):
             rate_str = f"{self.tib_rate / 1000.0:.2f} kHz"
         else:
             rate_str = f"{self.tib_rate:,.1f} Hz"
-        self.tib_label.config(text=f"{self.tib_count:,} ({rate_str})")
+        
+        self.tib_in_label.config(text=f"{self.tib_in_count:,}")
+        self.tib_out_label.config(text=f"{self.tib_out_count:,} ({rate_str})")
 
 
 class MainWindow:

@@ -285,10 +285,28 @@ static int is_polling_msg(uint16_t type) {
 
 /* --- Hardware Limits --- */
 #define LIMIT_MCF_THRESH    0x01FF
-#define LIMIT_MCF_DELAY     0x000F
+#define LIMIT_MCF_DELAY     0x0007
 #define LIMIT_L1_DEADTIME   0x00FF
 #define LIMIT_TRIG_DELAY    0x007F
 #define LIMIT_CURR_CODE     0x0FFF
+
+static void fill_l2cb_state(l2tcp_payload_l2cb_state_t *p) {
+    p->fw_rev = cta_l2cb_getFirmwareRevision();
+    p->timestamp = cta_l2cb_readTimestamp();
+    uint16_t mcf, busy, tib;
+    cta_l2cb_getControlState(&mcf, &busy, &tib);
+    p->ctrl_state = (mcf ? 0x1 : 0) | (busy ? 0x2 : 0) | (tib ? 0x4 : 0);
+    p->mcf_threshold = cta_l2cb_getMCFThreshold();
+    p->mcf_delay = cta_l2cb_getMCFDelay();
+    p->l1_deadtime = cta_l2cb_getL1Deadtime();
+    
+    p->tib_input_count = cta_l2cb_getTIBCameraInputCount();
+    p->tib_output_count = cta_l2cb_getTIBEventOutputCount();
+
+    p->busy_mask = cta_l2cb_getBusyEnableMask();
+    p->busy_stuck = cta_l2cb_getBusyStuck();
+    p->reserved = 0;
+}
 
 static void handle_request() {
     l2tcp_header_t hdr;
@@ -533,19 +551,10 @@ static void handle_request() {
             resp.hdr.len = sizeof(l2tcp_payload_l2cb_state_t);
             resp.hdr.reserved = 0;
 
-            resp.payload.fw_rev = cta_l2cb_getFirmwareRevision();
-            resp.payload.timestamp = cta_l2cb_readTimestamp();
-            uint16_t mcf, busy, tib;
-            cta_l2cb_getControlState(&mcf, &busy, &tib);
-            resp.payload.ctrl_state = (mcf ? 0x1 : 0) | (busy ? 0x2 : 0) | (tib ? 0x4 : 0);
-            resp.payload.mcf_threshold = cta_l2cb_getMCFThreshold();
-            resp.payload.mcf_delay = cta_l2cb_getMCFDelay();
-            resp.payload.l1_deadtime = cta_l2cb_getL1Deadtime();
-            resp.payload.tib_event_count = cta_l2cb_getAndResetTIBEventCount();
-            resp.payload.busy_mask = cta_l2cb_getBusyEnableMask();
-            resp.payload.busy_stuck = cta_l2cb_getBusyStuck();
+            fill_l2cb_state(&resp.payload);
             
-            if (g_server.verbose > 1) printf("  -> L2CB STATE (fw: 0x%04x, ts: %llu, tib: %u)\n", resp.payload.fw_rev, (unsigned long long)resp.payload.timestamp, resp.payload.tib_event_count);
+            if (g_server.verbose > 1) printf("  -> L2CB STATE (fw: 0x%04x, ts: %llu, tib_in: %u, tib_out: %u)\n", 
+                resp.payload.fw_rev, (unsigned long long)resp.payload.timestamp, resp.payload.tib_input_count, resp.payload.tib_output_count);
 
             send_all(g_server.client_fd, &resp, sizeof(resp));
             break;        
@@ -597,7 +606,7 @@ static void handle_request() {
             break;
         }
         case L2TCP_MSG_L2CB_RESET_TIB_COUNT: {
-            cta_l2cb_resetTIBEventCount();
+            cta_l2cb_resetTIBCounters();
             send_ack(hdr.seq, show_msg);
             break;
         }
@@ -777,17 +786,7 @@ static void handle_request() {
             memset(&msg, 0, sizeof(msg));
 
             /* Part 1: L2CB State */
-            msg.payload.l2cb.fw_rev = cta_l2cb_getFirmwareRevision();
-            msg.payload.l2cb.timestamp = cta_l2cb_readTimestamp();
-            uint16_t mcf, busy, tib;
-            cta_l2cb_getControlState(&mcf, &busy, &tib);
-            msg.payload.l2cb.ctrl_state = (mcf ? 0x1 : 0) | (busy ? 0x2 : 0) | (tib ? 0x4 : 0);
-            msg.payload.l2cb.mcf_threshold = cta_l2cb_getMCFThreshold();
-            msg.payload.l2cb.mcf_delay = cta_l2cb_getMCFDelay();
-            msg.payload.l2cb.l1_deadtime = cta_l2cb_getL1Deadtime();
-            msg.payload.l2cb.tib_event_count = cta_l2cb_getAndResetTIBEventCount();
-            msg.payload.l2cb.busy_mask = cta_l2cb_getBusyEnableMask();
-            msg.payload.l2cb.busy_stuck = cta_l2cb_getBusyStuck();
+            fill_l2cb_state(&msg.payload.l2cb);
 
             /* Part 2: Batch Monitoring */
             int count = 0;

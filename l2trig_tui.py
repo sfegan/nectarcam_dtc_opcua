@@ -45,7 +45,8 @@ class SystemState:
         self.device_connected = False
         self.fw_rev = 0
         self.uptime = 0
-        self.tib_count = 0
+        self.tib_in_count = 0
+        self.tib_out_count = 0
         self.mcf_enabled = False
         self.glitch_enabled = False
         self.tib_block_enabled = False
@@ -131,7 +132,8 @@ class L2TrigTUI:
             s.device_connected = await read("device_connected")
             s.fw_rev = await read("CrateFirmwareRevision")
             s.uptime = await read("CrateUpTime")
-            s.tib_count = await read("CrateTIBEventCount")
+            s.tib_in_count = await read("CrateTIBCameraInputCount")
+            s.tib_out_count = await read("CrateTIBEventOutputCount")
             s.mcf_enabled = await read("CrateMCFEnabled")
             s.glitch_enabled = await read("CrateBusyGlitchFilterEnabled")
             s.tib_block_enabled = await read("CrateTIBTriggerBusyBlockEnabled")
@@ -183,7 +185,7 @@ class L2TrigTUI:
         conn_str = "CONNECTED" if s.device_connected else "DISCONNECTED"
         conn_dur = s.conn_uptime_ms if s.device_connected else s.conn_downtime_ms
         stdscr.addstr(0, 0, f"DTC TUI | {s.device_host}:{s.device_port} | {conn_str} for {conn_dur/1000:,.0f}s", curses.color_pair(6) | curses.A_BOLD)
-        stdscr.addstr(1, 0, f"FW: 0x{s.fw_rev:04X} | Uptime: {s.uptime/1e9:,.1f}s | TIB event count: {s.tib_count:,}")
+        stdscr.addstr(1, 0, f"FW: 0x{s.fw_rev:04X} | Uptime: {s.uptime/1e9:,.1f}s | TIB In: {s.tib_in_count:,} | Out: {s.tib_out_count:,}")
         mcf_str = f"MCF: {'ON' if s.mcf_enabled else 'OFF'} (Thr: {s.mcf_threshold}, Del: {s.mcf_delay_ns:.0f}ns)"
         tib_str = f"Glitch: {'ON' if s.glitch_enabled else 'OFF'} | TIB Block: {'ON' if s.tib_block_enabled else 'OFF'} | Deadtime: {s.l1_deadtime_ns:.0f}ns"
         stdscr.addstr(2, 0, f"{mcf_str} | {tib_str}")
@@ -383,8 +385,8 @@ class L2TrigTUI:
             # Parameters
             elif ch == ord('>'): await self.call("SetMCFThreshold", s.mcf_threshold + 1); self._redraw_event.set()
             elif ch == ord('<'): await self.call("SetMCFThreshold", max(0, s.mcf_threshold - 1)); self._redraw_event.set()
-            elif ch == ord('}'): await self.call("SetMCFDelay", s.mcf_delay_ns + 5.0); self._redraw_event.set()
-            elif ch == ord('{'): await self.call("SetMCFDelay", max(0.0, s.mcf_delay_ns - 5.0)); self._redraw_event.set()
+            elif ch == ord('}'): await self.call("SetMCFDelay", min(140.0, s.mcf_delay_ns + 20.0)); self._redraw_event.set()
+            elif ch == ord('{'): await self.call("SetMCFDelay", max(0.0, s.mcf_delay_ns - 20.0)); self._redraw_event.set()
             elif ch == ord('+'): await self.call("SetL1Deadtime", s.l1_deadtime_ns + 5.0); self._redraw_event.set()
             elif ch == ord('-'): await self.call("SetL1Deadtime", max(0.0, s.l1_deadtime_ns - 5.0)); self._redraw_event.set()
             
