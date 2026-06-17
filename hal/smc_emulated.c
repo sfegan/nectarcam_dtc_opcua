@@ -38,8 +38,16 @@
 #define ADDR_CTA_L2CB_MUTHR   0x18
 #define ADDR_CTA_L2CB_MUDEL   0x20
 #define ADDR_CTA_L2CB_L1DT    0x22
-#define ADDR_CTA_L2CB_TIBEVCT 0x24
+#define ADDR_CTA_L2CB_TIBEVCT 0x24  /* Deprecated in v027+ */
+#define ADDR_CTA_L2CB_TIBCAMTCTL  0x2E
+#define ADDR_CTA_L2CB_TIBCAMTCTH  0x30
+#define ADDR_CTA_L2CB_TIBEVENTCTL 0x32
+#define ADDR_CTA_L2CB_TIBEVENTCTH 0x34
 #define ADDR_CTA_L2CB_FREV    0xFE
+
+/* Control register bits */
+#define BIT_CTRL_CT_CLEAR     14
+#define BIT_CTRL_LATCH_TS     15
 
 /* Status register bits */
 #define BIT_STAT_SPIBUSY      0
@@ -107,7 +115,10 @@ typedef struct {
     
     /* VOLATILE: TIB event count state (always reset on open) */
     struct {
-        uint64_t ns_accumulator;
+        uint64_t in_ns_accum;
+        uint64_t out_ns_accum;
+        uint64_t in_counter;
+        uint64_t out_counter;
         struct timespec last_update;
     } tib;
     
@@ -272,19 +283,35 @@ static void update_dynamic_state(void)
             }
         }
         
-        uint64_t rate_hz = enabled_channels * 10;
-        uint64_t total_ns_accum = emulated_driver.state->tib.ns_accumulator + (rate_hz * elapsed_ns);
+        /* User requested input slightly lower than output to show deadtime */
+        /* Note: Usually deadtime implies Output < Input, but we follow the request */
+        uint64_t rate_out_hz = enabled_channels * 10;
+        uint64_t rate_in_hz = (enabled_channels * 98) / 10; /* 9.8 Hz */
         
-        uint64_t new_events = total_ns_accum / 1000000000ULL;
-        emulated_driver.state->tib.ns_accumulator = total_ns_accum % 1000000000ULL;
+        uint64_t in_accum = emulated_driver.state->tib.in_ns_accum + (rate_in_hz * elapsed_ns);
+        uint64_t out_accum = emulated_driver.state->tib.out_ns_accum + (rate_out_hz * elapsed_ns);
         
-        if (new_events > 0) {
-            uint16_t current_count = emulated_driver.state->registers[ADDR_CTA_L2CB_TIBEVCT >> 1];
-            uint32_t next_count = (uint32_t)current_count + new_events;
-            if (next_count > 0xFFFF) {
-                next_count = 0xFFFF;
-            }
-            emulated_driver.state->registers[ADDR_CTA_L2CB_TIBEVCT >> 1] = (uint16_t)next_count;
+        uint64_t new_in = in_accum / 1000000000ULL;
+        uint64_t new_out = out_accum / 1000000000ULL;
+        
+        emulated_driver.state->tib.in_ns_accum = in_accum % 1000000000ULL;
+        emulated_driver.state->tib.out_ns_accum = out_accum % 1000000000ULL;
+        
+        if (new_in > 0) {
+            emulated_driver.state->tib.in_counter += new_in;
+            emulated_driver.state->registers[ADDR_CTA_L2CB_TIBCAMTCTL >> 1] = (uint16_t)(emulated_driver.state->tib.in_counter & 0xFFFF);
+            emulated_driver.state->registers[ADDR_CTA_L2CB_TIBCAMTCTH >> 1] = (uint16_t)((emulated_driver.state->tib.in_counter >> 16) & 0xFFFF);
+        }
+        
+        if (new_out > 0) {
+            emulated_driver.state->tib.out_counter += new_out;
+            emulated_driver.state->registers[ADDR_CTA_L2CB_TIBEVENTCTL >> 1] = (uint16_t)(emulated_driver.state->tib.out_counter & 0xFFFF);
+            emulated_driver.state->registers[ADDR_CTA_L2CB_TIBEVENTCTH >> 1] = (uint16_t)((emulated_driver.state->tib.out_counter >> 16) & 0xFFFF);
+            
+            /* Keep legacy register updated too (clipped to 16-bit) */
+            uint32_t legacy = emulated_driver.state->tib.out_counter;
+            if (legacy > 0xFFFF) legacy = 0xFFFF;
+            emulated_driver.state->registers[ADDR_CTA_L2CB_TIBEVCT >> 1] = (uint16_t)legacy;
         }
         
         emulated_driver.state->tib.last_update = now;
@@ -321,6 +348,22 @@ static void handle_ctrl_write(unsigned short value, unsigned short old_value)
     /* Clear latch on 1->0 transition */
     if (!(value & 0x8000) && (old_value & 0x8000)) {
         emulated_driver.state->timestamp.latched = 0;
+    }
+
+    /* Check for 0->1 transition on bit 14 (CT_CLEAR) */
+    if ((value & (1 << BIT_CTRL_CT_CLEAR)) && !(old_value & (1 << BIT_CTRL_CT_CLEAR))) {
+        emulated_driver.state->tib.in_counter = 0;
+        emulated_driver.state->tib.out_counter = 0;
+        emulated_driver.state->tib.in_ns_accum = 0;
+        emulated_driver.state->tib.out_ns_accum = 0;
+        
+        emulated_driver.state->registers[ADDR_CTA_L2CB_TIBCAMTCTL >> 1] = 0;
+        emulated_driver.state->registers[ADDR_CTA_L2CB_TIBCAMTCTH >> 1] = 0;
+        emulated_driver.state->registers[ADDR_CTA_L2CB_TIBEVENTCTL >> 1] = 0;
+        emulated_driver.state->registers[ADDR_CTA_L2CB_TIBEVENTCTH >> 1] = 0;
+        emulated_driver.state->registers[ADDR_CTA_L2CB_TIBEVCT >> 1] = 0;
+        
+        printf("[SMC_EMU] TIB counters reset via CT_CLEAR\n");
     }
 }
 
@@ -461,7 +504,10 @@ smc_driver_error_t smc_open(const char* devname)
     clock_gettime(CLOCK_MONOTONIC, &emulated_driver.state->timestamp.start_time);
     
     /* TIB state reset */
-    emulated_driver.state->tib.ns_accumulator = 0;
+    emulated_driver.state->tib.in_ns_accum = 0;
+    emulated_driver.state->tib.out_ns_accum = 0;
+    emulated_driver.state->tib.in_counter = 0;
+    emulated_driver.state->tib.out_counter = 0;
     clock_gettime(CLOCK_MONOTONIC, &emulated_driver.state->tib.last_update);
     
     /* Seed random number generator for trips */
@@ -606,8 +652,9 @@ void smc_wr16(unsigned int _addr, unsigned short _value)
             }
             handle_l1_delay_write();
         } else if (_addr == ADDR_CTA_L2CB_TIBEVCT) {
-            /* Reset fractional accumulator when counter is reset */
-            emulated_driver.state->tib.ns_accumulator = 0;
+            /* Reset fractional accumulators when counter is reset (legacy) */
+            emulated_driver.state->tib.in_ns_accum = 0;
+            emulated_driver.state->tib.out_ns_accum = 0;
             clock_gettime(CLOCK_MONOTONIC, &emulated_driver.state->tib.last_update);
         }
     }
