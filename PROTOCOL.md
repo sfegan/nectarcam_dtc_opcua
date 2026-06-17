@@ -102,15 +102,17 @@ Used for various setters (MCF Enable, Thresholds, etc.).
 ### 4. L2CB State (`L2TCP_MSG_L2CB_GET_STATE` Response)
 | Offset | Field | Type | Description |
 | :--- | :--- | :--- | :--- |
-| 0 | `timestamp` | `uint64` | Server timestamp (nanoseconds or similar). |
-| 8 | `busy_mask` | `uint32` | Current Busy bitmask. |
-| 12 | `busy_stuck` | `uint32` | Stuck Busy bitmask. |
-| 16 | `fw_rev` | `uint16` | Firmware revision. |
-| 18 | `ctrl_state` | `uint16` | Control state register. |
-| 20 | `mcf_threshold` | `uint16` | MCF Threshold setting. |
-| 22 | `mcf_delay` | `uint16` | MCF Delay setting. |
-| 24 | `l1_deadtime` | `uint16` | L1 Deadtime setting. |
-| 26 | `tib_event_count`| `uint16` | TIB Event counter. |
+| 0 | `timestamp` | `uint64` | Server timestamp (latched from 125MHz hardware clock). |
+| 8 | `busy_mask` | `uint32` | Current Busy bitmask for slots 1-21. |
+| 12 | `busy_stuck` | `uint32` | Stuck Busy bitmask for slots 1-21. |
+| 16 | `tib_input_count` | `uint32` | 32-bit TIB camera input counter. |
+| 20 | `tib_output_count`| `uint32` | 32-bit TIB event output (L1A) counter. |
+| 24 | `fw_rev` | `uint16` | Firmware revision (bits 15..0). |
+| 26 | `ctrl_state` | `uint16` | Summarized control state bits. |
+| 28 | `mcf_threshold` | `uint16` | MCF Threshold setting (amount of L1s). |
+| 30 | `mcf_delay` | `uint16` | MCF Delay window (multiples of 20ns, v14+). |
+| 32 | `l1_deadtime` | `uint16` | L1 Deadtime setting (multiples of 5ns). |
+| 34 | `reserved` | `uint16` | Padding for 32-bit alignment. |
 
 ### 5. Channel Control (`L2TCP_MSG_CTDB_SET_CH_POWER` / `SET_CH_TRIG`)
 | Offset | Field | Type | Description |
@@ -162,8 +164,8 @@ Used for various setters (MCF Enable, Thresholds, etc.).
 ### 11. Fast Poll (`L2TCP_MSG_FAST_POLL` Response)
 | Offset | Field | Type | Description |
 | :--- | :--- | :--- | :--- |
-| 0 | `l2cb` | `L2CB State` | Full `L2CB State` payload (28 bytes). |
-| 28 | `monitor` | `Batch Mon` | Full `Batch Monitoring` payload. |
+| 0 | `l2cb` | `L2CB State` | Full `L2CB State` payload (36 bytes). |
+| 36 | `monitor` | `Batch Mon` | Full `Batch Monitoring` payload. |
 
 ### 12. Batch Config (`L2TCP_MSG_SLOW_POLL` Response)
 | Offset | Field | Type | Description |
@@ -186,19 +188,19 @@ Used for various setters (MCF Enable, Thresholds, etc.).
 
 ## Example Exchange (Hex)
 
-This example shows a client connecting (Version 4), configuring the standard slots (1-9 and 13-21), setting no immutable channels, and starting a power ramp.
+This example shows a client connecting (Version 5), configuring the standard slots (1-9 and 13-21), setting no immutable channels, and starting a power ramp.
 
 ### 1. HELLO Handshake
-**Client -> Server** (Type: 0x07, Seq: 1, Len: 2, Ver: 4)
-`07 00 01 00 02 00 00 00 04 00`
+**Client -> Server** (Type: 0x07, Seq: 1, Len: 2, Ver: 5)
+`07 00 01 00 02 00 00 00 05 00`
 - `07 00`: Type (HELLO)
 - `01 00`: Seq (1)
 - `02 00`: Len (2)
 - `00 00`: Reserved
-- `04 00`: Payload (Version 4)
+- `05 00`: Payload (Version 5)
 
-**Server -> Client** (Type: 0x07, Seq: 1, Len: 2, Ver: 4)
-`07 00 01 00 02 00 00 00 04 00`
+**Server -> Client** (Type: 0x07, Seq: 1, Len: 2, Ver: 5)
+`07 00 01 00 02 00 00 00 05 00`
 
 ### 2. Configure System Slots
 Standard slots are 1-9 (0x000003FE) and 13-21 (0x003FE000). Total mask: `0x003FE3FE`.

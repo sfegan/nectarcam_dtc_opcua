@@ -88,14 +88,14 @@ The **Direct Client** (`l2trig_direct_client`) provides native access to the har
 | `l2cb_fw` | Get L2CB firmware revision |
 | `ts` | Get L2CB timestamp |
 | `state` | Get L2CB control state (MCF, Glitch, TIB block) |
-| `tib_count` | Get TIB event count |
-| `tib_reset` | Reset TIB event count |
+| `tib_count` | Get TIB camera input and event output counts |
+| `tib_reset` | Reset both TIB hardware counters simultaneously |
 | `busy_mask [m]` | Get/Set 32-bit busy mask (hex) |
 | `busy_slot <s> <o>`| Set busy mask for specific slot |
 | `busy_stuck` | Get 32-bit busy stuck status |
 | `mcf <on\|off>` | Enable/Disable MCF propagation |
 | `mcfthr [val]` | Get/Set MCF threshold (L1 counts) |
-| `mcfdel [val]` | Get/Set MCF delay (5ns steps, 0-15) |
+| `mcfdel [val]` | Get/Set MCF delay (20ns steps, 0-7, v14+) |
 | `glitch <on\|off>` | Enable/Disable busy glitch filter |
 | `tibblock <on\|off>` | Enable/Disable TIB trigger busy block |
 | `deadtime [val]` | Get/Set L1 deadtime (5ns steps, 0-255) |
@@ -157,7 +157,10 @@ All monitoring data is accessible under `L2Trigger.Monitoring`:
 **L2CB Controller Status (Scalars):**
 - `CrateFirmwareRevision` (`UInt16`) — Firmware version
 - `CrateUpTime` (`UInt64`) — Time since boot (nanoseconds)
-- `CrateTIBEventCount` (`UInt64`) — Total software-accumulated event count
+- `CrateTIBCameraInputCount` (`UInt64`) — 64-bit software-accumulated camera input triggers
+- `CrateTIBEventOutputCount` (`UInt64`) — 64-bit software-accumulated fanned-out triggers
+- `CrateTIBCameraInputRate` (`Double`) — Real-time input rate (Hz)
+- `CrateTIBEventOutputRate` (`Double`) — Real-time output rate (Hz)
 - `CrateNumMutableModules` (`UInt16`) — Total actively controlled modules
 - `CrateNumPoweredModules` (`UInt16`) — Modules currently powered
 - `CrateNumTriggerEnabledModules` (`UInt16`) — Modules with trigger enabled
@@ -167,7 +170,7 @@ All monitoring data is accessible under `L2Trigger.Monitoring`:
 - `CrateBusyGlitchFilterEnabled` (`Boolean`) — Glitch filter state
 - `CrateTIBTriggerBusyBlockEnabled` (`Boolean`) — TIB blocking state
 - `CrateMCFThreshold` (`UInt16`) — MCF threshold (0-512 channels)
-- `CrateMCFDelay` (`Double`) — MCF delay in ns (0-75ns in 5ns steps)
+- `CrateMCFDelay` (`Double`) — MCF delay in ns (0-140ns in 20ns steps)
 - `CrateL1Deadtime` (`Double`) — L1 deadtime in ns (0-1275ns in 5ns steps)
 
 **Per-Slot Board Data (Arrays; one element per configured slot):**
