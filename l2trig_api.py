@@ -424,7 +424,7 @@ class L2TriggerSystem:
 
     async def get_fast_poll(self) -> Tuple[L2CBStatus, Dict[int, CTDBMonitoringData]]:
         _, data = await self._send_recv(L2TCPMsgType.FAST_POLL)
-        l2cb_size = struct.calcsize("<QIIHHHHHH")
+        l2cb_size = struct.calcsize("<QIIIIHHHHHH")
         l2cb = self._parse_l2cb(data[:l2cb_size])
         
         mon_data = data[l2cb_size:]
