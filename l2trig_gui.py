@@ -45,6 +45,15 @@ class SubscriptionHandler:
         # Call callback in thread-safe way
         self.callback(node_id, val)
 
+    async def status_change_notification(self, status):
+        """Called when subscription status changes"""
+        # We could log this or update UI status, but for now just prevent the crash
+        pass
+
+    async def event_notification(self, event):
+        """Called when an event occurs"""
+        pass
+
 
 class OPCUAClient:
     """Async OPC UA client wrapper"""
@@ -475,6 +484,9 @@ class ModuleMatrix(tk.Frame):
     
     def update_from_data(self, var_name: str, value):
         """Update module states from OPC UA data"""
+        if value is None:
+            return
+
         if var_name == "ModulePowerEnabled":
             try:
                 for idx, val in enumerate(value):
@@ -726,6 +738,9 @@ class ControlPanel(tk.Frame):
     
     def update_from_data(self, var_name: str, value):
         """Update controls from OPC UA data"""
+        if value is None:
+            return
+
         if var_name == "CrateMCFEnabled":
             self.mcf_enabled_var.set(bool(value))
         elif var_name == "CrateBusyGlitchFilterEnabled":
@@ -787,9 +802,12 @@ class StatusPanel(tk.Frame):
     def update_from_data(self, var_name: str, value):
         """Update status displays from OPC UA data"""
         if var_name == "CrateFirmwareRevision":
-            self.fw_label.config(text=str(value))
+            self.fw_label.config(text=str(value) if value is not None else "--")
         
         elif var_name == "CrateUpTime":
+            if value is None:
+                self.uptime_label.config(text="--")
+                return
             seconds = value / 1e9
             days = int(seconds // 86400)
             hours = int((seconds % 86400) // 3600)
@@ -813,14 +831,16 @@ class StatusPanel(tk.Frame):
             self._update_tib_label()
         
         elif var_name == "CrateNumPoweredModules":
-            self.powered_label.config(text=str(value))
+            self.powered_label.config(text=str(value) if value is not None else "--")
         
         elif var_name == "CrateNumTriggerEnabledModules":
-            self.trigger_label.config(text=str(value))
+            self.trigger_label.config(text=str(value) if value is not None else "--")
 
     def _update_tib_label(self):
         # Hysteresis for Hz/kHz switching (2.0 kHz / 1.2 kHz)
         def get_rate_str(rate, is_khz):
+            if rate is None:
+                return "-- Hz", is_khz
             if rate >= 2000.0: is_khz = True
             elif rate < 1200.0: is_khz = False
             
@@ -832,8 +852,11 @@ class StatusPanel(tk.Frame):
         in_rate_str, self.tib_in_rate_label_kHz = get_rate_str(self.tib_in_rate, self.tib_in_rate_label_kHz)
         out_rate_str, self.tib_out_rate_label_kHz = get_rate_str(self.tib_out_rate, self.tib_out_rate_label_kHz)
         
-        self.tib_in_label.config(text=f"{self.tib_in_count:,} ({in_rate_str})")
-        self.tib_out_label.config(text=f"{self.tib_out_count:,} ({out_rate_str})")
+        in_count_str = f"{self.tib_in_count:,}" if self.tib_in_count is not None else "--"
+        out_count_str = f"{self.tib_out_count:,}" if self.tib_out_count is not None else "--"
+        
+        self.tib_in_label.config(text=f"{in_count_str} ({in_rate_str})")
+        self.tib_out_label.config(text=f"{out_count_str} ({out_rate_str})")
 
 
 class MainWindow:
