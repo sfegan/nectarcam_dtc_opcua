@@ -142,8 +142,8 @@ class L2TriggerBridgeServer:
         ("CrateMCFThreshold", 0, ua.VariantType.UInt16, "L2CB MCF threshold (0-512)"),
         ("CrateMCFDelay", 0.0, ua.VariantType.Double, "L2CB MCF delay in ns"),
         ("CrateL1Deadtime", 0.0, ua.VariantType.Double, "L2CB L1 deadtime in ns"),
-        ("CrateTIBCameraInputCount", 0, ua.VariantType.UInt64, "TIB trigger input counter (32-bit hardware, software accumulated)"),
-        ("CrateTIBEventOutputCount", 0, ua.VariantType.UInt64, "TIB trigger output counter (32-bit hardware, software accumulated)"),
+        ("CrateTIBCameraInputCount", 0, ua.VariantType.UInt32, "TIB trigger input counter (32-bit hardware)"),
+        ("CrateTIBEventOutputCount", 0, ua.VariantType.UInt32, "TIB trigger output counter (32-bit hardware)"),
         ("CrateTIBCameraInputRate", 0.0, ua.VariantType.Double, "TIB camera input rate in Hz"),
         ("CrateTIBEventOutputRate", 0.0, ua.VariantType.Double, "TIB event output rate in Hz"),
         ("CrateNumMutableModules", 0, ua.VariantType.UInt16, "Total number of modules managed by this server"),
@@ -252,11 +252,9 @@ class L2TriggerBridgeServer:
         self._enabled_count = 0
         
         # TIB counter tracking
-        self._tib_in_accumulator = 0
-        self._tib_out_accumulator = 0
         self._last_tib_in = 0
         self._last_tib_out = 0
-        self._last_rate_time: Optional[float] = None
+        self._last_rate_time = None
         self._tib_in_rate_ema = 0.0
         self._tib_out_rate_ema = 0.0
 
@@ -294,10 +292,6 @@ class L2TriggerBridgeServer:
             logger.info("TCP server connected and configured (connect: %0.1fs, recv: %0.1fs timeout)",
                        self.tcp_connect_timeout, self.tcp_recv_timeout)
             self._connected = True
-            if self._last_contact is None or now - self._last_contact > self.variable_lifetime:
-                # Reset the TIB event accumulator if we've been disconnected for longer than the 
-                # variable lifetime, to avoid stale counts
-                self._tib_accumulator = 0            
             self._last_contact = now
             self._poll_event.set()
             self._reconnect_delay = 1.0
@@ -445,13 +439,13 @@ class L2TriggerBridgeServer:
 
         @uamethod
         async def reset_tib_event_count(parent_node):
-            """Reset the hardware TIB event counter and the 64-bit software accumulator."""
+            """Reset the hardware TIB event counter."""
             logger.info("Resetting TIB event counter")
             async with self._lock: 
                 if not await self._ensure_connected(): return "ERROR: Device not connected"
                 await self.system.reset_tib_event_count()
-                self._tib_accumulator = 0
-                self._tib_rate_ema = 0.0
+                self._tib_in_rate_ema = 0.0
+                self._tib_out_rate_ema = 0.0
                 self._last_rate_time = None
             return "OK: TIB event count reset"
         await add_described_method("ResetTIBEventCount", reset_tib_event_count)
@@ -800,7 +794,7 @@ class L2TriggerBridgeServer:
         await self._set_var("CrateMCFDelay", l2cb.mcf_delay_ns, timestamp, sc)
         await self._set_var("CrateL1Deadtime", l2cb.l1_deadtime_ns, timestamp, sc)
 
-        # Handle TIB counter accumulation (32-bit hardware to 64-bit software)
+        # Helper to calculate difference handling 32-bit hardware rollover
         def get_diff(current, last):
             return (current - last) & 0xFFFFFFFF
 
@@ -809,7 +803,7 @@ class L2TriggerBridgeServer:
         if self._last_rate_time is not None and l2cb.uptime > 0:
             dt = now_mon - self._last_rate_time
             if dt > 0:
-                # Calculate differences from last measurements
+                # Calculate differences from last measurements (handling 32-bit rollover)
                 diff_in = get_diff(l2cb.tib_input_count, self._last_tib_in)
                 diff_out = get_diff(l2cb.tib_output_count, self._last_tib_out)
 
@@ -817,38 +811,34 @@ class L2TriggerBridgeServer:
                 tau = 2.0
                 alpha = min(1.0, dt / (tau + dt))
                 
-                # Input Rate: if no change, reset filter to zero immediately as requested
+                # Input Rate: if no change, reset filter to zero immediately
                 if diff_in == 0:
                     self._tib_in_rate_ema = 0.0
                 else:
                     instant_in_rate = diff_in / dt
                     self._tib_in_rate_ema = alpha * instant_in_rate + (1.0 - alpha) * self._tib_in_rate_ema
                 
-                # Output Rate: if no change, reset filter to zero immediately as requested
+                # Output Rate: if no change, reset filter to zero immediately
                 if diff_out == 0:
                     self._tib_out_rate_ema = 0.0
                 else:
                     instant_out_rate = diff_out / dt
                     self._tib_out_rate_ema = alpha * instant_out_rate + (1.0 - alpha) * self._tib_out_rate_ema
 
-        # Update accumulators and last values
+        # Update last values and rates state
         if l2cb.uptime == 0:
             # Device disconnected or reset
-            self._tib_in_accumulator = 0
-            self._tib_out_accumulator = 0
             self._tib_in_rate_ema = 0.0
             self._tib_out_rate_ema = 0.0
             self._last_rate_time = None
         else:
-            self._tib_in_accumulator += get_diff(l2cb.tib_input_count, self._last_tib_in)
-            self._tib_out_accumulator += get_diff(l2cb.tib_output_count, self._last_tib_out)
             self._last_rate_time = now_mon
 
         self._last_tib_in = l2cb.tib_input_count
         self._last_tib_out = l2cb.tib_output_count
 
-        await self._set_var("CrateTIBCameraInputCount", self._tib_in_accumulator, timestamp, sc)
-        await self._set_var("CrateTIBEventOutputCount", self._tib_out_accumulator, timestamp, sc)
+        await self._set_var("CrateTIBCameraInputCount", l2cb.tib_input_count, timestamp, sc)
+        await self._set_var("CrateTIBEventOutputCount", l2cb.tib_output_count, timestamp, sc)
         await self._set_var("CrateTIBCameraInputRate", self._tib_in_rate_ema, timestamp, sc)
         await self._set_var("CrateTIBEventOutputRate", self._tib_out_rate_ema, timestamp, sc)
 
