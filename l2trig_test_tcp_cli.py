@@ -94,6 +94,8 @@ def print_help():
     print("  busy_mask <val>         - Set unified 32-bit busy mask")
     print("  busy_slot <slot> <0|1>  - Set busy enable for a specific slot")
     print("  tib_reset               - Reset TIB event counter")
+    print("  l1scalers_start         - Start L1 counters on all slots")
+    print("  l1scalers_stop          - Stop L1 counters on all slots")
 
     print("\nCTDB (Per-Slot/Channel) Commands:")
 
@@ -102,6 +104,7 @@ def print_help():
     print("  cfg <slot>               - Get configuration for a slot (fw, limits, trig mask/delays)")
     print("  fast_poll                - Get fast poll (L2CB + All Monitoring)")
     print("  slow_poll                - Get slow poll (All Configuration)")
+    print("  l1scalers                - Get L1 scalers for all active slots")
     print("  pwr <slot> <ch> <0|1>    - Set channel power")
     print("  trig <slot> <ch> <0|1>   - Set channel trigger contribution")
     print("  trig_delay <slot> <ch> <v>- Set channel trigger delay (0-255, 37ps steps)")
@@ -274,6 +277,12 @@ async def run_cli(host, port, keepalive_enabled):
             elif cmd == "tib_reset":
                 await system.reset_tib_event_count()
                 print("TIB event counter reset.")
+            elif cmd == "l1scalers_start":
+                await system.start_l1_scalers()
+                print("L1 counters started.")
+            elif cmd == "l1scalers_stop":
+                await system.stop_l1_scalers()
+                print("L1 counters stopped.")
 
             elif cmd == "mon":
                 slot = int(parts[1])
@@ -321,6 +330,15 @@ async def run_cli(host, port, keepalive_enabled):
                 for slot in sorted(data.keys()):
                     c = data[slot]
                     print(f"Slot {c.slot:2d} Config: FW=0x{c.firmware_version:04x}, Limits={c.current_limit_min_ma:.1f}-{c.current_limit_max_ma:.1f} mA, Trig=0x{c.trig_enabled_mask:04x}")
+
+            elif cmd == "l1scalers":
+                data = await system.get_l1_scalers()
+                if not data:
+                    print("No active slots polled.")
+                for slot in sorted(data.keys()):
+                    s = data[slot]
+                    print(f"Slot {slot:2d}: L1A={s.l1a_slot_count:8d}")
+                    print(f"  Ch L1 Counts: " + ", ".join([f"{c}" for c in s.l1_channel_counts]))
 
             elif cmd == "cfg":
                 slot = int(parts[1])

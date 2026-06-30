@@ -44,6 +44,8 @@ class L2TCPMsgType(IntEnum):
     L2CB_SET_BUSY_ENABLE_MASK = 0x17
     L2CB_SET_BUSY_ENABLE_SLOT = 0x18
     L2CB_RESET_TIB_COUNT = 0x19
+    L2CB_START_L1SCALERS = 0x1A
+    L2CB_STOP_L1SCALERS  = 0x1B
     CTDB_SET_CH_POWER   = 0x20
     CTDB_SET_CH_TRIG    = 0x21
     CTDB_SET_CH_DELAY   = 0x22
@@ -53,6 +55,7 @@ class L2TCPMsgType(IntEnum):
     BATCH_MONITOR_ALL   = 0x32
     FAST_POLL           = 0x33
     SLOW_POLL           = 0x34
+    L1SCALERS_POLL      = 0x35
 
 # Struct formats (Little Endian)
 HEADER_FMT = "<HHHH"  # Type, Seq, Len, Reserved
@@ -119,12 +122,18 @@ class CTDBConfigData:
     trig_enabled_mask: int
     trig_delays_ns: List[float]
 
+@dataclass
+class L1ScalersData:
+    slot: int
+    l1a_slot_count: int
+    l1_channel_counts: List[int]
+
 # ============================================================================
 # L2TriggerSystem (TCP Client)
 # ============================================================================
 
 class L2TriggerSystem:
-    PROTOCOL_VERSION = 5
+    PROTOCOL_VERSION = 6
 
     def __init__(self, host: str = "127.0.0.1", port: int = DEFAULT_PORT, 
                  connect_timeout: float = 5.0, recv_timeout: float = 5.0):
@@ -371,6 +380,14 @@ class L2TriggerSystem:
         """Reset the TIB event counter"""
         await self._send_recv(L2TCPMsgType.L2CB_RESET_TIB_COUNT)
 
+    async def start_l1_scalers(self):
+        """Start L1 counters on all slots"""
+        await self._send_recv(L2TCPMsgType.L2CB_START_L1SCALERS)
+
+    async def stop_l1_scalers(self):
+        """Stop L1 counters on all slots"""
+        await self._send_recv(L2TCPMsgType.L2CB_STOP_L1SCALERS)
+
     # --- CTDB Controls ---
 
     async def set_channel_power_enabled(self, slot: int, channel: int, enabled: bool):
@@ -466,4 +483,27 @@ class L2TriggerSystem:
             cfg = self._parse_config(data[offset:offset+cfg_size])
             res[cfg.slot] = cfg
             offset += cfg_size
+        return res
+
+    def _parse_l1scalers(self, data: bytes) -> L1ScalersData:
+        # slot(u32), l1a(u32), l1(u32*15)
+        slot, l1a = struct.unpack_from("<II", data, 0)
+        l1_counts = list(struct.unpack_from("<" + "I" * 15, data, 8))
+        return L1ScalersData(
+            slot=slot,
+            l1a_slot_count=l1a,
+            l1_channel_counts=l1_counts
+        )
+
+    async def get_l1_scalers(self) -> Dict[int, L1ScalersData]:
+        """Poll L1 scalers for all active slots"""
+        _, data = await self._send_recv(L2TCPMsgType.L1SCALERS_POLL)
+        count = struct.unpack("<I", data[:4])[0]
+        res = {}
+        offset = 4
+        scaler_size = struct.calcsize("<II" + "I" * 15)
+        for _ in range(count):
+            scaler = self._parse_l1scalers(data[offset:offset+scaler_size])
+            res[scaler.slot] = scaler
+            offset += scaler_size
         return res
