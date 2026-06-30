@@ -49,19 +49,22 @@ typedef enum {
     L2TCP_MSG_L2CB_SET_BUSY_ENABLE_MASK = 0x17,
     L2TCP_MSG_L2CB_SET_BUSY_ENABLE_SLOT = 0x18,
     L2TCP_MSG_L2CB_RESET_TIB_COUNT    = 0x19,
+    L2TCP_MSG_L2CB_START_L1SCALERS    = 0x1A,
+    L2TCP_MSG_L2CB_STOP_L1SCALERS     = 0x1B,
 
     /* CTDB Single Channel Control */
     L2TCP_MSG_CTDB_SET_CH_POWER       = 0x20,
     L2TCP_MSG_CTDB_SET_CH_TRIG        = 0x21,
     L2TCP_MSG_CTDB_SET_CH_DELAY       = 0x22,
     L2TCP_MSG_CTDB_SET_LIMITS         = 0x23,
-
+ 
     /* Monitoring & Batch */
     L2TCP_MSG_CTDB_GET_MONITORING     = 0x30,
     L2TCP_MSG_CTDB_GET_CONFIG         = 0x31,
     L2TCP_MSG_BATCH_MONITOR_ALL       = 0x32,
     L2TCP_MSG_FAST_POLL               = 0x33,
-    L2TCP_MSG_SLOW_POLL               = 0x34
+    L2TCP_MSG_SLOW_POLL               = 0x34,
+    L2TCP_MSG_L1SCALERS_POLL          = 0x35
 } l2tcp_msg_type_t;
 
 /* --- Error Codes --- */
@@ -75,7 +78,7 @@ typedef enum {
     L2TCP_ERR_NOT_INITIALIZED         = 6
 } l2tcp_error_code_t;
 
-#define L2TCP_PROTOCOL_VERSION 5
+#define L2TCP_PROTOCOL_VERSION 6
 
 /* --- Protocol Header --- */
 
@@ -187,6 +190,18 @@ typedef struct {
     l2tcp_payload_config_t entries[L2TCP_MAX_SLOT+1];
 } l2tcp_payload_batch_config_full_t;
 
+/* L2TCP_MSG_L1SCALERS_POLL (Response) */
+typedef struct {
+    uint32_t slot;
+    uint32_t l1a_slot_count;
+    uint32_t l1_channel_count[15];
+} l2tcp_payload_l1scalers_t;
+
+typedef struct {
+    uint32_t count;
+    l2tcp_payload_l1scalers_t entries[L2TCP_MAX_SLOT+1];
+} l2tcp_payload_l1scalers_poll_t;
+
 /* --- Combined Message Structures (Header + Payload) --- */
 
 typedef struct {
@@ -232,6 +247,11 @@ typedef struct {
     l2tcp_header_t hdr;
     l2tcp_payload_batch_config_full_t payload;
 } l2tcp_msg_batch_config_full_t;
+
+typedef struct {
+    l2tcp_header_t hdr;
+    l2tcp_payload_l1scalers_poll_t payload;
+} l2tcp_msg_l1scalers_poll_t;
 
 #pragma pack(pop)
 

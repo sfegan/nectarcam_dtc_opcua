@@ -64,34 +64,36 @@ static void get_now(struct timespec *ts) {
 
 static size_t get_expected_payload_len(uint16_t type) {
     switch (type) {
-        case L2TCP_MSG_ACK:                return 0;
-        case L2TCP_MSG_ERROR:              return sizeof(l2tcp_payload_error_t);
-        case L2TCP_MSG_SYS_SET_CONFIG:     return sizeof(l2tcp_payload_sys_config_t);
-        case L2TCP_MSG_SYS_RAMP_POWER:     return sizeof(l2tcp_payload_ramp_t);
-        case L2TCP_MSG_SYS_EMERGENCY_OFF:  return 0;
-        case L2TCP_MSG_SYS_SET_ALL_TRIG_EN: return sizeof(l2tcp_payload_u16_t);
-        case L2TCP_MSG_SYS_SET_ALL_TRIG_DELAY: return sizeof(l2tcp_payload_u16_t);
-        case L2TCP_MSG_KEEPALIVE:          return 0;
-        case L2TCP_MSG_HELLO:              return sizeof(l2tcp_payload_u16_t);
-        case L2TCP_MSG_L2CB_GET_STATE:     return 0;
-        case L2TCP_MSG_L2CB_SET_MCF_EN:    return sizeof(l2tcp_payload_u16_t);
-        case L2TCP_MSG_L2CB_SET_GLITCH_EN: return sizeof(l2tcp_payload_u16_t);
-        case L2TCP_MSG_L2CB_SET_TIB_BLOCK_EN: return sizeof(l2tcp_payload_u16_t);
-        case L2TCP_MSG_L2CB_SET_MCF_THRESH: return sizeof(l2tcp_payload_u16_t);
-        case L2TCP_MSG_L2CB_SET_MCF_DELAY:  return sizeof(l2tcp_payload_u16_t);
-        case L2TCP_MSG_L2CB_SET_L1_DEADTIME: return sizeof(l2tcp_payload_u16_t);
+        case L2TCP_MSG_ACK:                       return 0;
+        case L2TCP_MSG_ERROR:                     return sizeof(l2tcp_payload_error_t);
+        case L2TCP_MSG_SYS_SET_CONFIG:            return sizeof(l2tcp_payload_sys_config_t);
+        case L2TCP_MSG_SYS_RAMP_POWER:            return sizeof(l2tcp_payload_ramp_t);
+        case L2TCP_MSG_SYS_EMERGENCY_OFF:         return 0;
+        case L2TCP_MSG_SYS_SET_ALL_TRIG_EN:       return sizeof(l2tcp_payload_u16_t);
+        case L2TCP_MSG_SYS_SET_ALL_TRIG_DELAY:    return sizeof(l2tcp_payload_u16_t);
+        case L2TCP_MSG_KEEPALIVE:                 return 0;
+        case L2TCP_MSG_HELLO:                     return sizeof(l2tcp_payload_u16_t);
+        case L2TCP_MSG_L2CB_GET_STATE:            return 0;
+        case L2TCP_MSG_L2CB_SET_MCF_EN:           return sizeof(l2tcp_payload_u16_t);
+        case L2TCP_MSG_L2CB_SET_GLITCH_EN:        return sizeof(l2tcp_payload_u16_t);
+        case L2TCP_MSG_L2CB_SET_TIB_BLOCK_EN:     return sizeof(l2tcp_payload_u16_t);
+        case L2TCP_MSG_L2CB_SET_MCF_THRESH:       return sizeof(l2tcp_payload_u16_t);
+        case L2TCP_MSG_L2CB_SET_MCF_DELAY:        return sizeof(l2tcp_payload_u16_t);
+        case L2TCP_MSG_L2CB_SET_L1_DEADTIME:      return sizeof(l2tcp_payload_u16_t);
         case L2TCP_MSG_L2CB_SET_BUSY_ENABLE_MASK: return 4;
         case L2TCP_MSG_L2CB_SET_BUSY_ENABLE_SLOT: return 4;
-        case L2TCP_MSG_L2CB_RESET_TIB_COUNT: return 0;
-        case L2TCP_MSG_CTDB_SET_CH_POWER:  return sizeof(l2tcp_payload_ch_ctrl_t);
-        case L2TCP_MSG_CTDB_SET_CH_TRIG:   return sizeof(l2tcp_payload_ch_ctrl_t);
-        case L2TCP_MSG_CTDB_SET_CH_DELAY:  return sizeof(l2tcp_payload_ch_delay_t);
-        case L2TCP_MSG_CTDB_SET_LIMITS:    return sizeof(l2tcp_payload_ctdb_limits_t);
-        case L2TCP_MSG_CTDB_GET_MONITORING: return 2;
-        case L2TCP_MSG_CTDB_GET_CONFIG:     return 2;
-        case L2TCP_MSG_BATCH_MONITOR_ALL:   return 0;
-        case L2TCP_MSG_FAST_POLL:           return 0;
-        case L2TCP_MSG_SLOW_POLL:           return 0;
+        case L2TCP_MSG_L2CB_RESET_TIB_COUNT:      return 0;
+        case L2TCP_MSG_L2CB_START_L1SCALERS:      return 0;
+        case L2TCP_MSG_L2CB_STOP_L1SCALERS:       return 0;
+        case L2TCP_MSG_CTDB_SET_CH_POWER:         return sizeof(l2tcp_payload_ch_ctrl_t);
+        case L2TCP_MSG_CTDB_SET_CH_TRIG:          return sizeof(l2tcp_payload_ch_ctrl_t);
+        case L2TCP_MSG_CTDB_SET_CH_DELAY:         return sizeof(l2tcp_payload_ch_delay_t);
+        case L2TCP_MSG_CTDB_SET_LIMITS:           return sizeof(l2tcp_payload_ctdb_limits_t);
+        case L2TCP_MSG_CTDB_GET_MONITORING:       return 2;
+        case L2TCP_MSG_CTDB_GET_CONFIG:           return 2;
+        case L2TCP_MSG_BATCH_MONITOR_ALL:         return 0;
+        case L2TCP_MSG_FAST_POLL:                 return 0;
+        case L2TCP_MSG_SLOW_POLL:                 return 0;
         default: return 0;
     }
 }
@@ -109,34 +111,36 @@ static int is_ch_immutable(int slot, int ch) {
 
 static const char* msg_type_to_str(uint16_t type) {
     switch (type) {
-        case L2TCP_MSG_ACK:                return "ACK";
-        case L2TCP_MSG_ERROR:              return "ERROR";
-        case L2TCP_MSG_SYS_SET_CONFIG:     return "SYS_SET_CONFIG";
-        case L2TCP_MSG_SYS_RAMP_POWER:     return "SYS_RAMP_POWER";
-        case L2TCP_MSG_SYS_EMERGENCY_OFF:  return "SYS_EMERGENCY_OFF";
-        case L2TCP_MSG_SYS_SET_ALL_TRIG_EN: return "SYS_SET_ALL_TRIG_EN";
-        case L2TCP_MSG_SYS_SET_ALL_TRIG_DELAY: return "SYS_SET_ALL_TRIG_DELAY";
-        case L2TCP_MSG_KEEPALIVE:          return "KEEPALIVE";
-        case L2TCP_MSG_HELLO:              return "HELLO";
-        case L2TCP_MSG_L2CB_GET_STATE:     return "L2CB_GET_STATE";
-        case L2TCP_MSG_L2CB_SET_MCF_EN:    return "L2CB_SET_MCF_EN";
-        case L2TCP_MSG_L2CB_SET_GLITCH_EN: return "L2CB_SET_GLITCH_EN";
-        case L2TCP_MSG_L2CB_SET_TIB_BLOCK_EN: return "L2CB_SET_TIB_BLOCK_EN";
-        case L2TCP_MSG_L2CB_SET_MCF_THRESH: return "L2CB_SET_MCF_THRESH";
-        case L2TCP_MSG_L2CB_SET_MCF_DELAY:  return "L2CB_SET_MCF_DELAY";
-        case L2TCP_MSG_L2CB_SET_L1_DEADTIME: return "L2CB_SET_L1_DEADTIME";
+        case L2TCP_MSG_ACK:                       return "ACK";
+        case L2TCP_MSG_ERROR:                     return "ERROR";
+        case L2TCP_MSG_SYS_SET_CONFIG:            return "SYS_SET_CONFIG";
+        case L2TCP_MSG_SYS_RAMP_POWER:            return "SYS_RAMP_POWER";
+        case L2TCP_MSG_SYS_EMERGENCY_OFF:         return "SYS_EMERGENCY_OFF";
+        case L2TCP_MSG_SYS_SET_ALL_TRIG_EN:       return "SYS_SET_ALL_TRIG_EN";
+        case L2TCP_MSG_SYS_SET_ALL_TRIG_DELAY:    return "SYS_SET_ALL_TRIG_DELAY";
+        case L2TCP_MSG_KEEPALIVE:                 return "KEEPALIVE";
+        case L2TCP_MSG_HELLO:                     return "HELLO";
+        case L2TCP_MSG_L2CB_GET_STATE:            return "L2CB_GET_STATE";
+        case L2TCP_MSG_L2CB_SET_MCF_EN:           return "L2CB_SET_MCF_EN";
+        case L2TCP_MSG_L2CB_SET_GLITCH_EN:        return "L2CB_SET_GLITCH_EN";
+        case L2TCP_MSG_L2CB_SET_TIB_BLOCK_EN:     return "L2CB_SET_TIB_BLOCK_EN";
+        case L2TCP_MSG_L2CB_SET_MCF_THRESH:       return "L2CB_SET_MCF_THRESH";
+        case L2TCP_MSG_L2CB_SET_MCF_DELAY:        return "L2CB_SET_MCF_DELAY";
+        case L2TCP_MSG_L2CB_SET_L1_DEADTIME:      return "L2CB_SET_L1_DEADTIME";
         case L2TCP_MSG_L2CB_SET_BUSY_ENABLE_MASK: return "L2CB_SET_BUSY_ENABLE_MASK";
         case L2TCP_MSG_L2CB_SET_BUSY_ENABLE_SLOT: return "L2CB_SET_BUSY_ENABLE_SLOT";
-        case L2TCP_MSG_L2CB_RESET_TIB_COUNT: return "L2CB_RESET_TIB_COUNT";
-        case L2TCP_MSG_CTDB_SET_CH_POWER:  return "CTDB_SET_CH_POWER";
-        case L2TCP_MSG_CTDB_SET_CH_TRIG:   return "CTDB_SET_CH_TRIG";
-        case L2TCP_MSG_CTDB_SET_CH_DELAY:  return "CTDB_SET_CH_DELAY";
-        case L2TCP_MSG_CTDB_SET_LIMITS:    return "CTDB_SET_LIMITS";
-        case L2TCP_MSG_CTDB_GET_MONITORING: return "CTDB_GET_MONITORING";
-        case L2TCP_MSG_CTDB_GET_CONFIG:     return "CTDB_GET_CONFIG";
-        case L2TCP_MSG_BATCH_MONITOR_ALL:   return "BATCH_MONITOR_ALL";
-        case L2TCP_MSG_FAST_POLL:           return "FAST_POLL";
-        case L2TCP_MSG_SLOW_POLL:           return "SLOW_POLL";
+        case L2TCP_MSG_L2CB_RESET_TIB_COUNT:      return "L2CB_RESET_TIB_COUNT";
+        case L2TCP_MSG_L2CB_START_L1SCALERS:      return "L2CB_START_L1SCALERS";
+        case L2TCP_MSG_L2CB_STOP_L1SCALERS:       return "L2CB_STOP_L1SCALERS";
+        case L2TCP_MSG_CTDB_SET_CH_POWER:         return "CTDB_SET_CH_POWER";
+        case L2TCP_MSG_CTDB_SET_CH_TRIG:          return "CTDB_SET_CH_TRIG";
+        case L2TCP_MSG_CTDB_SET_CH_DELAY:         return "CTDB_SET_CH_DELAY";
+        case L2TCP_MSG_CTDB_SET_LIMITS:           return "CTDB_SET_LIMITS";
+        case L2TCP_MSG_CTDB_GET_MONITORING:       return "CTDB_GET_MONITORING";
+        case L2TCP_MSG_CTDB_GET_CONFIG:           return "CTDB_GET_CONFIG";
+        case L2TCP_MSG_BATCH_MONITOR_ALL:         return "BATCH_MONITOR_ALL";
+        case L2TCP_MSG_FAST_POLL:                 return "FAST_POLL";
+        case L2TCP_MSG_SLOW_POLL:                 return "SLOW_POLL";
         default: return "UNKNOWN";
     }
 }
@@ -385,8 +389,12 @@ static void handle_request() {
     if (show_msg) {
         printf("REQ: %s (seq: %d, len: %d)", msg_type_to_str(hdr.type), hdr.seq, hdr.len);
         switch (hdr.type) {
-            case L2TCP_MSG_SYS_SET_CONFIG: printf(" mask: 0x%08x", ((l2tcp_payload_sys_config_t*)buffer)->active_slots_mask); break;
-            case L2TCP_MSG_SYS_RAMP_POWER: printf(" en: %d", ((l2tcp_payload_ramp_t*)buffer)->enable); break;
+            case L2TCP_MSG_SYS_SET_CONFIG: 
+                printf(" mask: 0x%08x", ((l2tcp_payload_sys_config_t*)buffer)->active_slots_mask); 
+                break;
+            case L2TCP_MSG_SYS_RAMP_POWER: 
+                printf(" en: %d", ((l2tcp_payload_ramp_t*)buffer)->enable); 
+                break;
             case L2TCP_MSG_SYS_SET_ALL_TRIG_EN:
             case L2TCP_MSG_SYS_SET_ALL_TRIG_DELAY:
             case L2TCP_MSG_L2CB_SET_MCF_EN:
@@ -394,16 +402,35 @@ static void handle_request() {
             case L2TCP_MSG_L2CB_SET_TIB_BLOCK_EN:
             case L2TCP_MSG_L2CB_SET_MCF_THRESH:
             case L2TCP_MSG_L2CB_SET_MCF_DELAY:
-            case L2TCP_MSG_L2CB_SET_L1_DEADTIME: printf(" val: %d", ((l2tcp_payload_u16_t*)buffer)->value); break;
-            case L2TCP_MSG_L2CB_SET_BUSY_ENABLE_MASK: printf(" val: 0x%08x", *((uint32_t*)buffer)); break;
-            case L2TCP_MSG_L2CB_SET_BUSY_ENABLE_SLOT: printf(" S%d en: %d", ((uint16_t*)buffer)[0], ((uint16_t*)buffer)[1]); break;
-            case L2TCP_MSG_L2CB_RESET_TIB_COUNT: break;
+            case L2TCP_MSG_L2CB_SET_L1_DEADTIME: 
+                printf(" val: %d", ((l2tcp_payload_u16_t*)buffer)->value); 
+                break;
+            case L2TCP_MSG_L2CB_SET_BUSY_ENABLE_MASK: 
+                printf(" val: 0x%08x", *((uint32_t*)buffer)); 
+                break;
+            case L2TCP_MSG_L2CB_SET_BUSY_ENABLE_SLOT: 
+                printf(" S%d en: %d", ((uint16_t*)buffer)[0], ((uint16_t*)buffer)[1]); 
+                break;
             case L2TCP_MSG_CTDB_SET_CH_POWER:
-            case L2TCP_MSG_CTDB_SET_CH_TRIG: printf(" S%dC%d en: %d", ((l2tcp_payload_ch_ctrl_t*)buffer)->slot, ((l2tcp_payload_ch_ctrl_t*)buffer)->channel, ((l2tcp_payload_ch_ctrl_t*)buffer)->enable); break;
-            case L2TCP_MSG_CTDB_SET_CH_DELAY: printf(" S%dC%d delay: %d", ((l2tcp_payload_ch_delay_t*)buffer)->slot, ((l2tcp_payload_ch_delay_t*)buffer)->channel, ((l2tcp_payload_ch_delay_t*)buffer)->delay); break;
-            case L2TCP_MSG_CTDB_SET_LIMITS: printf(" S%d min: %d, max: %d", ((l2tcp_payload_ctdb_limits_t*)buffer)->slot, ((l2tcp_payload_ctdb_limits_t*)buffer)->curr_limit_min, ((l2tcp_payload_ctdb_limits_t*)buffer)->curr_limit_max); break;
+            case L2TCP_MSG_CTDB_SET_CH_TRIG: 
+                printf(" S%dC%d en: %d", ((l2tcp_payload_ch_ctrl_t*)buffer)->slot, ((l2tcp_payload_ch_ctrl_t*)buffer)->channel, ((l2tcp_payload_ch_ctrl_t*)buffer)->enable); 
+                break;
+            case L2TCP_MSG_CTDB_SET_CH_DELAY: 
+                printf(" S%dC%d delay: %d", ((l2tcp_payload_ch_delay_t*)buffer)->slot, ((l2tcp_payload_ch_delay_t*)buffer)->channel, ((l2tcp_payload_ch_delay_t*)buffer)->delay); 
+                break;
+            case L2TCP_MSG_CTDB_SET_LIMITS: 
+                printf(" S%d min: %d, max: %d", ((l2tcp_payload_ctdb_limits_t*)buffer)->slot, ((l2tcp_payload_ctdb_limits_t*)buffer)->curr_limit_min, ((l2tcp_payload_ctdb_limits_t*)buffer)->curr_limit_max); 
+                break;
             case L2TCP_MSG_CTDB_GET_MONITORING:
-            case L2TCP_MSG_CTDB_GET_CONFIG: printf(" slot: %d", ((uint16_t*)buffer)[0]); break;
+            case L2TCP_MSG_CTDB_GET_CONFIG: 
+                printf(" slot: %d", ((uint16_t*)buffer)[0]); 
+                break;
+            case L2TCP_MSG_L2CB_RESET_TIB_COUNT:
+            case L2TCP_MSG_L2CB_START_L1SCALERS:
+            case L2TCP_MSG_L2CB_STOP_L1SCALERS: 
+            default:
+                // nothing to print here
+                break;
         }
         printf("\n");
     }
@@ -607,6 +634,16 @@ static void handle_request() {
         }
         case L2TCP_MSG_L2CB_RESET_TIB_COUNT: {
             cta_l2cb_resetTIBCounters();
+            send_ack(hdr.seq, show_msg);
+            break;
+        }
+        case L2TCP_MSG_L2CB_START_L1SCALERS: {
+            cta_ctdb_startAllL1Counters();
+            send_ack(hdr.seq, show_msg);
+            break;
+        }
+        case L2TCP_MSG_L2CB_STOP_L1SCALERS: {
+            cta_ctdb_stopAllL1Counters();
             send_ack(hdr.seq, show_msg);
             break;
         }
@@ -923,6 +960,57 @@ static void handle_request() {
                 } else {
                     if (g_server.verbose > 1) printf("  -> CONFIG S%d\n", slot);
                     send_all(g_server.client_fd, &resp, sizeof(resp));
+                }
+            }
+            break;
+        }
+        case L2TCP_MSG_L1SCALERS_POLL: {
+            struct timespec t0, t1, t2;
+            if (g_server.verbose > 2) get_now(&t0);
+
+            static l2tcp_msg_l1scalers_poll_t msg;
+            memset(&msg, 0, sizeof(msg));
+
+            int count = 0;
+            for (int s = L2TCP_MIN_SLOT; s <= L2TCP_MAX_SLOT; s++) {
+                if (is_slot_active(s)) count++;
+            }
+            msg.payload.count = (uint32_t)count;
+
+            int idx = 0;
+            int last_err = CTA_L2CB_NO_ERROR;
+            for (int s = L2TCP_MIN_SLOT; s <= L2TCP_MAX_SLOT && idx < count; s++) {
+                if (!is_slot_active(s)) continue;
+                l2tcp_payload_l1scalers_t *resp = &msg.payload.entries[idx];
+                resp->slot = (uint32_t)s;
+                int err;
+                if ((err = cta_ctdb_readL1Counter((uint16_t)s, (uint16_t)0, &resp->l1a_slot_count)) != CTA_L2CB_NO_ERROR) last_err = err;
+                for (int i = 0; i < 15; i++) {
+                    if ((err = cta_ctdb_readL1Counter((uint16_t)s, (uint16_t)(i + 1), &resp->l1_channel_count[i])) != CTA_L2CB_NO_ERROR) last_err = err;
+                }
+                idx++;
+            }
+
+            if (last_err != CTA_L2CB_NO_ERROR) {
+                send_error(hdr.seq, L2TCP_ERR_HARDWARE_ERROR, cta_l2cb_getErrorString(last_err));
+            } else {
+                if (g_server.verbose > 2) get_now(&t1);
+
+                uint16_t payload_size = (uint16_t)(sizeof(uint32_t) + count * sizeof(l2tcp_payload_l1scalers_t));
+
+                msg.hdr.type = L2TCP_MSG_L1SCALERS_POLL;
+                msg.hdr.seq = hdr.seq;
+                msg.hdr.len = payload_size;
+                msg.hdr.reserved = 0;
+
+                if (g_server.verbose > 1) printf("  -> L1SCALERS POLL (%d slots, %u bytes)\n", count, payload_size);
+
+                send_all(g_server.client_fd, &msg, sizeof(l2tcp_header_t) + payload_size);
+
+                if (g_server.verbose > 2) {
+                    get_now(&t2);
+                    printf("  [DEBUG] L1SCALERS: collect=%.2fms, send=%.2fms, total=%.2fms\n",
+                           TIMESPEC_DIFF_MS(t0, t1), TIMESPEC_DIFF_MS(t1, t2), TIMESPEC_DIFF_MS(t0, t2));
                 }
             }
             break;

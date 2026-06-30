@@ -113,6 +113,11 @@ static inline void cta_l2cb_delay_cycles(volatile uint32_t cycles)
 #define ADDR_CTA_CTDB_UNDER_CUR	0x14		// under current detected status register
 #define ADDR_CTA_CTDB_CTRL		0x20		// control register
 #define ADDR_CTA_CTDB_STAT		0x21		// status register
+#define ADDR_CTA_CTDB_L1A_CTL   0x22        // L1A trigger counter lsw (bits 0..15)
+#define ADDR_CTA_CTDB_L1A_CTH   0x23        // L1A trigger counter msw (bits 16..31)
+#define BASE_CTA_CTDB_L1_CTL_00 0x30        // Base for L1 trigger counter lsw (bits 0..15)
+#define BASE_CTA_CTDB_L1_CTH_00 0x31        // Base for L1 trigger counter msw (bits 16..31)
+#define ADDR_CTA_CTDB_CTRL_BC	0xA0		// control register broadcast
 #define ADDR_CTA_CTDB_PON_TIME  0xFB		// power on time in seconds, read-only, reset on power cycle
 #define ADDR_CTA_CTDB_POFF_TIME 0xFC		// power off time in seconds, read-only, reset on power cycle
 #define ADDR_CTA_CTDB_ADC_SRATE	0xFD		// adc rate register
@@ -636,6 +641,51 @@ static inline int cta_ctdb_setSlaveRegister(uint16_t _slot, uint16_t _address, u
 {
 	if (!cta_l2cb_isValidSLot(_slot)) return CTA_L2CB_INVALID_PARAMETER;
 	return cta_l2cb_spi_write(_slot, _address, _value);
+}
+
+
+// ***** Helper Functions to start, stop and read L1 scalers (v4+)
+
+static inline void cta_ctdb_startAllL1Counters()
+{
+	cta_l2cb_spi_write(1, ADDR_CTA_CTDB_CTRL_BC, 0x0000); // broadcast disable counters
+	cta_l2cb_spi_write(1, ADDR_CTA_CTDB_CTRL_BC, 0x4000); // broadcast reset counters
+	cta_l2cb_spi_write(1, ADDR_CTA_CTDB_CTRL_BC, 0x0000); // broadcast clear reset bit
+	cta_l2cb_spi_write(1, ADDR_CTA_CTDB_CTRL_BC, 0x2000); // broadcast enable counters
+}
+
+static inline void cta_ctdb_stopAllL1Counters()
+{
+	cta_l2cb_spi_write(1, ADDR_CTA_CTDB_CTRL_BC, 0x0000); // broadcast disable counters
+}
+
+static inline int cta_ctdb_readL1Counter(uint16_t _slot, uint16_t _channel, uint32_t* _value)
+{
+	uint16_t addr_l;
+	uint16_t addr_h;
+	uint16_t value16;
+	int retval;
+
+	if (!cta_l2cb_isValidSLot(_slot)) return CTA_L2CB_INVALID_PARAMETER;
+	if (_channel>15) return CTA_L2CB_INVALID_PARAMETER;
+	if (!_value) return CTA_L2CB_INVALID_PARAMETER;
+
+	if (_channel==0) {
+		addr_l = ADDR_CTA_CTDB_L1A_CTL;
+		addr_h = ADDR_CTA_CTDB_L1A_CTH;
+	} else {
+		addr_l = BASE_CTA_CTDB_L1_CTL_00 + (_channel<<1);
+		addr_h = BASE_CTA_CTDB_L1_CTH_00 + (_channel<<1);
+	}
+
+	retval = cta_l2cb_spi_read(_slot, addr_l, &value16);
+	if(retval == CTA_L2CB_NO_ERROR) {
+		*_value = value16;
+		retval = cta_l2cb_spi_read(_slot, addr_h, &value16);
+		*_value |= ((uint32_t)value16)<<16;
+	}
+
+	return retval;
 }
 
 
