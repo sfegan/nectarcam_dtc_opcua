@@ -461,6 +461,10 @@ void print_help() {
     printf("  tibblock <on|off>     : Set TIB trigger busy block enabled\n");
     printf("  tib_count             : Get TIB event count\n");
     printf("  tib_reset             : Reset TIB event count\n");
+    printf("  l1scalers_start       : Start all L1 counters\n");
+    printf("  l1scalers_stop        : Stop all L1 counters\n");
+    printf("  l1scalers <slot> [ch] : Get L1 counters for slot (ch 0=L1A, 1-15=L1)\n");
+    printf("  alll1scalers          : Get L1 counters for all slots\n");
     printf("  busy_mask [mask]      : Get or set unified 32-bit busy mask\n");
     printf("  busy_slot <s.> <o/f>: Set busy mask for specific slot\n");
     printf("  busy_stuck            : Get unified 32-bit busy stuck status\n");
@@ -616,6 +620,78 @@ void process_line(char* line) {
     } else if (strcmp(cmd, "tib_reset") == 0) {
         cta_l2cb_resetTIBCounters();
         printf("TIB Counters reset.\n");
+    } else if (strcmp(cmd, "l1scalers_start") == 0) {
+        cta_ctdb_startAllL1Counters();
+        printf("L1 counters started.\n");
+    } else if (strcmp(cmd, "l1scalers_stop") == 0) {
+        cta_ctdb_stopAllL1Counters();
+        printf("L1 counters stopped.\n");
+    } else if (strcmp(cmd, "l1scalers") == 0) {
+        if (n < 2) {
+            printf("Usage: l1scalers <slot> [ch]\n");
+        } else {
+            int slot = parse_int(tokens[1]);
+            if (n > 2) {
+                int ch = parse_int(tokens[2]);
+                uint32_t val;
+                int err = cta_ctdb_readL1Counter(slot, ch, &val);
+                if (err == CTA_L2CB_NO_ERROR) {
+                    if (ch == 0) {
+                        printf("Slot %d L1A Counter: %u\n", slot, val);
+                    } else {
+                        printf("Slot %d Ch %d L1 Counter: %u\n", slot, ch, val);
+                    }
+                } else {
+                    printf("Slot %d Ch %d L1 Counter: XXXX (Error: %s)\n", slot, ch, cta_l2cb_getErrorString(err));
+                }
+            } else {
+                uint32_t l1a;
+                int err = cta_ctdb_readL1Counter(slot, 0, &l1a);
+                if (err == CTA_L2CB_NO_ERROR) {
+                    printf("Slot %d L1A Counter: %u\n", slot, l1a);
+                } else {
+                    printf("Slot %d L1A Counter: XXXX (Error: %s)\n", slot, cta_l2cb_getErrorString(err));
+                }
+                for (int ch = 1; ch <= 15; ch++) {
+                    uint32_t val;
+                    err = cta_ctdb_readL1Counter(slot, ch, &val);
+                    if (err == CTA_L2CB_NO_ERROR) {
+                        printf("  Ch %02d: %u\n", ch, val);
+                    } else {
+                        printf("  Ch %02d: XXXX\n", ch);
+                    }
+                }
+            }
+        }
+    } else if (strcmp(cmd, "alll1scalers") == 0) {
+        int slots[] = CTA_L2CB_SLOT_LIST;
+        printf("Slot: ");
+        for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) printf("   S%02d   ", slots[s]);
+        printf("\n");
+        
+        printf("L1A:  ");
+        for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
+            uint32_t val;
+            if (cta_ctdb_readL1Counter(slots[s], 0, &val) == CTA_L2CB_NO_ERROR) {
+                printf(" %8u", val);
+            } else {
+                printf("     XXXX");
+            }
+        }
+        printf("\n");
+        
+        for (int ch = 1; ch <= 15; ch++) {
+            printf("Ch%02d: ", ch);
+            for (int s = 0; s < CTA_L2CB_SLOT_COUNT; s++) {
+                uint32_t val;
+                if (cta_ctdb_readL1Counter(slots[s], ch, &val) == CTA_L2CB_NO_ERROR) {
+                    printf(" %8u", val);
+                } else {
+                    printf("     XXXX");
+                }
+            }
+            printf("\n");
+        }
     } else if (strcmp(cmd, "busy_mask") == 0) {
         if (n > 1) {
             cta_l2cb_setBusyEnableMask(parse_int(tokens[1]));

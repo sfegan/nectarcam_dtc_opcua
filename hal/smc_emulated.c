@@ -69,6 +69,12 @@
 #define ADDR_CTA_CTDB_CUR_MAX   0x12
 #define ADDR_CTA_CTDB_OVER_CUR  0x13
 #define ADDR_CTA_CTDB_UNDER_CUR 0x14
+#define ADDR_CTA_CTDB_CTRL      0x20
+#define ADDR_CTA_CTDB_L1A_CTL   0x22
+#define ADDR_CTA_CTDB_L1A_CTH   0x23
+#define BASE_CTA_CTDB_L1_CTL_00 0x30
+#define BASE_CTA_CTDB_L1_CTH_00 0x31
+#define ADDR_CTA_CTDB_CTRL_BC   0xA0
 #define ADDR_CTA_CTDB_FREV      0xFF
 
 #define MAX_L2CB_REGISTERS      256
@@ -313,6 +319,41 @@ static void update_dynamic_state(void)
             if (legacy > 0xFFFF) legacy = 0xFFFF;
             emulated_driver.state->registers[ADDR_CTA_L2CB_TIBEVCT >> 1] = (uint16_t)legacy;
         }
+
+        /* Update CTDB L1 counters if enabled */
+        for (int slot = 1; slot < MAX_CTDB_SLOTS; slot++) {
+            if ((slot >= 1 && slot <= 9) || (slot >= 13 && slot <= 21)) {
+                uint16_t ctrl = emulated_driver.state->ctdb_registers[slot][ADDR_CTA_CTDB_CTRL];
+                if (ctrl & 0x2000) { // If L1 counters are enabled
+                    // 1. Update L1A counter (at the same rate as TIB event output counter)
+                    if (new_out > 0) {
+                        uint32_t l1a = emulated_driver.state->ctdb_registers[slot][ADDR_CTA_CTDB_L1A_CTL] |
+                                       ((uint32_t)emulated_driver.state->ctdb_registers[slot][ADDR_CTA_CTDB_L1A_CTH] << 16);
+                        l1a += new_out;
+                        emulated_driver.state->ctdb_registers[slot][ADDR_CTA_CTDB_L1A_CTL] = l1a & 0xFFFF;
+                        emulated_driver.state->ctdb_registers[slot][ADDR_CTA_CTDB_L1A_CTH] = (l1a >> 16) & 0xFFFF;
+                    }
+                    
+                    // 2. Update L1 channel counters (at the same rate as TIB camera input counter)
+                    if (new_in > 0) {
+                        uint16_t ponf = emulated_driver.state->ctdb_registers[slot][ADDR_CTA_CTDB_PONF];
+                        uint16_t mask = emulated_driver.state->l1_masks[slot];
+                        
+                        for (int ch = 1; ch <= 15; ch++) {
+                            if ((ponf & (1 << ch)) && (mask & (1 << ch))) {
+                                uint16_t addr_l = BASE_CTA_CTDB_L1_CTL_00 + (ch << 1);
+                                uint16_t addr_h = BASE_CTA_CTDB_L1_CTH_00 + (ch << 1);
+                                uint32_t l1 = emulated_driver.state->ctdb_registers[slot][addr_l] |
+                                              ((uint32_t)emulated_driver.state->ctdb_registers[slot][addr_h] << 16);
+                                l1 += new_in;
+                                emulated_driver.state->ctdb_registers[slot][addr_l] = l1 & 0xFFFF;
+                                emulated_driver.state->ctdb_registers[slot][addr_h] = (l1 >> 16) & 0xFFFF;
+                            }
+                        }
+                    }
+                }
+            }
+        }
         
         emulated_driver.state->tib.last_update = now;
     }
@@ -405,6 +446,32 @@ static void handle_spad_write(unsigned short value)
                         /* Disabling clears any tripped state */
                         emulated_driver.state->ctdb_tripped_under[slot] &= ~bit;
                         emulated_driver.state->ctdb_tripped_over[slot] &= ~bit;
+                    }
+                }
+            }
+
+            /* Handle L1 counter control (reset and enable) */
+            if (reg_addr == ADDR_CTA_CTDB_CTRL_BC) {
+                for (int s = 1; s < MAX_CTDB_SLOTS; s++) {
+                    if ((s >= 1 && s <= 9) || (s >= 13 && s <= 21)) {
+                        emulated_driver.state->ctdb_registers[s][ADDR_CTA_CTDB_CTRL] = sptx;
+                        if (sptx & 0x4000) { // Reset bit
+                            emulated_driver.state->ctdb_registers[s][ADDR_CTA_CTDB_L1A_CTL] = 0;
+                            emulated_driver.state->ctdb_registers[s][ADDR_CTA_CTDB_L1A_CTH] = 0;
+                            for (int ch = 1; ch <= 15; ch++) {
+                                emulated_driver.state->ctdb_registers[s][BASE_CTA_CTDB_L1_CTL_00 + (ch << 1)] = 0;
+                                emulated_driver.state->ctdb_registers[s][BASE_CTA_CTDB_L1_CTH_00 + (ch << 1)] = 0;
+                            }
+                        }
+                    }
+                }
+            } else if (reg_addr == ADDR_CTA_CTDB_CTRL) {
+                if (sptx & 0x4000) { // Reset bit
+                    emulated_driver.state->ctdb_registers[slot][ADDR_CTA_CTDB_L1A_CTL] = 0;
+                    emulated_driver.state->ctdb_registers[slot][ADDR_CTA_CTDB_L1A_CTH] = 0;
+                    for (int ch = 1; ch <= 15; ch++) {
+                        emulated_driver.state->ctdb_registers[slot][BASE_CTA_CTDB_L1_CTL_00 + (ch << 1)] = 0;
+                        emulated_driver.state->ctdb_registers[slot][BASE_CTA_CTDB_L1_CTH_00 + (ch << 1)] = 0;
                     }
                 }
             }

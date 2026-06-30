@@ -94,6 +94,7 @@ static size_t get_expected_payload_len(uint16_t type) {
         case L2TCP_MSG_BATCH_MONITOR_ALL:         return 0;
         case L2TCP_MSG_FAST_POLL:                 return 0;
         case L2TCP_MSG_SLOW_POLL:                 return 0;
+        case L2TCP_MSG_L1SCALERS_POLL:             return 0;
         default: return 0;
     }
 }
@@ -141,6 +142,7 @@ static const char* msg_type_to_str(uint16_t type) {
         case L2TCP_MSG_BATCH_MONITOR_ALL:         return "BATCH_MONITOR_ALL";
         case L2TCP_MSG_FAST_POLL:                 return "FAST_POLL";
         case L2TCP_MSG_SLOW_POLL:                 return "SLOW_POLL";
+        case L2TCP_MSG_L1SCALERS_POLL:             return "L1SCALERS_POLL";
         default: return "UNKNOWN";
     }
 }
@@ -284,6 +286,7 @@ static int is_polling_msg(uint16_t type) {
             type == L2TCP_MSG_BATCH_MONITOR_ALL ||
             type == L2TCP_MSG_FAST_POLL ||
             type == L2TCP_MSG_SLOW_POLL ||
+            type == L2TCP_MSG_L1SCALERS_POLL ||
             type == L2TCP_MSG_CTDB_GET_CONFIG);
 }
 
