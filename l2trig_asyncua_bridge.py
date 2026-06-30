@@ -164,6 +164,11 @@ class L2TriggerBridgeServer:
         ("ModuleIsMutable", [], ua.VariantType.Boolean, "Flag whether module state can be modified (flattened)"),
         ("ModuleSlotId", [], ua.VariantType.UInt16, "Crate slot ID per module (flattened)"),
         ("ModuleChannelId", [], ua.VariantType.UInt16, "Crate channel ID per module (flattened)"),
+        ("BoardL1AScalerCount", [], ua.VariantType.UInt32, "L1A scaler counts per board"),
+        ("ModuleL1ScalerCount", [], ua.VariantType.UInt32, "L1 scaler counts per channel (flattened)"),
+        ("BoardL1ScalerActive", [], ua.VariantType.Boolean, "L1 scaler active status per board"),
+        ("ModuleL1ScalerActive", [], ua.VariantType.Boolean, "L1 scaler active status per module (flattened)"),
+        ("CrateNumBoardL1ScalerActive", 0, ua.VariantType.UInt16, "Number of boards with active L1 scalers"),
     ]
 
     def __init__(self, 
@@ -257,6 +262,11 @@ class L2TriggerBridgeServer:
         self._last_rate_time = None
         self._tib_in_rate_ema = 0.0
         self._tib_out_rate_ema = 0.0
+
+        # L1 Scaler tracking
+        self._latest_l1_scalers: Dict[int, Any] = {}
+        self._l1scalers_were_active = False
+        self._latest_trig_enabled: Dict[int, int] = {}
 
     def _module_to_slot_channel(self, module: int) -> Tuple[int, int]:
         max_module = len(self.active_slots) * CHANNELS_PER_SLOT
@@ -388,7 +398,9 @@ class L2TriggerBridgeServer:
             "CrateTIBCameraInputCount", "CrateTIBEventOutputCount",
             "CrateTIBCameraInputRate", "CrateTIBEventOutputRate",
             "CrateNumPoweredModules", "CrateNumTriggerEnabledModules", "BoardBaseCurrent",
-            "ModuleCurrent", "ModuleState", "ModulePowerEnabled"
+            "ModuleCurrent", "ModuleState", "ModulePowerEnabled",
+            "BoardL1AScalerCount", "ModuleL1ScalerCount",
+            "BoardL1ScalerActive", "ModuleL1ScalerActive", "CrateNumBoardL1ScalerActive"
         }
         fast_interval = float(self.poll_interval * 1000)
         slow_interval = float(self.poll_interval * self.poll_ratio * 1000)
@@ -782,6 +794,20 @@ class L2TriggerBridgeServer:
         await add_described_method("SetSlotChannelIsImmutable", set_slot_channel_is_immutable,
                                    inputs=[a("slot", ua.VariantType.Int16), a("channel", ua.VariantType.Int16), a("immutable", ua.VariantType.Boolean)])
 
+        @uamethod
+        async def set_l1_scaler_enabled(parent_node, enabled: bool):
+            """Enable or disable L1 scalers on all boards."""
+            logger.info(f"Setting L1 scaler enabled to {enabled}")
+            async with self._lock:
+                if not await self._ensure_connected(): return "ERROR: Device not connected"
+                if enabled:
+                    await self.system.start_l1_scalers()
+                else:
+                    await self.system.stop_l1_scalers()
+                self._poll_event.set()
+            return f"OK: L1 scalers {'started' if enabled else 'stopped'}"
+        await add_described_method("SetL1ScalerEnabled", set_l1_scaler_enabled, inputs=[a("enabled", ua.VariantType.Boolean)])
+
     async def _write_fast_data(self, l2cb: L2CBStatus, monitoring: Dict[int, CTDBMonitoringData], timestamp: datetime.datetime, now: datetime.datetime):
         sc = self._get_status_code()
 
@@ -881,6 +907,47 @@ class L2TriggerBridgeServer:
         await self._set_var("ModuleState", ms, timestamp, sc)
         await self._set_var("ModulePowerEnabled", mpe, timestamp, sc)
 
+        # Board and Module L1 Scaler Active status & Counts
+        bl1_active = []
+        ml1_active = []
+        num_active_boards = 0
+        l1a_counts = []
+        l1_counts = []
+        
+        for slot in self.active_slots:
+            m = monitoring.get(slot)
+            trig_mask = self._latest_trig_enabled.get(slot, 0)
+            scaler = self._latest_l1_scalers.get(slot)
+            
+            if m:
+                bl1_active.append(m.l1scaler_active)
+                if m.l1scaler_active:
+                    num_active_boards += 1
+                for i in range(CHANNELS_PER_SLOT):
+                    ch = i + 1
+                    en = bool(m.power_enabled_mask & (1 << ch))
+                    trig_en = bool(trig_mask & (1 << ch))
+                    ml1_active.append(m.l1scaler_active and en and trig_en)
+            else:
+                bl1_active.append(False)
+                for _ in range(CHANNELS_PER_SLOT):
+                    ml1_active.append(False)
+            
+            if scaler:
+                l1a_counts.append(scaler.l1a_slot_count)
+                for i in range(CHANNELS_PER_SLOT):
+                    l1_counts.append(scaler.l1_channel_counts[i])
+            else:
+                l1a_counts.append(0)
+                for _ in range(CHANNELS_PER_SLOT):
+                    l1_counts.append(0)
+                    
+        await self._set_var("BoardL1ScalerActive", bl1_active, timestamp, sc)
+        await self._set_var("ModuleL1ScalerActive", ml1_active, timestamp, sc)
+        await self._set_var("CrateNumBoardL1ScalerActive", num_active_boards, timestamp, sc)
+        await self._set_var("BoardL1AScalerCount", l1a_counts, timestamp, sc)
+        await self._set_var("ModuleL1ScalerCount", l1_counts, timestamp, sc)
+
         # Update connection timers
         mono_now = time.monotonic()
         if self._connected != self._last_connected_state:
@@ -910,6 +977,7 @@ class L2TriggerBridgeServer:
         for slot in self.active_slots:
             c = configs.get(slot)
             if c:
+                self._latest_trig_enabled[slot] = c.trig_enabled_mask
                 bf.append(c.firmware_version); bmin.append(c.current_limit_min_ma); bmax.append(c.current_limit_max_ma)
                 for i in range(CHANNELS_PER_SLOT):
                     en = bool(c.trig_enabled_mask & (1 << (i + 1)))
@@ -940,6 +1008,19 @@ class L2TriggerBridgeServer:
             self._connected = True
             self._last_contact = time.monotonic()
             self._last_fast_poll_time = now
+            
+            # Check if L1 scalers need to be polled
+            any_l1scaler_active = any(m.l1scaler_active for m in mon.values())
+            if any_l1scaler_active or self._l1scalers_were_active:
+                try:
+                    l1_scalers = await self.system.get_l1_scalers()
+                    self._latest_l1_scalers = l1_scalers
+                except Exception as e:
+                    logger.error(f"Error polling L1 scalers: {e}")
+                self._l1scalers_were_active = any_l1scaler_active
+            else:
+                self._l1scalers_were_active = False
+                
             await self._write_fast_data(l2cb, mon, self._last_fast_poll_time, now)
         except Exception as e:
             logger.error(f"Fast poll error: {e}")
@@ -997,14 +1078,12 @@ class L2TriggerBridgeServer:
         if name not in self._vars: return
         node, vtype = self._vars[name]
         try:
-            kwargs = {
-                "Value": ua.Variant(value, vtype),
-                "SourceTimestamp": timestamp
-            }
+            dv = ua.DataValue()
+            dv.Value = ua.Variant(value, vtype)
+            dv.SourceTimestamp = timestamp
             if status is not None:
-                kwargs["StatusCode"] = status
+                dv.StatusCode = status
             
-            dv = ua.DataValue(**kwargs)
             await node.write_value(dv)
         except Exception as e: logger.error(f"Update {name} failed: {e}")
 
