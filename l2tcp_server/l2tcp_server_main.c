@@ -740,6 +740,8 @@ static void handle_request() {
                 if ((err = cta_ctdb_getOverCurrentErrors(slot, &resp.payload.over_curr_mask)) != CTA_L2CB_NO_ERROR) last_err = err;
                 if ((err = cta_ctdb_getUnderCurrentErrors(slot, &resp.payload.under_curr_mask)) != CTA_L2CB_NO_ERROR) last_err = err;
                 if ((err = cta_ctdb_getPowerEnabled(slot, &resp.payload.pwr_enabled_mask)) != CTA_L2CB_NO_ERROR) last_err = err;
+                if ((err = cta_ctdb_getSlaveRegister(slot, ADDR_CTA_CTDB_CTRL, &resp.payload.ctrl)) != CTA_L2CB_NO_ERROR) last_err = err;
+                if ((err = cta_ctdb_getSlaveRegister(slot, ADDR_CTA_CTDB_STAT, &resp.payload.stat)) != CTA_L2CB_NO_ERROR) last_err = err;
 
                 if (last_err != CTA_L2CB_NO_ERROR) {
                     send_error(hdr.seq, L2TCP_ERR_HARDWARE_ERROR, cta_l2cb_getErrorString(last_err));
@@ -782,6 +784,8 @@ static void handle_request() {
                 if ((err = cta_ctdb_getOverCurrentErrors((uint16_t)s, &resp->over_curr_mask)) != CTA_L2CB_NO_ERROR) last_err = err;
                 if ((err = cta_ctdb_getUnderCurrentErrors((uint16_t)s, &resp->under_curr_mask)) != CTA_L2CB_NO_ERROR) last_err = err;
                 if ((err = cta_ctdb_getPowerEnabled((uint16_t)s, &resp->pwr_enabled_mask)) != CTA_L2CB_NO_ERROR) last_err = err;
+                if ((err = cta_ctdb_getSlaveRegister((uint16_t)s, ADDR_CTA_CTDB_CTRL, &resp->ctrl)) != CTA_L2CB_NO_ERROR) last_err = err;
+                if ((err = cta_ctdb_getSlaveRegister((uint16_t)s, ADDR_CTA_CTDB_STAT, &resp->stat)) != CTA_L2CB_NO_ERROR) last_err = err;
                 
                 if (g_server.verbose > 2) {
                     struct timespec ts1;
@@ -848,6 +852,8 @@ static void handle_request() {
                 if ((err = cta_ctdb_getOverCurrentErrors((uint16_t)s, &resp->over_curr_mask)) != CTA_L2CB_NO_ERROR) last_err = err;
                 if ((err = cta_ctdb_getUnderCurrentErrors((uint16_t)s, &resp->under_curr_mask)) != CTA_L2CB_NO_ERROR) last_err = err;
                 if ((err = cta_ctdb_getPowerEnabled((uint16_t)s, &resp->pwr_enabled_mask)) != CTA_L2CB_NO_ERROR) last_err = err;
+                if ((err = cta_ctdb_getSlaveRegister((uint16_t)s, ADDR_CTA_CTDB_CTRL, &resp->ctrl)) != CTA_L2CB_NO_ERROR) last_err = err;
+                if ((err = cta_ctdb_getSlaveRegister((uint16_t)s, ADDR_CTA_CTDB_STAT, &resp->stat)) != CTA_L2CB_NO_ERROR) last_err = err;
                 idx++;
             }
 

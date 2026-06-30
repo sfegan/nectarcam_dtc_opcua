@@ -291,6 +291,7 @@ async def run_cli(host, port, keepalive_enabled):
                 print(f"  CTDB Current: {m.ctdb_current_ma:.2f} mA")
                 print(f"  Power Mask:   0x{m.power_enabled_mask:04x}")
                 print(f"  Errors:       Over=0x{m.over_current_errors:04x}, Under=0x{m.under_current_errors:04x}")
+                print(f"  L1 Scaler:    {'Active' if m.l1scaler_active else 'Inactive'}")
                 print(f"  Ch Currents:  " + ", ".join([f"{c:.1f}" for c in m.channel_currents_ma]))
 
             elif cmd == "mon_all":
@@ -300,7 +301,7 @@ async def run_cli(host, port, keepalive_enabled):
                 for slot in sorted(data.keys()):
                     m = data[slot]
                     err = m.over_current_errors | m.under_current_errors
-                    print(f"Slot {slot:2d}: CTDB={m.ctdb_current_ma:6.1f} mA, Pwr=0x{m.power_enabled_mask:04x}, Err=0x{err:04x}")
+                    print(f"Slot {slot:2d}: CTDB={m.ctdb_current_ma:6.1f} mA, Pwr=0x{m.power_enabled_mask:04x}, Err=0x{err:04x}{', L1 Active' if m.l1scaler_active else ''}")
 
             elif cmd == "fast_poll":
                 s, data = await system.get_fast_poll()
@@ -321,7 +322,7 @@ async def run_cli(host, port, keepalive_enabled):
                 for slot in sorted(data.keys()):
                     m = data[slot]
                     err = m.over_current_errors | m.under_current_errors
-                    print(f"  Slot {slot:2d}: CTDB={m.ctdb_current_ma:6.1f} mA, Pwr=0x{m.power_enabled_mask:04x}, Err=0x{err:04x}")
+                    print(f"  Slot {slot:2d}: CTDB={m.ctdb_current_ma:6.1f} mA, Pwr=0x{m.power_enabled_mask:04x}, Err=0x{err:04x}{', L1 Active' if m.l1scaler_active else ''}")
 
             elif cmd == "slow_poll":
                 data = await system.get_slow_poll()

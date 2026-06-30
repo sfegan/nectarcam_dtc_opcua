@@ -159,6 +159,8 @@ typedef struct {
     uint16_t over_curr_mask;
     uint16_t under_curr_mask;
     uint16_t pwr_enabled_mask;
+    uint16_t ctrl;
+    uint16_t stat;
 } l2tcp_payload_monitoring_t;
 
 /* L2TCP_MSG_CTDB_GET_CONFIG (Request: slot u16) (Response: below) */

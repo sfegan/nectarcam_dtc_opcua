@@ -112,6 +112,7 @@ class CTDBMonitoringData:
     over_current_errors: int
     under_current_errors: int
     power_enabled_mask: int
+    l1scaler_active: bool
 
 @dataclass
 class CTDBConfigData:
@@ -409,10 +410,10 @@ class L2TriggerSystem:
     # --- Monitoring ---
 
     def _parse_monitoring(self, data: bytes) -> CTDBMonitoringData:
-        # slot(u16), ctdb_curr(u16), ch_curr(u16*15), over(u16), under(u16), pwr(u16)
+        # slot(u16), ctdb_curr(u16), ch_curr(u16*15), over(u16), under(u16), pwr(u16), ctrl(u16), stat(u16)
         slot, ctdb_curr = struct.unpack_from("<HH", data, 0)
         ch_curr = list(struct.unpack_from("<" + "H" * 15, data, 4))
-        over, under, pwr = struct.unpack_from("<HHH", data, 4 + 30)
+        over, under, pwr, ctrl, stat = struct.unpack_from("<HHHHH", data, 4 + 30)
         
         return CTDBMonitoringData(
             slot=slot,
@@ -420,7 +421,8 @@ class L2TriggerSystem:
             channel_currents_ma=[c * 0.485 for c in ch_curr],
             over_current_errors=over,
             under_current_errors=under,
-            power_enabled_mask=pwr
+            power_enabled_mask=pwr,
+            l1scaler_active=bool(ctrl & 0x2000)
         )
 
     async def get_ctdb_monitoring(self, slot: int) -> CTDBMonitoringData:
@@ -432,7 +434,7 @@ class L2TriggerSystem:
         count = struct.unpack("<H", data[:2])[0]
         res = {}
         offset = 2
-        mon_size = struct.calcsize("<HH" + "H" * 15 + "HHH")
+        mon_size = struct.calcsize("<HH" + "H" * 15 + "HHHHH")
         for _ in range(count):
             mon = self._parse_monitoring(data[offset:offset+mon_size])
             res[mon.slot] = mon
@@ -448,7 +450,7 @@ class L2TriggerSystem:
         count = struct.unpack("<H", mon_data[:2])[0]
         res = {}
         offset = 2
-        mon_size = struct.calcsize("<HH" + "H" * 15 + "HHH")
+        mon_size = struct.calcsize("<HH" + "H" * 15 + "HHHHH")
         for _ in range(count):
             mon = self._parse_monitoring(mon_data[offset:offset+mon_size])
             res[mon.slot] = mon
