@@ -31,7 +31,9 @@ SLOT_WIDTH = 4  # 3 chars + 1 space
 VIEW_CURRENT = 0
 VIEW_TRIGGER = 1
 VIEW_DELAY = 2
-VIEW_NAMES = ["Power and Current (mA)", "L1 Trigger Enabled", "L1 Trigger Delay (10ps)"]
+VIEW_L1_SCALERS = 3
+VIEW_NAMES = ["Power and Current (mA)", "L1 Trigger Enabled", "L1 Trigger Delay (10ps)", "L1 Scaler Count"]
+NUM_VIEW_MODES = len(VIEW_NAMES)
 
 # ============================================================================
 # OPC UA State Container
@@ -66,6 +68,8 @@ class SystemState:
         self.board_base_curr = []
         self.board_limit_min = []
         self.board_limit_max = []
+        self.board_l1a_count = []
+        self.board_l1_scaler_en = []
         
         # Per-Module stats (Arrays, flattened)
         self.mod_pwr_en = []
@@ -74,6 +78,8 @@ class SystemState:
         self.mod_trig_en = []
         self.mod_trig_delay = []
         self.mod_is_mutable = []
+        self.mod_l1_scaler_count = []
+        self.mod_l1_scaler_en = []
 
 # ============================================================================
 # TUI Application
@@ -154,6 +160,8 @@ class L2TrigTUI:
             s.board_base_curr = await read("BoardBaseCurrent") or []
             s.board_limit_min = await read("BoardCurrentLimitMin") or []
             s.board_limit_max = await read("BoardCurrentLimitMax") or []
+            s.board_l1a_count = await read("BoardL1AScalerCount") or []
+            s.board_l1_scaler_en = await read("BoardL1ScalerEnabled") or []
             
             s.mod_pwr_en = await read("ModulePowerEnabled") or []
             s.mod_curr = await read("ModuleCurrent") or []
@@ -161,6 +169,8 @@ class L2TrigTUI:
             s.mod_trig_en = await read("ModuleTriggerEnabled") or []
             s.mod_trig_delay = await read("ModuleTriggerDelay") or []
             s.mod_is_mutable = await read("ModuleIsMutable") or []
+            s.mod_l1_scaler_count = await read("ModuleL1ScalerCount") or []
+            s.mod_l1_scaler_en = await read("ModuleL1ScalerEnabled") or []
 
         except Exception:
             # Silence background errors to avoid flickering
@@ -171,6 +181,24 @@ class L2TrigTUI:
             await self.root_node.call_method(f"{self.ns_idx}:{method_name}", *args)
         except Exception:
             pass
+
+    @staticmethod
+    def _fmt_count3(value) -> str:
+        try:
+            value = int(value)
+        except (TypeError, ValueError):
+            return "???"
+        if value < 0:
+            return "???"
+        if value < 1000:
+            return f"{value:3d}"
+        if value < 100000:
+            return f"{value // 1000:2d}k"
+        if value < 1000000:
+            return f"{value // 100000}e5"
+        if value < 100000000:
+            return f"{value // 1000000:2d}M"
+        return ">>M"
 
     def draw(self, stdscr):
         stdscr.erase()
@@ -211,21 +239,34 @@ class L2TrigTUI:
         show_current = True
         show_trigger = False
         show_delay = False
+        show_l1_scalers = False
         
-        if w >= 240:
+        if w >= 320:
             show_trigger = True
             show_delay = True
+            show_l1_scalers = True
             off_trig = matrix_w + 3
             off_delay = off_trig + matrix_w + 3
+            off_l1_scalers = off_delay + matrix_w + 3
+        elif w >= 240:
+            show_trigger = True
+            show_l1_scalers = (self.view_mode_right == VIEW_L1_SCALERS)
+            show_delay = not show_l1_scalers
+            off_trig = matrix_w + 3
+            off_delay = off_trig + matrix_w + 3
+            off_l1_scalers = off_trig + matrix_w + 3
         elif w >= 160:
             show_trigger = (self.view_mode_right == VIEW_TRIGGER)
             show_delay = (self.view_mode_right == VIEW_DELAY)
+            show_l1_scalers = (self.view_mode_right == VIEW_L1_SCALERS)
             off_trig = matrix_w + 3
             off_delay = matrix_w + 3
+            off_l1_scalers = matrix_w + 3
         else:
             show_current = (self.view_mode_narrow == VIEW_CURRENT)
             show_trigger = (self.view_mode_narrow == VIEW_TRIGGER)
             show_delay = (self.view_mode_narrow == VIEW_DELAY)
+            show_l1_scalers = (self.view_mode_narrow == VIEW_L1_SCALERS)
 
         def draw_matrix(y_off, x_off, mode):
             # Title
@@ -276,6 +317,11 @@ class L2TrigTUI:
                     elif mode == VIEW_DELAY:
                         # 10ps units to fit 3 chars (e.g. 5ns = 500 * 10ps)
                         val_str = f"{int(s.mod_trig_delay[m_idx] * 100):3d}"
+                    elif mode == VIEW_L1_SCALERS:
+                        count = s.mod_l1_scaler_count[m_idx] if m_idx < len(s.mod_l1_scaler_count) else None
+                        val_str = self._fmt_count3(count)
+                        enabled = s.mod_l1_scaler_en[m_idx] if m_idx < len(s.mod_l1_scaler_en) else False
+                        attr = curses.color_pair(2) if enabled else curses.A_DIM
                     
                     # Highlight Cursor using REVERSE
                     if idx == self.sel_slot_idx and ch == self.sel_chan:
@@ -287,6 +333,7 @@ class L2TrigTUI:
         if show_current: draw_matrix(y_mat, 0, VIEW_CURRENT)
         if show_trigger: draw_matrix(y_mat, off_trig if w >= 160 else 0, VIEW_TRIGGER)
         if show_delay:   draw_matrix(y_mat, off_delay if w >= 160 else 0, VIEW_DELAY)
+        if show_l1_scalers: draw_matrix(y_mat, off_l1_scalers if w >= 160 else 0, VIEW_L1_SCALERS)
 
         # 3. Board Stats Zone (Footer of matrix, with 1-line gap)
         y_board = y_mat + 18
@@ -296,6 +343,7 @@ class L2TrigTUI:
         stdscr.addstr(y_board + 3, 0, "TIB Busy Enabled : ")
         stdscr.addstr(y_board + 4, 0, "Current Min (mA) : ")
         stdscr.addstr(y_board + 5, 0, "Current Max (mA) : ")
+        stdscr.addstr(y_board + 6, 0, "L1A Scaler Count : ")
 
         label_width = 19
         for i, slot in enumerate(s.board_slots):
@@ -328,12 +376,17 @@ class L2TrigTUI:
             max_val = f"{int(s.board_limit_max[i]):3d}" if i < len(s.board_limit_max) else "???"
             stdscr.addstr(y_board + 5, x, max_val, col_attr)
 
+            l1a_count = s.board_l1a_count[i] if i < len(s.board_l1a_count) else None
+            l1a_en = s.board_l1_scaler_en[i] if i < len(s.board_l1_scaler_en) else False
+            l1a_attr = curses.color_pair(2) if l1a_en else curses.A_DIM
+            stdscr.addstr(y_board + 6, x, self._fmt_count3(l1a_count), l1a_attr)
+
         # 4. Menu Zone
-        y_menu = y_board + 7
+        y_menu = y_board + 8
         if h > y_menu:
             slot_id = s.board_slots[self.sel_slot_idx]
             menu_lines = [
-                "Global: [P/p] All Pwr ON/OFF, [T/t] All Trig, [B/b] All Busy, [M/m] MCF, [R] Reset TIB, [E] Emergency",
+                "Global: [P/p] All Pwr ON/OFF, [T/t] All Trig, [L/l] L1 Scalers, [B/b] All Busy, [M/m] MCF, [R] Reset TIB, [E] Emergency",
                 "Params: [</>] MCF Thr, [{/}] MCF Delay, [+/-] L1 Deadtime",
                 f"Module: S{slot_id:02d} C{self.sel_chan:02d} | [O/o] Pwr, [Y/y] Trig, [D/d] Delay, [I/i] Immutable",
                 f"Board : S{slot_id:02d}     | [K/k] TIB busy enabled, [N/n] Current min, [X/x] Current max",
@@ -375,6 +428,8 @@ class L2TrigTUI:
             elif ch == ord('p'): await self.call("SetAllPowerEnabled", False); self._redraw_event.set()
             elif ch == ord('T'): await self.call("SetAllTriggerEnabled", True); self._redraw_event.set()
             elif ch == ord('t'): await self.call("SetAllTriggerEnabled", False); self._redraw_event.set()
+            elif ch == ord('L'): await self.call("SetL1ScalerEnabled", True); self._redraw_event.set()
+            elif ch == ord('l'): await self.call("SetL1ScalerEnabled", False); self._redraw_event.set()
             elif ch == ord('B'): await self.call("SetAllBusyEnabled", True); self._redraw_event.set()
             elif ch == ord('b'): await self.call("SetAllBusyEnabled", False); self._redraw_event.set()
             elif ch == ord('M'): await self.call("SetMCFEnabled", True); self._redraw_event.set()
@@ -385,10 +440,10 @@ class L2TrigTUI:
             elif ch == ord('c'):
                 h, w = stdscr.getmaxyx()
                 if w >= 160:
-                    self.view_mode_right = (self.view_mode_right + 1) % 3
+                    self.view_mode_right = (self.view_mode_right + 1) % NUM_VIEW_MODES
                     if self.view_mode_right == VIEW_CURRENT: self.view_mode_right = VIEW_TRIGGER
                 else:
-                    self.view_mode_narrow = (self.view_mode_narrow + 1) % 3
+                    self.view_mode_narrow = (self.view_mode_narrow + 1) % NUM_VIEW_MODES
                 self._redraw_event.set()
 
             # Parameters

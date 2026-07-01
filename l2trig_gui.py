@@ -27,6 +27,7 @@ class DisplayMode(Enum):
     CURRENT = "Current (mA)"
     TRIGGER = "Trigger Enabled"
     DELAY = "Trigger Delay (ns)"
+    L1_SCALERS = "L1 Scaler Count"
     STATE = "Module State"
     MODIFIABLE = "Modifiable"
 
@@ -237,6 +238,10 @@ class ModuleIndicator(tk.Canvas):
         self.state = "off"
         self.trigger_enabled = False
         self.trigger_delay = 0.0
+        self.l1_scaler_count = 0
+        self.l1_scaler_delta = 0
+        self.l1_scaler_scale = 0.0
+        self.l1_scaler_enabled = False
         self.is_modifiable = True
         
         # Create text item - will be updated dynamically
@@ -310,6 +315,15 @@ class ModuleIndicator(tk.Canvas):
             bg = f"#{r:02x}00{b:02x}"
             fg = "white"
             text = f"S{self.slot}\nC{self.channel}\n{self.trigger_delay:.2f}"
+
+        elif mode == DisplayMode.L1_SCALERS:
+            val = min(max(self.l1_scaler_scale, 0.0), 1.0)
+            r = int(val * 255)
+            g = int((1.0 - abs(val - 0.5) * 2.0) * 220)
+            b = int((1.0 - val) * 255)
+            bg = f"#{r:02x}{g:02x}{b:02x}"
+            fg = "white" if val < 0.35 or val > 0.75 else "black"
+            text = f"S{self.slot}\nC{self.channel}\n{self.l1_scaler_delta}"
         
         elif mode == DisplayMode.STATE:
             state_colors = {
@@ -349,6 +363,7 @@ class ModuleMatrix(tk.Frame):
         self.opcua_client = opcua_client
         self.min_module_width = 10
         self.min_module_height = 10
+        self._l1_scaler_counts: List[int] = []
         
         self.init_ui()
         self.bind("<Configure>", self.on_resize)
@@ -541,6 +556,40 @@ class ModuleMatrix(tk.Frame):
             except TypeError:
                 pass
 
+        elif var_name == "ModuleL1ScalerCount":
+            try:
+                self._l1_scaler_counts = [int(val) for val in value]
+                self._update_l1_scaler_display_values()
+            except TypeError:
+                pass
+
+        elif var_name == "ModuleL1ScalerEnabled":
+            try:
+                for idx, val in enumerate(value):
+                    if idx < len(self.modules):
+                        self.modules[idx].l1_scaler_enabled = bool(val)
+                        self.modules[idx].update_display(self.display_mode)
+            except TypeError:
+                pass
+
+    def _update_l1_scaler_display_values(self):
+        """Update L1 scaler deltas and color-scale values from raw counts."""
+        counts = self._l1_scaler_counts[:len(self.modules)]
+        if counts:
+            min_count = min(counts)
+            max_count = max(counts)
+            span = max_count - min_count
+        else:
+            min_count = 0
+            span = 0
+
+        for idx, module in enumerate(self.modules):
+            count = counts[idx] if idx < len(counts) else 0
+            module.l1_scaler_count = count
+            module.l1_scaler_delta = count - min_count
+            module.l1_scaler_scale = (module.l1_scaler_delta / span) if span > 0 else 0.0
+            module.update_display(self.display_mode)
+
 
 class ControlPanel(tk.Frame):
     """Control panel for crate-level settings"""
@@ -647,6 +696,13 @@ class ControlPanel(tk.Frame):
         # Trigger control group
         trigger_frame = ttk.LabelFrame(self, text="Trigger Control", padding=5)
         trigger_frame.pack(fill=tk.X, padx=2, pady=2)  # fill X only, no expand
+
+        self.l1_scaler_enabled_var = tk.BooleanVar()
+        ttk.Checkbutton(
+            trigger_frame, text="L1 Scalers Enabled",
+            variable=self.l1_scaler_enabled_var,
+            command=self.on_l1_scaler_enabled_changed
+        ).pack(fill=tk.X, pady=1)
         
         ttk.Button(
             trigger_frame, text="Enable All Triggers",
@@ -691,6 +747,11 @@ class ControlPanel(tk.Frame):
     def on_l1_deadtime_changed(self):
         self.opcua_client.run_async(
             self.opcua_client.call_method("SetL1Deadtime", self.l1_deadtime_var.get())
+        )
+
+    def on_l1_scaler_enabled_changed(self):
+        self.opcua_client.run_async(
+            self.opcua_client.call_method("SetL1ScalerEnabled", self.l1_scaler_enabled_var.get())
         )
     
     def on_ramp_up(self):
@@ -753,6 +814,12 @@ class ControlPanel(tk.Frame):
             self.mcf_delay_var.set(float(value))
         elif var_name == "CrateL1Deadtime":
             self.l1_deadtime_var.set(float(value))
+        elif var_name == "BoardL1ScalerEnabled":
+            try:
+                vals = [bool(v) for v in value]
+                self.l1_scaler_enabled_var.set(any(vals))
+            except TypeError:
+                self.l1_scaler_enabled_var.set(False)
 
 
 class StatusPanel(tk.Frame):
