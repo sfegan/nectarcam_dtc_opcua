@@ -264,9 +264,7 @@ class L2TriggerBridgeServer:
         self._tib_out_rate_ema = 0.0
 
         # L1 Scaler tracking
-        self._latest_l1_scalers: Dict[int, Any] = {}
         self._l1scalers_were_active = False
-        self._latest_trig_enabled: Dict[int, int] = {}
 
     def _module_to_slot_channel(self, module: int) -> Tuple[int, int]:
         max_module = len(self.active_slots) * CHANNELS_PER_SLOT
@@ -305,6 +303,7 @@ class L2TriggerBridgeServer:
             self._last_contact = now
             self._poll_event.set()
             self._reconnect_delay = 1.0
+            self._l1scalers_were_active = True  # force scaler poll on first cycle after reconnect
             return True
         except asyncio.TimeoutError as e:
             logger.warning(f"TCP connection timeout: {e} (connect: {self.tcp_connect_timeout}s)")
@@ -979,7 +978,6 @@ class L2TriggerBridgeServer:
         for slot in self.active_slots:
             c = configs.get(slot)
             if c:
-                self._latest_trig_enabled[slot] = c.trig_enabled_mask
                 bf.append(c.firmware_version); bmin.append(c.current_limit_min_ma); bmax.append(c.current_limit_max_ma)
                 for i in range(CHANNELS_PER_SLOT):
                     en = bool(c.trig_enabled_mask & (1 << (i + 1)))
@@ -1015,17 +1013,13 @@ class L2TriggerBridgeServer:
             # Check if L1 scalers need to be polled
             any_l1scaler_active = any(m.l1scaler_active for m in mon.values())
             if any_l1scaler_active or self._l1scalers_were_active:
-                try:
-                    l1_scalers = await self.system.get_l1_scalers()
-                    self._latest_l1_scalers = l1_scalers
-                except Exception as e:
-                    logger.error(f"Error polling L1 scalers: {e}")
-                self._l1scalers_were_active = any_l1scaler_active
+                l1_scalers = await self.system.get_l1_scalers()
             else:
-                self._l1scalers_were_active = False
+                l1_scalers = {}
+            self._l1scalers_were_active = any_l1scaler_active
                 
             await self._write_fast_data(l2cb, mon, self._last_fast_poll_time, now)
-            await self._write_l1scaler_data(mon, self._latest_l1_scalers, self._last_fast_poll_time)
+            await self._write_l1scaler_data(mon, l1_scalers, self._last_fast_poll_time)
         except Exception as e:
             logger.error(f"Fast poll error: {e}")
             self._connected = False
