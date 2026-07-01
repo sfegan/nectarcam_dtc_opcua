@@ -167,9 +167,9 @@ class L2TriggerBridgeServer:
         ("BoardL1AScalerCount", [], ua.VariantType.UInt32, "L1A scaler counts per board"),
         ("ModuleL1ScalerCount", [], ua.VariantType.UInt32, "L1 scaler counts per channel (flattened)"),
         ("SystemL1ScalerPollingEnabled", False, ua.VariantType.Boolean, "True while L1 scaler count polling is enabled"),
-        ("BoardL1ScalerEnabled", [], ua.VariantType.Boolean, "L1 scaler enabled status per board"),
+        ("BoardL1AScalerEnabled", [], ua.VariantType.Boolean, "L1 scaler enabled status per board"),
         ("ModuleL1ScalerEnabled", [], ua.VariantType.Boolean, "L1 scaler enabled status per module (flattened)"),
-        ("CrateNumBoardL1ScalerEnabled", 0, ua.VariantType.UInt16, "Number of boards with L1 scalers enabled"),
+        ("CrateNumBoardL1AScalerEnabled", 0, ua.VariantType.UInt16, "Number of boards with L1 scalers enabled"),
     ]
 
     def __init__(self, 
@@ -401,7 +401,7 @@ class L2TriggerBridgeServer:
             "ModuleCurrent", "ModuleState", "ModulePowerEnabled",
             "BoardL1AScalerCount", "ModuleL1ScalerCount",
             "SystemL1ScalerPollingEnabled",
-            "BoardL1ScalerEnabled", "ModuleL1ScalerEnabled", "CrateNumBoardL1ScalerEnabled"
+            "BoardL1AScalerEnabled", "ModuleL1ScalerEnabled", "CrateNumBoardL1AScalerEnabled"
         }
         fast_interval = float(self.poll_interval * 1000)
         slow_interval = float(self.poll_interval * self.poll_ratio * 1000)
@@ -966,9 +966,9 @@ class L2TriggerBridgeServer:
                 l1a_counts.append(0)
                 l1_counts.extend([0] * CHANNELS_PER_SLOT)
 
-        await self._set_var("BoardL1ScalerEnabled", bl1_enabled, timestamp, sc)
+        await self._set_var("BoardL1AScalerEnabled", bl1_enabled, timestamp, sc)
         await self._set_var("ModuleL1ScalerEnabled", ml1_enabled, timestamp, sc)
-        await self._set_var("CrateNumBoardL1ScalerEnabled", num_active_boards, timestamp, sc)
+        await self._set_var("CrateNumBoardL1AScalerEnabled", num_active_boards, timestamp, sc)
         await self._set_var("SystemL1ScalerPollingEnabled", polling_enabled, timestamp, sc)
         if polling_enabled or force_count_update:
             await self._set_var("BoardL1AScalerCount", l1a_counts, timestamp, sc)

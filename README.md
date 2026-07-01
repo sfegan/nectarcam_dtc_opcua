@@ -168,7 +168,7 @@ All monitoring data is accessible under `L2Trigger.Monitoring`:
 - `CrateNumMutableModules` (`UInt16`) — Total actively controlled modules
 - `CrateNumPoweredModules` (`UInt16`) — Modules currently powered
 - `CrateNumTriggerEnabledModules` (`UInt16`) — Modules with trigger enabled
-- `CrateNumBoardL1ScalerEnabled` (`UInt16`) — CTDB boards with L1 scalers enabled
+- `CrateNumBoardL1AScalerEnabled` (`UInt16`) — CTDB boards with L1 scalers enabled
 - `SystemL1ScalerPollingEnabled` (`Boolean`) — True while the bridge is polling L1/L1A scaler counts
 
 **L2CB Trigger Configuration (Scalars):**
@@ -187,7 +187,7 @@ All monitoring data is accessible under `L2Trigger.Monitoring`:
 - `BoardBaseCurrent` (`Double[]`) — Total current per CTDB board (mA in 0.485mA steps)
 - `BoardCurrentLimitMin/Max` (`Double[]`) — Current safety limits per CTDB board (mA in 0.485mA steps)
 - `BoardL1AScalerCount` (`UInt32[]`) — L1A scaler count per CTDB board
-- `BoardL1ScalerEnabled` (`Boolean[]`) — L1 scaler counting state per CTDB board
+- `BoardL1AScalerEnabled` (`Boolean[]`) — L1 scaler counting state per CTDB board
 
 **Per-Module Data (Arrays; one element per configured channel):**
 - `ModulePowerEnabled` (`Boolean[]`) — Power state (1=on/0=off)

@@ -161,7 +161,7 @@ class L2TrigTUI:
             s.board_limit_min = await read("BoardCurrentLimitMin") or []
             s.board_limit_max = await read("BoardCurrentLimitMax") or []
             s.board_l1a_count = await read("BoardL1AScalerCount") or []
-            s.board_l1_scaler_en = await read("BoardL1ScalerEnabled") or []
+            s.board_l1_scaler_en = await read("BoardL1AScalerEnabled") or []
             
             s.mod_pwr_en = await read("ModulePowerEnabled") or []
             s.mod_curr = await read("ModuleCurrent") or []

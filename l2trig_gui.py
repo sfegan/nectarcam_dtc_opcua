@@ -814,7 +814,7 @@ class ControlPanel(tk.Frame):
             self.mcf_delay_var.set(float(value))
         elif var_name == "CrateL1Deadtime":
             self.l1_deadtime_var.set(float(value))
-        elif var_name == "BoardL1ScalerEnabled":
+        elif var_name == "BoardL1AScalerEnabled":
             try:
                 vals = [bool(v) for v in value]
                 self.l1_scaler_enabled_var.set(any(vals))
