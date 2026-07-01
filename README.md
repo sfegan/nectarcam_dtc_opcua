@@ -99,6 +99,10 @@ The **Direct Client** (`l2trig_direct_client`) provides native access to the har
 | `glitch <on\|off>` | Enable/Disable busy glitch filter |
 | `tibblock <on\|off>` | Enable/Disable TIB trigger busy block |
 | `deadtime [val]` | Get/Set L1 deadtime (5ns steps, 0-255) |
+| `l1scalers_start` | Start L1 scaler counters on all CTDB boards |
+| `l1scalers_stop` | Stop L1 scaler counters on all CTDB boards |
+| `l1scalers <slot> [ch]` | Read L1 scaler counters for one slot; channel 0 is L1A, channels 1-15 are module L1 counters |
+| `alll1scalers` | Read L1 scaler counters for all configured slots |
 | `trigmask <slot> [m]` | Get/Set trigger mask (16-bit hex) |
 | `trig <slot> <ch> [o]`| Get/Set trigger for specific channel |
 | `alltrig [on\|off]` | Set all or show matrix of trigger masks |
@@ -164,6 +168,7 @@ All monitoring data is accessible under `L2Trigger.Monitoring`:
 - `CrateNumMutableModules` (`UInt16`) — Total actively controlled modules
 - `CrateNumPoweredModules` (`UInt16`) — Modules currently powered
 - `CrateNumTriggerEnabledModules` (`UInt16`) — Modules with trigger enabled
+- `CrateNumBoardL1ScalerEnabled` (`UInt16`) — CTDB boards with L1 scalers enabled
 
 **L2CB Trigger Configuration (Scalars):**
 - `CrateMCFEnabled` (`Boolean`) — MCF propagation state
@@ -180,6 +185,8 @@ All monitoring data is accessible under `L2Trigger.Monitoring`:
 - `BoardBusyStuckStatus` (`Boolean[]`) — BUSY stuck status per board
 - `BoardBaseCurrent` (`Double[]`) — Total current per CTDB board (mA in 0.485mA steps)
 - `BoardCurrentLimitMin/Max` (`Double[]`) — Current safety limits per CTDB board (mA in 0.485mA steps)
+- `BoardL1AScalerCount` (`UInt32[]`) — L1A scaler count per CTDB board
+- `BoardL1ScalerEnabled` (`Boolean[]`) — L1 scaler counting state per CTDB board
 
 **Per-Module Data (Arrays; one element per configured channel):**
 - `ModulePowerEnabled` (`Boolean[]`) — Power state (1=on/0=off)
@@ -190,6 +197,8 @@ All monitoring data is accessible under `L2Trigger.Monitoring`:
 - `ModuleIsMutable` (`Boolean[]`) — Whether server controls this module
 - `ModuleSlotId` (`UInt16[]`) — Crate slot ID for this module
 - `ModuleChannelId` (`UInt16[]`) — Crate channel ID for this module
+- `ModuleL1ScalerCount` (`UInt32[]`) — L1 scaler count per module, flattened in module order
+- `ModuleL1ScalerEnabled` (`Boolean[]`) — L1 scaler counting state per module, flattened in module order
 
 **Module Numbering:**
 Modules are numbered consecutively starting from 1, ordered by slot and channel. For example, with all slots enabled:
@@ -228,6 +237,7 @@ Methods return a string prefixed with **`OK:`** or **`ERROR:`**. Boards are inde
 | `SetBusyGlitchFilterEnabled`| `enabled: Boolean` | Enable/Disable busy glitch filter |
 | `SetTIBTriggerBusyBlockEnabled`| `enabled: Boolean` | Enable/Disable TIB trigger blocking |
 | `SetL1Deadtime` | `deadtime: Double` | Set L1 deadtime in ns (0-1275ns in 5ns steps) |
+| `SetL1ScalerEnabled` | `enabled: Boolean` | Start/stop L1 scaler counters on all active boards |
 | `SetModuleIsImmutable` | `module: Int32, immutable: Boolean` | Set whether a module is immutable (protected from changes) |
 | `SetSlotChannelIsImmutable` | `slot: Int16, channel: Int16, immutable: Boolean` | Set whether a module is immutable by slot and channel |
 

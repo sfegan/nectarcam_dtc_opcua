@@ -7,6 +7,7 @@ This document describes the binary protocol used for communication between the N
 - **Transport:** TCP/IP
 - **Port:** `4242`
 - **Byte Order:** Little Endian
+- **Current Protocol Version:** `6`
 - **Connection Model:** Single-client: the server accepts one connection at a time; new connections are rejected while the original remains open (a watchdog timer protects against clients that become unresponsive).
 
 ## Protocol Header
@@ -68,6 +69,7 @@ Functional commands (like Power Ramp or Monitoring) may return errors or produce
 | `0x17` | `L2TCP_MSG_L2CB_SET_BUSY_ENABLE_MASK`| Set Busy Enable Mask. | `uint32` | `ACK` |
 | `0x18` | `L2TCP_MSG_L2CB_SET_BUSY_ENABLE_SLOT`| Set Busy Enable for Slot. | `Slot Ctrl` | `ACK` |
 | `0x19` | `L2TCP_MSG_L2CB_RESET_TIB_COUNT`| Reset TIB Event Count. | None | `ACK` |
+| `0x1A` | `L2TCP_MSG_L2CB_SET_L1SCALERS_EN`| Enable/disable L1 scaler counters on all slots. | `uint16` (1/0) | `ACK` |
 | `0x20` | `L2TCP_MSG_CTDB_SET_CH_POWER` | Set Channel Power. | `Channel Ctrl` | `ACK` |
 | `0x21` | `L2TCP_MSG_CTDB_SET_CH_TRIG` | Set Channel Trigger. | `Channel Ctrl` | `ACK` |
 | `0x22` | `L2TCP_MSG_CTDB_SET_CH_DELAY` | Set Channel Delay. | `Channel Delay` | `ACK` |
@@ -77,6 +79,7 @@ Functional commands (like Power Ramp or Monitoring) may return errors or produce
 | `0x32` | `L2TCP_MSG_BATCH_MONITOR_ALL` | Request all monitoring data. | None | `Batch Monitoring`|
 | `0x33` | `L2TCP_MSG_FAST_POLL` | Combined L2CB + Monitoring. | None | `Fast Poll` |
 | `0x34` | `L2TCP_MSG_SLOW_POLL` | All CTDB configurations. | None | `Batch Config` |
+| `0x35` | `L2TCP_MSG_L1SCALERS_POLL` | Request L1 scaler counters for all active slots. | None | `L1 Scalers Poll` |
 
 ## Payload Structures
 
@@ -144,6 +147,8 @@ Used for various setters (MCF Enable, Thresholds, etc.).
 | 34 | `over_curr_mask` | `uint16` | Bitmask of channels in over-current. |
 | 36 | `under_curr_mask`| `uint16` | Bitmask of channels in under-current. |
 | 38 | `pwr_enabled_mask`| `uint16` | Bitmask of channels with power enabled. |
+| 40 | `ctrl` | `uint16` | CTDB control register summary; bit `0x2000` indicates L1 scalers are active. |
+| 42 | `stat` | `uint16` | CTDB status register summary. |
 
 ### 9. CTDB Config (`L2TCP_MSG_CTDB_GET_CONFIG` Response)
 | Offset | Field | Type | Description |
@@ -173,6 +178,20 @@ Used for various setters (MCF Enable, Thresholds, etc.).
 | 0 | `count` | `uint16` | Number of config entries. |
 | 2 | `entries` | `Config[]` | Array of `CTDB Config` payloads. |
 
+### 13. L1 Scalers Poll (`L2TCP_MSG_L1SCALERS_POLL` Response)
+| Offset | Field | Type | Description |
+| :--- | :--- | :--- | :--- |
+| 0 | `count` | `uint32` | Number of L1 scaler entries. |
+| 4 | `entries` | `L1 Scalers[]` | Array of `L1 Scalers` payloads, one per active slot returned by the server. |
+
+Each `L1 Scalers` entry is 68 bytes:
+
+| Offset | Field | Type | Description |
+| :--- | :--- | :--- | :--- |
+| 0 | `slot` | `uint32` | Slot number. |
+| 4 | `l1a_slot_count` | `uint32` | L1A scaler count for the slot. |
+| 8 | `l1_channel_count` | `uint32[15]` | Per-channel L1 scaler counts for channels 1-15. |
+
 ## Error Codes
 
 | Value | Name | Description |
@@ -188,19 +207,19 @@ Used for various setters (MCF Enable, Thresholds, etc.).
 
 ## Example Exchange (Hex)
 
-This example shows a client connecting (Version 5), configuring the standard slots (1-9 and 13-21), setting no immutable channels, and starting a power ramp.
+This example shows a client connecting (Version 6), configuring the standard slots (1-9 and 13-21), setting no immutable channels, and starting a power ramp.
 
 ### 1. HELLO Handshake
-**Client -> Server** (Type: 0x07, Seq: 1, Len: 2, Ver: 5)
-`07 00 01 00 02 00 00 00 05 00`
+**Client -> Server** (Type: 0x07, Seq: 1, Len: 2, Ver: 6)
+`07 00 01 00 02 00 00 00 06 00`
 - `07 00`: Type (HELLO)
 - `01 00`: Seq (1)
 - `02 00`: Len (2)
 - `00 00`: Reserved
-- `05 00`: Payload (Version 5)
+- `06 00`: Payload (Version 6)
 
-**Server -> Client** (Type: 0x07, Seq: 1, Len: 2, Ver: 5)
-`07 00 01 00 02 00 00 00 05 00`
+**Server -> Client** (Type: 0x07, Seq: 1, Len: 2, Ver: 6)
+`07 00 01 00 02 00 00 00 06 00`
 
 ### 2. Configure System Slots
 Standard slots are 1-9 (0x000003FE) and 13-21 (0x003FE000). Total mask: `0x003FE3FE`.
