@@ -94,8 +94,7 @@ def print_help():
     print("  busy_mask <val>         - Set unified 32-bit busy mask")
     print("  busy_slot <slot> <0|1>  - Set busy enable for a specific slot")
     print("  tib_reset               - Reset TIB event counter")
-    print("  l1scalers_start         - Start L1 counters on all slots")
-    print("  l1scalers_stop          - Stop L1 counters on all slots")
+    print("  l1scalers_en <0|1>      - Disable or enable L1 counters on all slots")
 
     print("\nCTDB (Per-Slot/Channel) Commands:")
 
@@ -277,12 +276,10 @@ async def run_cli(host, port, keepalive_enabled):
             elif cmd == "tib_reset":
                 await system.reset_tib_event_count()
                 print("TIB event counter reset.")
-            elif cmd == "l1scalers_start":
-                await system.start_l1_scalers()
-                print("L1 counters started.")
-            elif cmd == "l1scalers_stop":
-                await system.stop_l1_scalers()
-                print("L1 counters stopped.")
+            elif cmd == "l1scalers_en":
+                enabled = int(parts[1]) == 1
+                await system.set_l1_scalers_enabled(enabled)
+                print(f"L1 counters {'started' if enabled else 'stopped'}.")
 
             elif cmd == "mon":
                 slot = int(parts[1])

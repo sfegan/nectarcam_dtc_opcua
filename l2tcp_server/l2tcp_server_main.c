@@ -83,8 +83,7 @@ static size_t get_expected_payload_len(uint16_t type) {
         case L2TCP_MSG_L2CB_SET_BUSY_ENABLE_MASK: return 4;
         case L2TCP_MSG_L2CB_SET_BUSY_ENABLE_SLOT: return 4;
         case L2TCP_MSG_L2CB_RESET_TIB_COUNT:      return 0;
-        case L2TCP_MSG_L2CB_START_L1SCALERS:      return 0;
-        case L2TCP_MSG_L2CB_STOP_L1SCALERS:       return 0;
+        case L2TCP_MSG_L2CB_SET_L1SCALERS_EN:     return sizeof(l2tcp_payload_u16_t);
         case L2TCP_MSG_CTDB_SET_CH_POWER:         return sizeof(l2tcp_payload_ch_ctrl_t);
         case L2TCP_MSG_CTDB_SET_CH_TRIG:          return sizeof(l2tcp_payload_ch_ctrl_t);
         case L2TCP_MSG_CTDB_SET_CH_DELAY:         return sizeof(l2tcp_payload_ch_delay_t);
@@ -131,8 +130,7 @@ static const char* msg_type_to_str(uint16_t type) {
         case L2TCP_MSG_L2CB_SET_BUSY_ENABLE_MASK: return "L2CB_SET_BUSY_ENABLE_MASK";
         case L2TCP_MSG_L2CB_SET_BUSY_ENABLE_SLOT: return "L2CB_SET_BUSY_ENABLE_SLOT";
         case L2TCP_MSG_L2CB_RESET_TIB_COUNT:      return "L2CB_RESET_TIB_COUNT";
-        case L2TCP_MSG_L2CB_START_L1SCALERS:      return "L2CB_START_L1SCALERS";
-        case L2TCP_MSG_L2CB_STOP_L1SCALERS:       return "L2CB_STOP_L1SCALERS";
+        case L2TCP_MSG_L2CB_SET_L1SCALERS_EN:     return "L2CB_SET_L1SCALERS_EN";
         case L2TCP_MSG_CTDB_SET_CH_POWER:         return "CTDB_SET_CH_POWER";
         case L2TCP_MSG_CTDB_SET_CH_TRIG:          return "CTDB_SET_CH_TRIG";
         case L2TCP_MSG_CTDB_SET_CH_DELAY:         return "CTDB_SET_CH_DELAY";
@@ -405,7 +403,8 @@ static void handle_request() {
             case L2TCP_MSG_L2CB_SET_TIB_BLOCK_EN:
             case L2TCP_MSG_L2CB_SET_MCF_THRESH:
             case L2TCP_MSG_L2CB_SET_MCF_DELAY:
-            case L2TCP_MSG_L2CB_SET_L1_DEADTIME: 
+            case L2TCP_MSG_L2CB_SET_L1_DEADTIME:
+            case L2TCP_MSG_L2CB_SET_L1SCALERS_EN: 
                 printf(" val: %d", ((l2tcp_payload_u16_t*)buffer)->value); 
                 break;
             case L2TCP_MSG_L2CB_SET_BUSY_ENABLE_MASK: 
@@ -429,8 +428,6 @@ static void handle_request() {
                 printf(" slot: %d", ((uint16_t*)buffer)[0]); 
                 break;
             case L2TCP_MSG_L2CB_RESET_TIB_COUNT:
-            case L2TCP_MSG_L2CB_START_L1SCALERS:
-            case L2TCP_MSG_L2CB_STOP_L1SCALERS: 
             default:
                 // nothing to print here
                 break;
@@ -640,13 +637,13 @@ static void handle_request() {
             send_ack(hdr.seq, show_msg);
             break;
         }
-        case L2TCP_MSG_L2CB_START_L1SCALERS: {
-            cta_ctdb_startAllL1Counters();
-            send_ack(hdr.seq, show_msg);
-            break;
-        }
-        case L2TCP_MSG_L2CB_STOP_L1SCALERS: {
-            cta_ctdb_stopAllL1Counters();
+        case L2TCP_MSG_L2CB_SET_L1SCALERS_EN: {
+            l2tcp_payload_u16_t *p = (l2tcp_payload_u16_t *)buffer;
+            if (p->value) {
+                cta_ctdb_startAllL1Counters();
+            } else {
+                cta_ctdb_stopAllL1Counters();
+            }
             send_ack(hdr.seq, show_msg);
             break;
         }

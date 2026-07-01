@@ -44,8 +44,7 @@ class L2TCPMsgType(IntEnum):
     L2CB_SET_BUSY_ENABLE_MASK = 0x17
     L2CB_SET_BUSY_ENABLE_SLOT = 0x18
     L2CB_RESET_TIB_COUNT = 0x19
-    L2CB_START_L1SCALERS = 0x1A
-    L2CB_STOP_L1SCALERS  = 0x1B
+    L2CB_SET_L1SCALERS_EN = 0x1A
     CTDB_SET_CH_POWER   = 0x20
     CTDB_SET_CH_TRIG    = 0x21
     CTDB_SET_CH_DELAY   = 0x22
@@ -381,13 +380,9 @@ class L2TriggerSystem:
         """Reset the TIB event counter"""
         await self._send_recv(L2TCPMsgType.L2CB_RESET_TIB_COUNT)
 
-    async def start_l1_scalers(self):
-        """Start L1 counters on all slots"""
-        await self._send_recv(L2TCPMsgType.L2CB_START_L1SCALERS)
-
-    async def stop_l1_scalers(self):
-        """Stop L1 counters on all slots"""
-        await self._send_recv(L2TCPMsgType.L2CB_STOP_L1SCALERS)
+    async def set_l1_scalers_enabled(self, enabled: bool):
+        """Enable or disable L1 counters on all slots"""
+        await self._send_recv(L2TCPMsgType.L2CB_SET_L1SCALERS_EN, struct.pack("<H", 1 if enabled else 0))
 
     # --- CTDB Controls ---
 

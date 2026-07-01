@@ -799,10 +799,7 @@ class L2TriggerBridgeServer:
             logger.info(f"Setting L1 scaler enabled to {enabled}")
             async with self._lock:
                 if not await self._ensure_connected(): return "ERROR: Device not connected"
-                if enabled:
-                    await self.system.start_l1_scalers()
-                else:
-                    await self.system.stop_l1_scalers()
+                await self.system.set_l1_scalers_enabled(enabled)
                 self._poll_event.set()
             return f"OK: L1 scalers {'started' if enabled else 'stopped'}"
         await add_described_method("SetL1ScalerEnabled", set_l1_scaler_enabled, inputs=[a("enabled", ua.VariantType.Boolean)])
