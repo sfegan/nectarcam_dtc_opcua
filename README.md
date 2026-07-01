@@ -169,6 +169,7 @@ All monitoring data is accessible under `L2Trigger.Monitoring`:
 - `CrateNumPoweredModules` (`UInt16`) — Modules currently powered
 - `CrateNumTriggerEnabledModules` (`UInt16`) — Modules with trigger enabled
 - `CrateNumBoardL1ScalerEnabled` (`UInt16`) — CTDB boards with L1 scalers enabled
+- `SystemL1ScalerPollingEnabled` (`Boolean`) — True while the bridge is polling L1/L1A scaler counts
 
 **L2CB Trigger Configuration (Scalars):**
 - `CrateMCFEnabled` (`Boolean`) — MCF propagation state
