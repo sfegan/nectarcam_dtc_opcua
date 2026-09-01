@@ -12,8 +12,10 @@ import asyncio
 import struct
 import logging
 import socket
+import zlib
+import os
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional, Tuple, Set
+from typing import List, Dict, Optional, Tuple, Set, Callable, Union, Iterable
 from enum import IntEnum
 
 # ============================================================================
@@ -55,6 +57,16 @@ class L2TCPMsgType(IntEnum):
     FAST_POLL           = 0x33
     SLOW_POLL           = 0x34
     L1SCALERS_POLL      = 0x35
+    CLEAR_ARTIFACT      = 0x40
+    APPEND_ARTIFACT     = 0x41
+    VERIFY_ARTIFACT     = 0x42
+    GET_ARTIFACT_STATUS = 0x43
+    FLASH_CTDB_FW       = 0x44
+    FLASH_L2CB_FW       = 0x45
+
+ARTIFACT_CTDB = 0
+ARTIFACT_L2CB = 1
+MAX_ARTIFACT_BLOCK_SIZE = 1024
 
 # Struct formats (Little Endian)
 HEADER_FMT = "<HHHH"  # Type, Seq, Len, Reserved
@@ -128,12 +140,19 @@ class L1ScalersData:
     l1a_slot_count: int
     l1_channel_counts: List[int]
 
+@dataclass
+class ArtifactStatus:
+    artifact_id: int
+    is_valid: bool
+    total_bytes: int
+    crc: int
+
 # ============================================================================
 # L2TriggerSystem (TCP Client)
 # ============================================================================
 
 class L2TriggerSystem:
-    PROTOCOL_VERSION = 6
+    PROTOCOL_VERSION = 7
 
     def __init__(self, host: str = "127.0.0.1", port: int = DEFAULT_PORT, 
                  connect_timeout: float = 5.0, recv_timeout: float = 5.0):
@@ -504,3 +523,200 @@ class L2TriggerSystem:
             res[scaler.slot] = scaler
             offset += scaler_size
         return res
+
+    # --- Artifact & Firmware Management ---
+
+    async def clear_artifact(self, artifact_id: int):
+        """Clear artifact buffer on server and free its blocks"""
+        payload = struct.pack("<H", artifact_id)
+        await self._send_recv(L2TCPMsgType.CLEAR_ARTIFACT, payload)
+
+    async def append_artifact_block(self, artifact_id: int, address: int, data: bytes):
+        """Append a data block (up to 1024 bytes) to artifact"""
+        if len(data) > MAX_ARTIFACT_BLOCK_SIZE:
+            raise ValueError(f"Block length ({len(data)}) exceeds maximum allowable ({MAX_ARTIFACT_BLOCK_SIZE})")
+        payload = struct.pack("<IHH", address, artifact_id, len(data)) + data
+        await self._send_recv(L2TCPMsgType.APPEND_ARTIFACT, payload)
+
+    async def verify_artifact(self, artifact_id: int, crc: int):
+        """Verify artifact integrity using CRC32"""
+        payload = struct.pack("<IHH", crc & 0xFFFFFFFF, artifact_id, 0)
+        await self._send_recv(L2TCPMsgType.VERIFY_ARTIFACT, payload)
+
+    async def get_artifact_status(self, artifact_id: int) -> ArtifactStatus:
+        """Get artifact upload status and CRC validation flag"""
+        payload = struct.pack("<H", artifact_id)
+        _, data = await self._send_recv(L2TCPMsgType.GET_ARTIFACT_STATUS, payload)
+        total_bytes, crc, r_id, is_valid = struct.unpack("<IIHH", data)
+        return ArtifactStatus(
+            artifact_id=r_id,
+            is_valid=bool(is_valid),
+            total_bytes=total_bytes,
+            crc=crc
+        )
+
+    async def upload_artifact(self, artifact_id: int, data: bytes, starting_address: int = 0,
+                              block_size: int = MAX_ARTIFACT_BLOCK_SIZE,
+                              progress_callback: Optional[Callable[[int, int], None]] = None) -> ArtifactStatus:
+        """Upload complete binary data as artifact blocks, verify CRC, and return status"""
+        await self.clear_artifact(artifact_id)
+        total_len = len(data)
+        running_crc = 0
+        offset = 0
+
+        if total_len == 0:
+            addr = starting_address
+            await self.append_artifact_block(artifact_id, addr, b"")
+            running_crc = zlib.crc32(struct.pack("<I", addr), running_crc) & 0xFFFFFFFF
+            if progress_callback:
+                progress_callback(0, 0)
+        else:
+            while offset < total_len:
+                chunk = data[offset:offset + block_size]
+                addr = starting_address + offset
+                await self.append_artifact_block(artifact_id, addr, chunk)
+                block_crc_data = struct.pack("<I", addr) + chunk
+                running_crc = zlib.crc32(block_crc_data, running_crc) & 0xFFFFFFFF
+                offset += len(chunk)
+                if progress_callback:
+                    progress_callback(offset, total_len)
+
+        await self.verify_artifact(artifact_id, running_crc)
+        return await self.get_artifact_status(artifact_id)
+
+    async def upload_artifact_mcs(self, artifact_id: int, mcs_source: Union[str, Iterable[str]],
+                                  progress_callback: Optional[Callable[[int], None]] = None) -> ArtifactStatus:
+        """Parse an Intel MCS/HEX file, chunk contiguous bytes into 1024-byte blocks,
+        upload them with extended addresses, verify checksum and EOF, and validate artifact.
+        
+        If any checksum fails, or EOF is missing/invalid, clears artifact and raises exception.
+        """
+        await self.clear_artifact(artifact_id)
+        
+        lines = []
+        if isinstance(mcs_source, str):
+            if "\n" not in mcs_source and os.path.exists(mcs_source):
+                with open(mcs_source, "r", encoding="ascii", errors="replace") as f:
+                    lines = f.readlines()
+            else:
+                lines = mcs_source.splitlines()
+        else:
+            lines = list(mcs_source)
+
+        extended_addr = 0
+        current_chunk_addr: Optional[int] = None
+        current_chunk_data = bytearray()
+        total_uploaded_bytes = 0
+        running_crc = 0
+        eof_seen = False
+
+        async def _flush_blocks(force_all: bool = False):
+            nonlocal current_chunk_addr, current_chunk_data, running_crc, total_uploaded_bytes
+            while current_chunk_data and (force_all or len(current_chunk_data) >= MAX_ARTIFACT_BLOCK_SIZE):
+                chunk_len = min(len(current_chunk_data), MAX_ARTIFACT_BLOCK_SIZE)
+                chunk = bytes(current_chunk_data[:chunk_len])
+                addr = current_chunk_addr
+                await self.append_artifact_block(artifact_id, addr, chunk)
+                block_crc_data = struct.pack("<I", addr) + chunk
+                running_crc = zlib.crc32(block_crc_data, running_crc) & 0xFFFFFFFF
+                total_uploaded_bytes += len(chunk)
+                current_chunk_addr += chunk_len
+                current_chunk_data = current_chunk_data[chunk_len:]
+                if progress_callback:
+                    progress_callback(total_uploaded_bytes)
+
+        try:
+            for line_num, raw_line in enumerate(lines, 1):
+                line = raw_line.strip()
+                if not line:
+                    continue
+                if not line.startswith(":"):
+                    continue
+
+                try:
+                    record_bytes = bytes.fromhex(line[1:])
+                except ValueError as e:
+                    raise ValueError(f"Invalid hex encoding on line {line_num}: {e}")
+
+                if (sum(record_bytes) & 0xFF) != 0:
+                    raise ValueError(f"MCS record checksum error on line {line_num}")
+
+                count = record_bytes[0]
+                offset = (record_bytes[1] << 8) | record_bytes[2]
+                rectype = record_bytes[3]
+                data = record_bytes[4:4+count]
+
+                if len(data) != count:
+                    raise ValueError(f"Truncated MCS record on line {line_num}: expected {count} bytes, got {len(data)}")
+
+                if rectype == 0x00:  # Data Record
+                    if eof_seen:
+                        raise ValueError(f"Data record after EOF on line {line_num}")
+                    line_addr = extended_addr + offset
+                    if current_chunk_addr is None:
+                        current_chunk_addr = line_addr
+                        current_chunk_data = bytearray(data)
+                    else:
+                        expected_addr = current_chunk_addr + len(current_chunk_data)
+                        if line_addr == expected_addr:
+                            current_chunk_data.extend(data)
+                        else:
+                            # Address gap: flush existing buffered chunk
+                            await _flush_blocks(force_all=True)
+                            current_chunk_addr = line_addr
+                            current_chunk_data = bytearray(data)
+
+                    await _flush_blocks(force_all=False)
+
+                elif rectype == 0x01:  # End of File Record
+                    eof_seen = True
+                    await _flush_blocks(force_all=True)
+                    current_chunk_addr = None
+
+                elif rectype == 0x02:  # Extended Segment Address Record
+                    if count != 2:
+                        raise ValueError(f"Invalid extended segment address length on line {line_num}")
+                    await _flush_blocks(force_all=True)
+                    current_chunk_addr = None
+                    seg = (data[0] << 8) | data[1]
+                    extended_addr = seg << 4
+
+                elif rectype == 0x04:  # Extended Linear Address Record
+                    if count != 2:
+                        raise ValueError(f"Invalid extended linear address length on line {line_num}")
+                    await _flush_blocks(force_all=True)
+                    current_chunk_addr = None
+                    upper = (data[0] << 8) | data[1]
+                    extended_addr = upper << 16
+
+                elif rectype in (0x03, 0x05):  # Start Segment / Start Linear Address
+                    pass
+                else:
+                    raise ValueError(f"Unsupported MCS record type 0x{rectype:02X} on line {line_num}")
+
+            if not eof_seen:
+                raise ValueError("MCS file does not contain a valid End-Of-File (01) record")
+
+            if total_uploaded_bytes == 0:
+                raise ValueError("MCS file contains no data records")
+
+            # Validate artifact with server using computed CRC
+            await self.verify_artifact(artifact_id, running_crc)
+            return await self.get_artifact_status(artifact_id)
+
+        except Exception as e:
+            logger.error(f"MCS upload failed: {e}. Clearing artifact {artifact_id}.")
+            try:
+                await self.clear_artifact(artifact_id)
+            except Exception:
+                pass
+            raise
+
+    async def flash_ctdb_firmware(self, slot: int):
+        """Trigger flashing of CTDB firmware artifact to target slot"""
+        payload = struct.pack("<H", slot)
+        await self._send_recv(L2TCPMsgType.FLASH_CTDB_FW, payload)
+
+    async def flash_l2cb_firmware(self):
+        """Trigger flashing of L2CB firmware artifact"""
+        await self._send_recv(L2TCPMsgType.FLASH_L2CB_FW)

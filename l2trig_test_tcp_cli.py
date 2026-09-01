@@ -109,6 +109,14 @@ def print_help():
     print("  trig_delay <slot> <ch> <v>- Set channel trigger delay (0-255, 37ps steps)")
     print("  limits <slot> <min> <max>- Set slot current limits (hex counts)")
     
+    print("\nArtifact & Firmware Commands:")
+    print("  artifact_status <id>               - Get status of artifact (0=CTDB, 1=L2CB)")
+    print("  artifact_clear <id>                - Clear artifact on server")
+    print("  artifact_upload <id> <file> [addr] - Upload raw binary file (default addr: 0)")
+    print("  artifact_upload_mcs <id> <file>    - Parse and upload Intel MCS firmware file")
+    print("  flash_ctdb <slot>                  - Trigger CTDB firmware flash for slot")
+    print("  flash_l2cb                         - Trigger L2CB firmware flash")
+
     print("\nOther:")
     print("  help                     - Show this help")
     print("  quit                     - Exit")
@@ -359,6 +367,59 @@ async def run_cli(host, port, keepalive_enabled):
             elif cmd == "limits":
                 await system.set_ctdb_limits(int(parts[1]), int(parts[2]), int(parts[3]))
                 print("Current limits sent.")
+
+            elif cmd == "artifact_status":
+                aid = int(parts[1])
+                st = await system.get_artifact_status(aid)
+                name = "CTDB" if aid == 0 else ("L2CB" if aid == 1 else f"ID {aid}")
+                print(f"Artifact {aid} ({name}) Status:")
+                print(f"  Total Bytes: {st.total_bytes}")
+                print(f"  CRC32:       0x{st.crc:08x}")
+                print(f"  Validated:   {'YES' if st.is_valid else 'NO'}")
+
+            elif cmd == "artifact_clear":
+                aid = int(parts[1])
+                await system.clear_artifact(aid)
+                print(f"Artifact {aid} cleared.")
+
+            elif cmd == "artifact_upload":
+                aid = int(parts[1])
+                filepath = parts[2]
+                addr = int(parts[3], 0) if len(parts) > 3 else 0
+                with open(filepath, "rb") as f:
+                    file_data = f.read()
+                print(f"Uploading {len(file_data)} bytes to artifact {aid} starting at 0x{addr:08x}...")
+                def on_progress(done, total):
+                    pct = (done / total * 100) if total > 0 else 100
+                    print(f"\r  Uploaded {done}/{total} bytes ({pct:.1f}%)", end="", flush=True)
+                st = await system.upload_artifact(aid, file_data, starting_address=addr, progress_callback=on_progress)
+                print()
+                print("Upload and verification complete!")
+                print(f"  Total Bytes: {st.total_bytes}")
+                print(f"  CRC32:       0x{st.crc:08x}")
+                print(f"  Validated:   {'YES' if st.is_valid else 'NO'}")
+
+            elif cmd == "artifact_upload_mcs":
+                aid = int(parts[1])
+                filepath = parts[2]
+                print(f"Parsing and uploading MCS file '{filepath}' to artifact {aid}...")
+                def on_progress(done):
+                    print(f"\r  Uploaded {done} bytes...", end="", flush=True)
+                st = await system.upload_artifact_mcs(aid, filepath, progress_callback=on_progress)
+                print()
+                print("MCS upload and verification complete!")
+                print(f"  Total Bytes: {st.total_bytes}")
+                print(f"  CRC32:       0x{st.crc:08x}")
+                print(f"  Validated:   {'YES' if st.is_valid else 'NO'}")
+
+            elif cmd == "flash_ctdb":
+                slot = int(parts[1])
+                await system.flash_ctdb_firmware(slot)
+                print(f"Flash CTDB command sent for slot {slot}.")
+
+            elif cmd == "flash_l2cb":
+                await system.flash_l2cb_firmware()
+                print("Flash L2CB command sent.")
 
             else:
                 print(f"Unknown command: {cmd}")

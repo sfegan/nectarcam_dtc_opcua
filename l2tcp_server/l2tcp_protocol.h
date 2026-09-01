@@ -63,7 +63,15 @@ typedef enum {
     L2TCP_MSG_BATCH_MONITOR_ALL       = 0x32,
     L2TCP_MSG_FAST_POLL               = 0x33,
     L2TCP_MSG_SLOW_POLL               = 0x34,
-    L2TCP_MSG_L1SCALERS_POLL          = 0x35
+    L2TCP_MSG_L1SCALERS_POLL          = 0x35,
+
+    /* Artifact & Firmware Management */
+    L2TCP_MSG_CLEAR_ARTIFACT          = 0x40,
+    L2TCP_MSG_APPEND_ARTIFACT         = 0x41,
+    L2TCP_MSG_VERIFY_ARTIFACT         = 0x42,
+    L2TCP_MSG_GET_ARTIFACT_STATUS     = 0x43,
+    L2TCP_MSG_FLASH_CTDB_FW           = 0x44,
+    L2TCP_MSG_FLASH_L2CB_FW           = 0x45
 } l2tcp_msg_type_t;
 
 /* --- Error Codes --- */
@@ -74,10 +82,18 @@ typedef enum {
     L2TCP_ERR_MALFORMED_PAYLOAD       = 3,
     L2TCP_ERR_INVALID_PARAMETER       = 4,
     L2TCP_ERR_HARDWARE_ERROR          = 5,
-    L2TCP_ERR_NOT_INITIALIZED         = 6
+    L2TCP_ERR_NOT_INITIALIZED         = 6,
+    L2TCP_ERR_ARTIFACT_INVALID        = 7
 } l2tcp_error_code_t;
 
-#define L2TCP_PROTOCOL_VERSION 6
+#define L2TCP_PROTOCOL_VERSION 7
+
+#define L2TCP_MAX_ARTIFACTS      2
+#define L2TCP_MAX_BLOCKS         4096
+#define L2TCP_BLOCK_DATA_SIZE    1024
+
+#define L2TCP_ARTIFACT_CTDB      0
+#define L2TCP_ARTIFACT_L2CB      1
 
 /* --- Protocol Header --- */
 
@@ -203,6 +219,36 @@ typedef struct {
     l2tcp_payload_l1scalers_t entries[L2TCP_MAX_SLOT+1];
 } l2tcp_payload_l1scalers_poll_t;
 
+/* Artifact Payloads */
+
+/* L2TCP_MSG_CLEAR_ARTIFACT (Request) */
+typedef struct {
+    uint16_t id;
+} l2tcp_payload_clear_artifact_t;
+
+/* L2TCP_MSG_APPEND_ARTIFACT (Request) */
+typedef struct {
+    uint32_t address;
+    uint16_t id;
+    uint16_t data_len;
+    uint8_t data[L2TCP_BLOCK_DATA_SIZE];
+} l2tcp_payload_append_artifact_t;
+
+/* L2TCP_MSG_VERIFY_ARTIFACT (Request) */
+typedef struct {
+    uint32_t crc;
+    uint16_t id;
+    uint16_t reserved;
+} l2tcp_payload_verify_artifact_t;
+
+/* L2TCP_MSG_GET_ARTIFACT_STATUS (Response) */
+typedef struct {
+    uint32_t total_bytes;
+    uint32_t crc;
+    uint16_t id;
+    uint16_t is_valid;
+} l2tcp_payload_artifact_status_t;
+
 /* --- Combined Message Structures (Header + Payload) --- */
 
 typedef struct {
@@ -253,6 +299,11 @@ typedef struct {
     l2tcp_header_t hdr;
     l2tcp_payload_l1scalers_poll_t payload;
 } l2tcp_msg_l1scalers_poll_t;
+
+typedef struct {
+    l2tcp_header_t hdr;
+    l2tcp_payload_artifact_status_t payload;
+} l2tcp_msg_artifact_status_t;
 
 #pragma pack(pop)
 

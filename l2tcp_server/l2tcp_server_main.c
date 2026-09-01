@@ -33,6 +33,24 @@
     (((double)(end).tv_sec - (start).tv_sec) * 1000.0 + \
      ((double)(end).tv_nsec - (start).tv_nsec) / 1000000.0)
 
+/* --- Artifact Structures & Freelist --- */
+
+typedef struct artifact_block {
+    struct artifact_block *next;
+    uint32_t address;
+    uint16_t len;
+    uint8_t data[L2TCP_BLOCK_DATA_SIZE];
+} artifact_block_t;
+
+typedef struct {
+    artifact_block_t *head;
+    artifact_block_t *tail;
+    uint32_t total_bytes;
+    uint32_t crc;
+    uint32_t block_count;
+    uint16_t is_valid;
+} artifact_t;
+
 /* --- Server State --- */
 
 static struct {
@@ -54,7 +72,91 @@ static struct {
     int client_fd;
     int is_negotiated;               /* Handshake complete? */
     struct timespec last_activity_ts;  /* Track last client activity */
+
+    /* Artifact State */
+    artifact_t artifacts[L2TCP_MAX_ARTIFACTS];
+    artifact_block_t *block_freelist;
+    size_t total_blocks_allocated;
 } g_server;
+
+/* --- CRC32 (IEEE 802.3 Ethernet standard) --- */
+
+static uint32_t g_crc32_table[256];
+static int g_crc32_table_init = 0;
+
+static void crc32_init_table(void) {
+    for (uint32_t i = 0; i < 256; i++) {
+        uint32_t c = i;
+        for (int j = 0; j < 8; j++) {
+            c = (c & 1) ? (0xEDB88320 ^ (c >> 1)) : (c >> 1);
+        }
+        g_crc32_table[i] = c;
+    }
+    g_crc32_table_init = 1;
+}
+
+static uint32_t crc32_update(uint32_t crc, const uint8_t *data, size_t len) {
+    if (!g_crc32_table_init) crc32_init_table();
+    crc = ~crc;
+    for (size_t i = 0; i < len; i++) {
+        crc = g_crc32_table[(crc ^ data[i]) & 0xFF] ^ (crc >> 8);
+    }
+    return ~crc;
+}
+
+/* --- Artifact Management --- */
+
+static artifact_block_t *artifact_alloc_block(void) {
+    if (g_server.block_freelist != NULL) {
+        artifact_block_t *b = g_server.block_freelist;
+        g_server.block_freelist = b->next;
+        b->next = NULL;
+        return b;
+    }
+    if (g_server.total_blocks_allocated < L2TCP_MAX_BLOCKS) {
+        artifact_block_t *b = (artifact_block_t *)malloc(sizeof(artifact_block_t));
+        if (b) {
+            g_server.total_blocks_allocated++;
+            b->next = NULL;
+            return b;
+        }
+    }
+    return NULL;
+}
+
+static void artifact_free_block(artifact_block_t *b) {
+    if (!b) return;
+    b->next = g_server.block_freelist;
+    g_server.block_freelist = b;
+}
+
+static void artifact_clear(int id) {
+    if (id < 0 || id >= L2TCP_MAX_ARTIFACTS) return;
+    artifact_block_t *curr = g_server.artifacts[id].head;
+    while (curr) {
+        artifact_block_t *next = curr->next;
+        artifact_free_block(curr);
+        curr = next;
+    }
+    g_server.artifacts[id].head = NULL;
+    g_server.artifacts[id].tail = NULL;
+    g_server.artifacts[id].total_bytes = 0;
+    g_server.artifacts[id].crc = 0;
+    g_server.artifacts[id].block_count = 0;
+    g_server.artifacts[id].is_valid = 0;
+}
+
+static void artifact_free_all_memory(void) {
+    for (int i = 0; i < L2TCP_MAX_ARTIFACTS; i++) {
+        artifact_clear(i);
+    }
+    while (g_server.block_freelist) {
+        artifact_block_t *next = g_server.block_freelist->next;
+        free(g_server.block_freelist);
+        g_server.block_freelist = next;
+    }
+    g_server.total_blocks_allocated = 0;
+}
 
 /* --- Helpers --- */
 
@@ -94,6 +196,12 @@ static size_t get_expected_payload_len(uint16_t type) {
         case L2TCP_MSG_FAST_POLL:                 return 0;
         case L2TCP_MSG_SLOW_POLL:                 return 0;
         case L2TCP_MSG_L1SCALERS_POLL:             return 0;
+        case L2TCP_MSG_CLEAR_ARTIFACT:            return sizeof(l2tcp_payload_clear_artifact_t);
+        case L2TCP_MSG_APPEND_ARTIFACT:           return 0; /* Variable length */
+        case L2TCP_MSG_VERIFY_ARTIFACT:           return sizeof(l2tcp_payload_verify_artifact_t);
+        case L2TCP_MSG_GET_ARTIFACT_STATUS:       return sizeof(l2tcp_payload_clear_artifact_t);
+        case L2TCP_MSG_FLASH_CTDB_FW:             return 2;
+        case L2TCP_MSG_FLASH_L2CB_FW:             return 0;
         default: return 0;
     }
 }
@@ -141,7 +249,24 @@ static const char* msg_type_to_str(uint16_t type) {
         case L2TCP_MSG_FAST_POLL:                 return "FAST_POLL";
         case L2TCP_MSG_SLOW_POLL:                 return "SLOW_POLL";
         case L2TCP_MSG_L1SCALERS_POLL:             return "L1SCALERS_POLL";
+        case L2TCP_MSG_CLEAR_ARTIFACT:            return "CLEAR_ARTIFACT";
+        case L2TCP_MSG_APPEND_ARTIFACT:           return "APPEND_ARTIFACT";
+        case L2TCP_MSG_VERIFY_ARTIFACT:           return "VERIFY_ARTIFACT";
+        case L2TCP_MSG_GET_ARTIFACT_STATUS:       return "GET_ARTIFACT_STATUS";
+        case L2TCP_MSG_FLASH_CTDB_FW:             return "FLASH_CTDB_FW";
+        case L2TCP_MSG_FLASH_L2CB_FW:             return "FLASH_L2CB_FW";
         default: return "UNKNOWN";
+    }
+}
+
+static void close_client_connection(void) {
+    if (g_server.client_fd != -1) {
+        close(g_server.client_fd);
+        g_server.client_fd = -1;
+    }
+    g_server.is_negotiated = 0;
+    for (int i = 0; i < L2TCP_MAX_ARTIFACTS; i++) {
+        artifact_clear(i);
     }
 }
 
@@ -159,8 +284,7 @@ static int send_all(int fd, const void *buf, size_t len) {
             } else {
                 printf("Send returned 0, closing connection\n");
             }
-            close(fd);
-            g_server.client_fd = -1;
+            close_client_connection();
             return -1;
         }
         total += n;
@@ -329,15 +453,13 @@ static void handle_request() {
         } else {
             printf("Client disconnected (0 bytes read)\n");
         }
-        close(g_server.client_fd);
-        g_server.client_fd = -1;
+        close_client_connection();
         return;
     }
     
     if (n != sizeof(hdr)) {
         printf("Incomplete header: received %zd bytes, expected %zu bytes, closing connection\n", n, sizeof(hdr));
-        close(g_server.client_fd);
-        g_server.client_fd = -1;
+        close_client_connection();
         return;
     }
 
@@ -345,15 +467,20 @@ static void handle_request() {
     get_now(&g_server.last_activity_ts);
 
     uint8_t buffer[4096] __attribute__((aligned(4)));
-    size_t expected_len = get_expected_payload_len(hdr.type);
+    int len_ok = 0;
+    if (hdr.type == L2TCP_MSG_APPEND_ARTIFACT) {
+        len_ok = (hdr.len >= 8 && hdr.len <= (8 + L2TCP_BLOCK_DATA_SIZE));
+    } else {
+        size_t expected_len = get_expected_payload_len(hdr.type);
+        len_ok = (hdr.len == expected_len);
+    }
 
-    if (hdr.len != expected_len) {
-        printf("Payload length mismatch for %s: received %d, expected %zu\n", 
-               msg_type_to_str(hdr.type), hdr.len, expected_len);
+    if (!len_ok) {
+        printf("Payload length mismatch for %s: received %d bytes\n", 
+               msg_type_to_str(hdr.type), hdr.len);
         send_error(hdr.seq, L2TCP_ERR_MALFORMED_PAYLOAD, "Payload length mismatch");
         /* Skip rest of payload if any, or just close to be safe from desync */
-        close(g_server.client_fd);
-        g_server.client_fd = -1;
+        close_client_connection();
         return;
     }
 
@@ -371,14 +498,12 @@ static void handle_request() {
             } else {
                 printf("Payload recv error: %s, closing connection\n", strerror(errno));
             }
-            close(g_server.client_fd);
-            g_server.client_fd = -1;
+            close_client_connection();
             return;
         }
         if (n != hdr.len) {
             printf("Incomplete payload: received %zd bytes, expected %d bytes, closing connection\n", n, hdr.len);
-            close(g_server.client_fd);
-            g_server.client_fd = -1;
+            close_client_connection();
             return;
         }
     }
@@ -427,6 +552,24 @@ static void handle_request() {
             case L2TCP_MSG_CTDB_GET_CONFIG: 
                 printf(" slot: %d", ((uint16_t*)buffer)[0]); 
                 break;
+            case L2TCP_MSG_CLEAR_ARTIFACT:
+            case L2TCP_MSG_GET_ARTIFACT_STATUS:
+                printf(" id: %d", ((l2tcp_payload_clear_artifact_t*)buffer)->id);
+                break;
+            case L2TCP_MSG_APPEND_ARTIFACT: {
+                l2tcp_payload_append_artifact_t *p = (l2tcp_payload_append_artifact_t*)buffer;
+                printf(" id: %d, addr: 0x%08x, len: %d", p->id, p->address, p->data_len);
+                break;
+            }
+            case L2TCP_MSG_VERIFY_ARTIFACT: {
+                l2tcp_payload_verify_artifact_t *p = (l2tcp_payload_verify_artifact_t*)buffer;
+                printf(" id: %d, crc: 0x%08x", p->id, p->crc);
+                break;
+            }
+            case L2TCP_MSG_FLASH_CTDB_FW:
+                printf(" slot: %d", ((l2tcp_payload_u16_t*)buffer)->value);
+                break;
+            case L2TCP_MSG_FLASH_L2CB_FW:
             case L2TCP_MSG_L2CB_RESET_TIB_COUNT:
             default:
                 // nothing to print here
@@ -470,8 +613,7 @@ static void handle_request() {
             if (!g_server.is_negotiated) {
                 if (g_server.verbose > 0) printf("  [DEBUG] Rejecting %s - not negotiated\n", msg_type_to_str(hdr.type));
                 send_error(hdr.seq, L2TCP_ERR_NOT_INITIALIZED, "Connection not initialized (HELLO required)");
-                close(g_server.client_fd);
-                g_server.client_fd = -1;
+                close_client_connection();
                 return;
             }
             break;
@@ -1025,6 +1167,129 @@ static void handle_request() {
             send_ack(hdr.seq, show_msg);
             break;
         }
+        case L2TCP_MSG_CLEAR_ARTIFACT: {
+            l2tcp_payload_clear_artifact_t *p = (l2tcp_payload_clear_artifact_t *)buffer;
+            if (p->id >= L2TCP_MAX_ARTIFACTS) {
+                send_error(hdr.seq, L2TCP_ERR_INVALID_PARAMETER, "Invalid artifact ID");
+            } else {
+                artifact_clear(p->id);
+                send_ack(hdr.seq, show_msg);
+            }
+            break;
+        }
+        case L2TCP_MSG_APPEND_ARTIFACT: {
+            l2tcp_payload_append_artifact_t *p = (l2tcp_payload_append_artifact_t *)buffer;
+            if (p->id >= L2TCP_MAX_ARTIFACTS) {
+                send_error(hdr.seq, L2TCP_ERR_INVALID_PARAMETER, "Invalid artifact ID");
+                break;
+            }
+            if (p->data_len > L2TCP_BLOCK_DATA_SIZE || hdr.len != (8 + p->data_len)) {
+                send_error(hdr.seq, L2TCP_ERR_MALFORMED_PAYLOAD, "Data length mismatch");
+                break;
+            }
+            artifact_block_t *b = artifact_alloc_block();
+            if (!b) {
+                send_error(hdr.seq, L2TCP_ERR_HARDWARE_ERROR, "Artifact block limit reached (4096 blocks)");
+                break;
+            }
+            b->address = p->address;
+            b->len = p->data_len;
+            b->next = NULL;
+            if (p->data_len > 0) {
+                memcpy(b->data, p->data, p->data_len);
+            }
+
+            if (g_server.artifacts[p->id].tail) {
+                g_server.artifacts[p->id].tail->next = b;
+                g_server.artifacts[p->id].tail = b;
+            } else {
+                g_server.artifacts[p->id].head = b;
+                g_server.artifacts[p->id].tail = b;
+            }
+            g_server.artifacts[p->id].total_bytes += p->data_len;
+            g_server.artifacts[p->id].block_count++;
+
+            /* Update CRC with block starting address (little-endian 4 bytes) followed by block data */
+            uint8_t addr_bytes[4];
+            addr_bytes[0] = (uint8_t)(b->address & 0xFF);
+            addr_bytes[1] = (uint8_t)((b->address >> 8) & 0xFF);
+            addr_bytes[2] = (uint8_t)((b->address >> 16) & 0xFF);
+            addr_bytes[3] = (uint8_t)((b->address >> 24) & 0xFF);
+            g_server.artifacts[p->id].crc = crc32_update(g_server.artifacts[p->id].crc, addr_bytes, sizeof(addr_bytes));
+            if (p->data_len > 0) {
+                g_server.artifacts[p->id].crc = crc32_update(g_server.artifacts[p->id].crc, b->data, b->len);
+            }
+            g_server.artifacts[p->id].is_valid = 0;
+
+            send_ack(hdr.seq, show_msg);
+            break;
+        }
+        case L2TCP_MSG_VERIFY_ARTIFACT: {
+            l2tcp_payload_verify_artifact_t *p = (l2tcp_payload_verify_artifact_t *)buffer;
+            if (p->id >= L2TCP_MAX_ARTIFACTS) {
+                send_error(hdr.seq, L2TCP_ERR_INVALID_PARAMETER, "Invalid artifact ID");
+                break;
+            }
+            if (g_server.artifacts[p->id].crc == p->crc) {
+                g_server.artifacts[p->id].is_valid = 1;
+                send_ack(hdr.seq, show_msg);
+            } else {
+                g_server.artifacts[p->id].is_valid = 0;
+                char errmsg[64];
+                snprintf(errmsg, sizeof(errmsg), "CRC mismatch: calc 0x%08x != exp 0x%08x",
+                         g_server.artifacts[p->id].crc, p->crc);
+                send_error(hdr.seq, L2TCP_ERR_INVALID_PARAMETER, errmsg);
+            }
+            break;
+        }
+        case L2TCP_MSG_GET_ARTIFACT_STATUS: {
+            l2tcp_payload_clear_artifact_t *p = (l2tcp_payload_clear_artifact_t *)buffer;
+            if (p->id >= L2TCP_MAX_ARTIFACTS) {
+                send_error(hdr.seq, L2TCP_ERR_INVALID_PARAMETER, "Invalid artifact ID");
+                break;
+            }
+            l2tcp_msg_artifact_status_t resp;
+            resp.hdr.type = L2TCP_MSG_GET_ARTIFACT_STATUS;
+            resp.hdr.seq = hdr.seq;
+            resp.hdr.len = sizeof(l2tcp_payload_artifact_status_t);
+            resp.hdr.reserved = 0;
+
+            resp.payload.total_bytes = g_server.artifacts[p->id].total_bytes;
+            resp.payload.crc = g_server.artifacts[p->id].crc;
+            resp.payload.id = p->id;
+            resp.payload.is_valid = g_server.artifacts[p->id].is_valid;
+
+            if (g_server.verbose > 1) {
+                printf("  -> ARTIFACT %d STATUS: size=%u, crc=0x%08x, valid=%d, blocks=%u\n",
+                       p->id, resp.payload.total_bytes, resp.payload.crc, resp.payload.is_valid,
+                       g_server.artifacts[p->id].block_count);
+            }
+            send_all(g_server.client_fd, &resp, sizeof(resp));
+            break;
+        }
+        case L2TCP_MSG_FLASH_CTDB_FW: {
+            l2tcp_payload_u16_t *p = (l2tcp_payload_u16_t *)buffer;
+            if (!is_slot_active(p->value)) {
+                send_error(hdr.seq, L2TCP_ERR_INVALID_PARAMETER, "Slot not active");
+                break;
+            }
+            if (!g_server.artifacts[L2TCP_ARTIFACT_CTDB].is_valid) {
+                send_error(hdr.seq, L2TCP_ERR_ARTIFACT_INVALID, "CTDB firmware artifact not verified");
+                break;
+            }
+            /* Generic failure message stub as requested */
+            send_error(hdr.seq, L2TCP_ERR_HARDWARE_ERROR, "Flashing CTDB firmware not yet implemented");
+            break;
+        }
+        case L2TCP_MSG_FLASH_L2CB_FW: {
+            if (!g_server.artifacts[L2TCP_ARTIFACT_L2CB].is_valid) {
+                send_error(hdr.seq, L2TCP_ERR_ARTIFACT_INVALID, "L2CB firmware artifact not verified");
+                break;
+            }
+            /* Generic failure message stub as requested */
+            send_error(hdr.seq, L2TCP_ERR_HARDWARE_ERROR, "Flashing L2CB firmware not yet implemented");
+            break;
+        }
         default:
             send_error(hdr.seq, L2TCP_ERR_UNKNOWN_COMMAND, "Unknown command");
             break;
@@ -1139,6 +1404,9 @@ int main(int argc, char **argv) {
                 memset(g_server.immutable_masks, 0, sizeof(g_server.immutable_masks));
                 g_server.ramp.active = 0;
                 g_server.is_negotiated = 0;
+                for (int i = 0; i < L2TCP_MAX_ARTIFACTS; i++) {
+                    artifact_clear(i);
+                }
                 get_now(&g_server.last_activity_ts);
                 printf("Client connected - configuration reset (inactivity timeout: %dms, recv timeout: %dms)\n",
                        g_server.client_timeout_ms, g_server.recv_timeout_ms);
@@ -1156,8 +1424,7 @@ int main(int argc, char **argv) {
             if (elapsed_ms > g_server.client_timeout_ms) {
                 printf("Client inactivity timeout (%ldms > %dms), closing connection\n",
                        elapsed_ms, g_server.client_timeout_ms);
-                close(g_server.client_fd);
-                g_server.client_fd = -1;
+                close_client_connection();
             } else if (FD_ISSET(g_server.client_fd, &fds)) {
                 handle_request();
             }
@@ -1166,6 +1433,7 @@ int main(int argc, char **argv) {
         process_ramp();
     }
 
+    artifact_free_all_memory();
     smc_close();
     return 0;
 }

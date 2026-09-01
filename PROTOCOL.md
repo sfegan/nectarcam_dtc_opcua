@@ -7,7 +7,7 @@ This document describes the binary protocol used for communication between the N
 - **Transport:** TCP/IP
 - **Port:** `4242`
 - **Byte Order:** Little Endian
-- **Current Protocol Version:** `6`
+- **Current Protocol Version:** `7`
 - **Connection Model:** Single-client: the server accepts one connection at a time; new connections are rejected while the original remains open (a watchdog timer protects against clients that become unresponsive).
 
 ## Protocol Header
@@ -80,6 +80,12 @@ Functional commands (like Power Ramp or Monitoring) may return errors or produce
 | `0x33` | `L2TCP_MSG_FAST_POLL` | Combined L2CB + Monitoring. | None | `Fast Poll` |
 | `0x34` | `L2TCP_MSG_SLOW_POLL` | All CTDB configurations. | None | `Batch Config` |
 | `0x35` | `L2TCP_MSG_L1SCALERS_POLL` | Request L1 scaler counters for all active slots. | None | `L1 Scalers Poll` |
+| `0x40` | `L2TCP_MSG_CLEAR_ARTIFACT` | Clear artifact and release its blocks. | `uint16` (id) | `ACK` |
+| `0x41` | `L2TCP_MSG_APPEND_ARTIFACT` | Append block data to artifact. | `Append Block` | `ACK` |
+| `0x42` | `L2TCP_MSG_VERIFY_ARTIFACT` | Verify artifact CRC32. | `Verify Artifact` | `ACK` |
+| `0x43` | `L2TCP_MSG_GET_ARTIFACT_STATUS` | Get artifact status & CRC. | `uint16` (id) | `Artifact Status` |
+| `0x44` | `L2TCP_MSG_FLASH_CTDB_FW` | Flash CTDB firmware from artifact 0. | `uint16` (slot) | `ACK` / `Error` |
+| `0x45` | `L2TCP_MSG_FLASH_L2CB_FW` | Flash L2CB firmware from artifact 1. | None | `ACK` / `Error` |
 
 ## Payload Structures
 
@@ -192,6 +198,29 @@ Each `L1 Scalers` entry is 68 bytes:
 | 4 | `l1a_slot_count` | `uint32` | L1A scaler count for the slot. |
 | 8 | `l1_channel_count` | `uint32[15]` | Per-channel L1 scaler counts for channels 1-15. |
 
+### 14. Append Artifact Block (`L2TCP_MSG_APPEND_ARTIFACT` Request)
+| Offset | Field | Type | Description |
+| :--- | :--- | :--- | :--- |
+| 0 | `address` | `uint32` | Starting memory/flash address for this block. |
+| 4 | `id` | `uint16` | Artifact ID (0 = CTDB firmware, 1 = L2CB firmware). |
+| 6 | `data_len` | `uint16` | Number of data bytes following (0 to 1024). |
+| 8 | `data` | `uint8[]` | Raw binary chunk of size `data_len`. |
+
+### 15. Verify Artifact (`L2TCP_MSG_VERIFY_ARTIFACT` Request)
+| Offset | Field | Type | Description |
+| :--- | :--- | :--- | :--- |
+| 0 | `crc` | `uint32` | Expected IEEE 802.3 CRC32 of entire artifact (calculated over the 4-byte starting address followed by the data of each block in sequence). |
+| 4 | `id` | `uint16` | Artifact ID. |
+| 6 | `reserved` | `uint16` | Reserved padding. |
+
+### 16. Artifact Status (`L2TCP_MSG_GET_ARTIFACT_STATUS` Response)
+| Offset | Field | Type | Description |
+| :--- | :--- | :--- | :--- |
+| 0 | `total_bytes` | `uint32` | Total data bytes uploaded to artifact. |
+| 4 | `crc` | `uint32` | Running CRC32 checksum (including block starting addresses). |
+| 8 | `id` | `uint16` | Artifact ID. |
+| 10 | `is_valid` | `uint16` | 1 if CRC verified, 0 if unverified/cleared. |
+
 ## Error Codes
 
 | Value | Name | Description |
@@ -202,6 +231,7 @@ Each `L1 Scalers` entry is 68 bytes:
 | 4 | `L2TCP_ERR_INVALID_PARAMETER` | Parameter value out of range (e.g., invalid slot). |
 | 5 | `L2TCP_ERR_HARDWARE_ERROR` | Error communicating with the FPGA/SMC. |
 | 6 | `L2TCP_ERR_NOT_INITIALIZED` | Command sent before `HELLO` negotiation. |
+| 7 | `L2TCP_ERR_ARTIFACT_INVALID` | Artifact is not verified or is invalid for flashing. |
 
 ---
 
