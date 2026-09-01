@@ -110,10 +110,10 @@ def print_help():
     print("  limits <slot> <min> <max>- Set slot current limits (hex counts)")
     
     print("\nArtifact & Firmware Commands:")
-    print("  artifact_status <id>               - Get status of artifact (0=CTDB, 1=L2CB)")
-    print("  artifact_clear <id>                - Clear artifact on server")
-    print("  artifact_upload <id> <file> [addr] - Upload raw binary file (default addr: 0)")
-    print("  artifact_upload_mcs <id> <file>    - Parse and upload Intel MCS firmware file")
+    print("  artifact_status <id>               - Get status of artifact (0/ctdb, 1/l2cb)")
+    print("  artifact_clear <id>                - Clear artifact on server (0/ctdb, 1/l2cb)")
+    print("  artifact_upload <id> <file> [addr] - Upload raw binary file (0/ctdb, 1/l2cb)")
+    print("  artifact_upload_mcs <id> <file>    - Parse and upload Intel MCS file (0/ctdb, 1/l2cb)")
     print("  flash_ctdb <slot>                  - Trigger CTDB firmware flash for slot")
     print("  flash_l2cb                         - Trigger L2CB firmware flash")
 
@@ -369,45 +369,47 @@ async def run_cli(host, port, keepalive_enabled):
                 print("Current limits sent.")
 
             elif cmd == "artifact_status":
-                aid = int(parts[1])
+                aid = parts[1]
                 st = await system.get_artifact_status(aid)
-                name = "CTDB" if aid == 0 else ("L2CB" if aid == 1 else f"ID {aid}")
-                print(f"Artifact {aid} ({name}) Status:")
+                name = "CTDB" if st.artifact_id == 0 else ("L2CB" if st.artifact_id == 1 else f"ID {st.artifact_id}")
+                print(f"Artifact {st.artifact_id} ({name}) Status:")
                 print(f"  Total Bytes: {st.total_bytes}")
                 print(f"  CRC32:       0x{st.crc:08x}")
                 print(f"  Validated:   {'YES' if st.is_valid else 'NO'}")
 
             elif cmd == "artifact_clear":
-                aid = int(parts[1])
+                aid = parts[1]
                 await system.clear_artifact(aid)
                 print(f"Artifact {aid} cleared.")
 
             elif cmd == "artifact_upload":
-                aid = int(parts[1])
+                aid = parts[1]
                 filepath = parts[2]
                 addr = int(parts[3], 0) if len(parts) > 3 else 0
                 with open(filepath, "rb") as f:
                     file_data = f.read()
-                print(f"Uploading {len(file_data)} bytes to artifact {aid} starting at 0x{addr:08x}...")
+                print(f"Uploading {len(file_data)} bytes to artifact '{aid}' starting at 0x{addr:08x}...")
                 def on_progress(done, total):
                     pct = (done / total * 100) if total > 0 else 100
                     print(f"\r  Uploaded {done}/{total} bytes ({pct:.1f}%)", end="", flush=True)
                 st = await system.upload_artifact(aid, file_data, starting_address=addr, progress_callback=on_progress)
                 print()
-                print("Upload and verification complete!")
+                name = "CTDB" if st.artifact_id == 0 else ("L2CB" if st.artifact_id == 1 else f"ID {st.artifact_id}")
+                print(f"Upload and verification complete for artifact {st.artifact_id} ({name})!")
                 print(f"  Total Bytes: {st.total_bytes}")
                 print(f"  CRC32:       0x{st.crc:08x}")
                 print(f"  Validated:   {'YES' if st.is_valid else 'NO'}")
 
             elif cmd == "artifact_upload_mcs":
-                aid = int(parts[1])
+                aid = parts[1]
                 filepath = parts[2]
-                print(f"Parsing and uploading MCS file '{filepath}' to artifact {aid}...")
+                print(f"Parsing and uploading MCS file '{filepath}' to artifact '{aid}'...")
                 def on_progress(done):
                     print(f"\r  Uploaded {done} bytes...", end="", flush=True)
                 st = await system.upload_artifact_mcs(aid, filepath, progress_callback=on_progress)
                 print()
-                print("MCS upload and verification complete!")
+                name = "CTDB" if st.artifact_id == 0 else ("L2CB" if st.artifact_id == 1 else f"ID {st.artifact_id}")
+                print(f"MCS upload and verification complete for artifact {st.artifact_id} ({name})!")
                 print(f"  Total Bytes: {st.total_bytes}")
                 print(f"  CRC32:       0x{st.crc:08x}")
                 print(f"  Validated:   {'YES' if st.is_valid else 'NO'}")

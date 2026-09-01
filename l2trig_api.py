@@ -68,6 +68,23 @@ ARTIFACT_CTDB = 0
 ARTIFACT_L2CB = 1
 MAX_ARTIFACT_BLOCK_SIZE = 1024
 
+def resolve_artifact_id(artifact_id: Union[int, str]) -> int:
+    """Resolve an artifact ID from an int or string ('ctdb', 'l2cb', '0', '1')."""
+    if isinstance(artifact_id, str):
+        val = artifact_id.strip().lower()
+        if val in ("ctdb", "0"):
+            return ARTIFACT_CTDB
+        elif val in ("l2cb", "1"):
+            return ARTIFACT_L2CB
+        try:
+            return int(val, 0)
+        except ValueError:
+            raise ValueError(f"Invalid artifact ID: {artifact_id!r}. Expected 0/'ctdb' or 1/'l2cb'.")
+    elif isinstance(artifact_id, int):
+        return artifact_id
+    else:
+        raise TypeError(f"Artifact ID must be int or str, got {type(artifact_id)}")
+
 # Struct formats (Little Endian)
 HEADER_FMT = "<HHHH"  # Type, Seq, Len, Reserved
 HEADER_SIZE = struct.calcsize(HEADER_FMT)
@@ -526,26 +543,30 @@ class L2TriggerSystem:
 
     # --- Artifact & Firmware Management ---
 
-    async def clear_artifact(self, artifact_id: int):
+    async def clear_artifact(self, artifact_id: Union[int, str]):
         """Clear artifact buffer on server and free its blocks"""
-        payload = struct.pack("<H", artifact_id)
+        aid = resolve_artifact_id(artifact_id)
+        payload = struct.pack("<H", aid)
         await self._send_recv(L2TCPMsgType.CLEAR_ARTIFACT, payload)
 
-    async def append_artifact_block(self, artifact_id: int, address: int, data: bytes):
+    async def append_artifact_block(self, artifact_id: Union[int, str], address: int, data: bytes):
         """Append a data block (up to 1024 bytes) to artifact"""
+        aid = resolve_artifact_id(artifact_id)
         if len(data) > MAX_ARTIFACT_BLOCK_SIZE:
             raise ValueError(f"Block length ({len(data)}) exceeds maximum allowable ({MAX_ARTIFACT_BLOCK_SIZE})")
-        payload = struct.pack("<IHH", address, artifact_id, len(data)) + data
+        payload = struct.pack("<IHH", address, aid, len(data)) + data
         await self._send_recv(L2TCPMsgType.APPEND_ARTIFACT, payload)
 
-    async def verify_artifact(self, artifact_id: int, crc: int):
+    async def verify_artifact(self, artifact_id: Union[int, str], crc: int):
         """Verify artifact integrity using CRC32"""
-        payload = struct.pack("<IHH", crc & 0xFFFFFFFF, artifact_id, 0)
+        aid = resolve_artifact_id(artifact_id)
+        payload = struct.pack("<IHH", crc & 0xFFFFFFFF, aid, 0)
         await self._send_recv(L2TCPMsgType.VERIFY_ARTIFACT, payload)
 
-    async def get_artifact_status(self, artifact_id: int) -> ArtifactStatus:
+    async def get_artifact_status(self, artifact_id: Union[int, str]) -> ArtifactStatus:
         """Get artifact upload status and CRC validation flag"""
-        payload = struct.pack("<H", artifact_id)
+        aid = resolve_artifact_id(artifact_id)
+        payload = struct.pack("<H", aid)
         _, data = await self._send_recv(L2TCPMsgType.GET_ARTIFACT_STATUS, payload)
         total_bytes, crc, r_id, is_valid = struct.unpack("<IIHH", data)
         return ArtifactStatus(
@@ -555,18 +576,19 @@ class L2TriggerSystem:
             crc=crc
         )
 
-    async def upload_artifact(self, artifact_id: int, data: bytes, starting_address: int = 0,
+    async def upload_artifact(self, artifact_id: Union[int, str], data: bytes, starting_address: int = 0,
                               block_size: int = MAX_ARTIFACT_BLOCK_SIZE,
                               progress_callback: Optional[Callable[[int, int], None]] = None) -> ArtifactStatus:
         """Upload complete binary data as artifact blocks, verify CRC, and return status"""
-        await self.clear_artifact(artifact_id)
+        aid = resolve_artifact_id(artifact_id)
+        await self.clear_artifact(aid)
         total_len = len(data)
         running_crc = 0
         offset = 0
 
         if total_len == 0:
             addr = starting_address
-            await self.append_artifact_block(artifact_id, addr, b"")
+            await self.append_artifact_block(aid, addr, b"")
             running_crc = zlib.crc32(struct.pack("<I", addr), running_crc) & 0xFFFFFFFF
             if progress_callback:
                 progress_callback(0, 0)
@@ -574,24 +596,25 @@ class L2TriggerSystem:
             while offset < total_len:
                 chunk = data[offset:offset + block_size]
                 addr = starting_address + offset
-                await self.append_artifact_block(artifact_id, addr, chunk)
+                await self.append_artifact_block(aid, addr, chunk)
                 block_crc_data = struct.pack("<I", addr) + chunk
                 running_crc = zlib.crc32(block_crc_data, running_crc) & 0xFFFFFFFF
                 offset += len(chunk)
                 if progress_callback:
                     progress_callback(offset, total_len)
 
-        await self.verify_artifact(artifact_id, running_crc)
-        return await self.get_artifact_status(artifact_id)
+        await self.verify_artifact(aid, running_crc)
+        return await self.get_artifact_status(aid)
 
-    async def upload_artifact_mcs(self, artifact_id: int, mcs_source: Union[str, Iterable[str]],
+    async def upload_artifact_mcs(self, artifact_id: Union[int, str], mcs_source: Union[str, Iterable[str]],
                                   progress_callback: Optional[Callable[[int], None]] = None) -> ArtifactStatus:
         """Parse an Intel MCS/HEX file, chunk contiguous bytes into 1024-byte blocks,
         upload them with extended addresses, verify checksum and EOF, and validate artifact.
         
         If any checksum fails, or EOF is missing/invalid, clears artifact and raises exception.
         """
-        await self.clear_artifact(artifact_id)
+        aid = resolve_artifact_id(artifact_id)
+        await self.clear_artifact(aid)
         
         lines = []
         if isinstance(mcs_source, str):
@@ -616,7 +639,7 @@ class L2TriggerSystem:
                 chunk_len = min(len(current_chunk_data), MAX_ARTIFACT_BLOCK_SIZE)
                 chunk = bytes(current_chunk_data[:chunk_len])
                 addr = current_chunk_addr
-                await self.append_artifact_block(artifact_id, addr, chunk)
+                await self.append_artifact_block(aid, addr, chunk)
                 block_crc_data = struct.pack("<I", addr) + chunk
                 running_crc = zlib.crc32(block_crc_data, running_crc) & 0xFFFFFFFF
                 total_uploaded_bytes += len(chunk)
@@ -701,13 +724,13 @@ class L2TriggerSystem:
                 raise ValueError("MCS file contains no data records")
 
             # Validate artifact with server using computed CRC
-            await self.verify_artifact(artifact_id, running_crc)
-            return await self.get_artifact_status(artifact_id)
+            await self.verify_artifact(aid, running_crc)
+            return await self.get_artifact_status(aid)
 
         except Exception as e:
-            logger.error(f"MCS upload failed: {e}. Clearing artifact {artifact_id}.")
+            logger.error(f"MCS upload failed: {e}. Clearing artifact {aid}.")
             try:
-                await self.clear_artifact(artifact_id)
+                await self.clear_artifact(aid)
             except Exception:
                 pass
             raise
