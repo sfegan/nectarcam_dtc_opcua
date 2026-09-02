@@ -112,7 +112,7 @@ def print_help():
     print("\nArtifact & Firmware Commands:")
     print("  artifact_status <id>               - Get status of artifact (0/ctdb, 1/l2cb)")
     print("  artifact_clear <id>                - Clear artifact on server (0/ctdb, 1/l2cb)")
-    print("  artifact_upload <id> <file> [addr] - Upload raw binary file (0/ctdb, 1/l2cb)")
+    print("  artifact_upload_raw_bytes <id> <file> [addr] - Upload raw binary file (0/ctdb, 1/l2cb)")
     print("  artifact_upload_mcs <id> <file>    - Parse and upload Intel MCS file (0/ctdb, 1/l2cb)")
     print("  flash_ctdb <slot>                  - Trigger CTDB firmware flash for slot")
     print("  flash_l2cb                         - Trigger L2CB firmware flash")
@@ -382,7 +382,7 @@ async def run_cli(host, port, keepalive_enabled):
                 await system.clear_artifact(aid)
                 print(f"Artifact {aid} cleared.")
 
-            elif cmd == "artifact_upload":
+            elif cmd == "artifact_upload_raw_bytes":
                 aid = parts[1]
                 filepath = parts[2]
                 addr = int(parts[3], 0) if len(parts) > 3 else 0
