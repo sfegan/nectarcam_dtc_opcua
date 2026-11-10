@@ -37,7 +37,7 @@ from l2trig_api import (
 
 # Factors from l2trig_low_level.py
 CURRENT_FACTOR = 0.485
-L1DELAY_FACTOR = 0.037
+L1DELAY_FACTOR = 0.03264 # Changed from 0.037 SJF 2027-11-10
 MCFDELAY_FACTOR = 20.0  # Multiples of 20ns for v14+ (was 5.0ns)
 L1DEADTIME_FACTOR = 5.0
 
