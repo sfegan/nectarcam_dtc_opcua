@@ -45,7 +45,7 @@ L1DEADTIME_FACTOR = 5.0
 LIMIT_MCF_THRESH = 0x01FF
 LIMIT_MCF_DELAY = 0x0007  # 3-bit for v14+ (was 0x000F)
 LIMIT_L1_DEADTIME = 0x00FF
-LIMIT_TRIG_DELAY = 0x007F
+LIMIT_TRIG_DELAY = 0x0097  # Changed from 0x007F SJF 2027-11-10
 LIMIT_CURR_CODE = 0x0FFF
 
 def _clip(val: int, max_val: int, name: str, unit: str = "", factor: float = 1.0) -> Tuple[int, str]:

@@ -416,7 +416,7 @@ static int is_polling_msg(uint16_t type) {
 #define LIMIT_MCF_THRESH    0x01FF
 #define LIMIT_MCF_DELAY     0x0007
 #define LIMIT_L1_DEADTIME   0x00FF
-#define LIMIT_TRIG_DELAY    0x007F
+#define LIMIT_TRIG_DELAY    0x0097 // Changed from 0x007F SJF 2027-11-10
 #define LIMIT_CURR_CODE     0x0FFF
 
 static void fill_l2cb_state(l2tcp_payload_l2cb_state_t *p) {

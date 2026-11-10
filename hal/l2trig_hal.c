@@ -49,7 +49,7 @@ int cta_l2cb_setL1TriggerDelay(uint16_t _slot, uint16_t _channel, uint16_t _dela
         if (--timeout_count == 0) return CTA_L2CB_ERROR_TIMEOUT;
     }
 
-	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_L1DEL, _delay & 0x007F);
+	IOWR_16DIRECT(BASE_CTA_L2CB, ADDR_CTA_L2CB_L1DEL, _delay & 0x00FF); // Limit to 8-bit value SJF 2027-11-10
 	return CTA_L2CB_NO_ERROR;
 }
 
