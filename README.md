@@ -106,7 +106,7 @@ The **Direct Client** (`l2trig_direct_client`) provides native access to the har
 | `trigmask <slot> [m]` | Get/Set trigger mask (16-bit hex) |
 | `trig <slot> <ch> [o]`| Get/Set trigger for specific channel |
 | `alltrig [on\|off]` | Set all or show matrix of trigger masks |
-| `delay <slot> <ch> [v]`| Get/Set trigger delay (37ps steps, 0-127) |
+| `delay <slot> <ch> [v]`| Get/Set trigger delay (32.64ps steps, 0-151) |
 | `alldelay [val]` | Set all or show matrix of trigger delays |
 | `reg <addr> [val]` | Read or write L2CB register |
 | `regscan [all]` | Scan and print L2CB named (or all) registers |
@@ -194,7 +194,7 @@ All monitoring data is accessible under `L2Trigger.Monitoring`:
 - `ModuleCurrent` (`Double[]`) — Current reading (mA in 0.485mA steps)
 - `ModuleState` (`String[]`) — Detailed state (on/off/error_over_current/error_under_current/error_both/offline)
 - `ModuleTriggerEnabled` (`Boolean[]`) — Trigger state (1=enabled/0=disabled)
-- `ModuleTriggerDelay` (`Double[]`) — Trigger delay in ns (0-4.7ns in 37ps steps)
+- `ModuleTriggerDelay` (`Double[]`) — Trigger delay in ns (0-4.93ns in 32.64ps steps)
 - `ModuleIsMutable` (`Boolean[]`) — Whether server controls this module
 - `ModuleSlotId` (`UInt16[]`) — Crate slot ID for this module
 - `ModuleChannelId` (`UInt16[]`) — Crate channel ID for this module
@@ -229,9 +229,9 @@ Methods return a string prefixed with **`OK:`** or **`ERROR:`**. Boards are inde
 | `SetAllTriggerEnabled` | `enabled: Boolean` | Enable/Disable triggers from all modules |
 | `SetModuleTriggerEnabled`| `module: Int32, enabled: Boolean`| Enable/Disable trigger from specific module |
 | `SetSlotChannelTriggerEnabled`| `slot: Int16, channel: Int16, enabled: Boolean`| Enable/Disable trigger from specific module by slot and channel |
-| `SetAllTriggerDelay` | `delay_ns: Double` | Set uniform trigger delay for all modules (0-4.7ns in 37ps steps) |
-| `SetModuleTriggerDelay` | `module: Int32, ns: Double` | Set trigger delay for specific module (0-4.7ns in 37ps steps) |
-| `SetSlotChannelTriggerDelay` | `slot: Int16, channel: Int16, ns: Double` | Set trigger delay for specific module by slot and channel (0-4.7ns in 37ps steps) |
+| `SetAllTriggerDelay` | `delay_ns: Double` | Set uniform trigger delay for all modules (0-4.93ns in 32.64ps steps) |
+| `SetModuleTriggerDelay` | `module: Int32, ns: Double` | Set trigger delay for specific module (0-4.93ns in 32.64ps steps) |
+| `SetSlotChannelTriggerDelay` | `slot: Int16, channel: Int16, ns: Double` | Set trigger delay for specific module by slot and channel (0-4.93ns in 32.64ps steps) |
 | `SetMCFEnabled` | `enabled: Boolean` | Enable muon candidate flag propagation to TIB |
 | `SetMCFDelay` | `delay: Double` | Set MCF delay in ns (0-75ns in 5ns steps) |
 | `SetMCFThreshold` | `threshold: Int16` | Set MCF threshold in modules (0-512) |
