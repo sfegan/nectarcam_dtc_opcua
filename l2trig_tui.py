@@ -19,12 +19,22 @@ from typing import Dict, List, Optional, Any, Tuple
 from asyncua import Client, ua
 from asyncua.common.node import Node
 
+from l2trig_api import (
+    VALID_SLOTS,
+    CHANNELS_PER_SLOT,
+    L1DELAY_FACTOR,
+    MCFDELAY_FACTOR,
+    L1DEADTIME_FACTOR,
+    MAX_TRIG_DELAY_NS,
+    MAX_MCF_DELAY_NS,
+    MAX_L1_DEADTIME_NS,
+    MAX_MCF_THRESH,
+)
+
 # ============================================================================
 # Constants & Layout Configuration
 # ============================================================================
 
-VALID_SLOTS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 13, 14, 15, 16, 17, 18, 19, 20, 21]
-CHANNELS_PER_SLOT = 15
 SLOT_WIDTH = 4  # 3 chars + 1 space
 
 # View Modes
@@ -447,12 +457,12 @@ class L2TrigTUI:
                 self._redraw_event.set()
 
             # Parameters
-            elif ch == ord('>'): await self.call("SetMCFThreshold", s.mcf_threshold + 1); self._redraw_event.set()
+            elif ch == ord('>'): await self.call("SetMCFThreshold", min(MAX_MCF_THRESH, s.mcf_threshold + 1)); self._redraw_event.set()
             elif ch == ord('<'): await self.call("SetMCFThreshold", max(0, s.mcf_threshold - 1)); self._redraw_event.set()
-            elif ch == ord('}'): await self.call("SetMCFDelay", min(140.0, s.mcf_delay_ns + 20.0)); self._redraw_event.set()
-            elif ch == ord('{'): await self.call("SetMCFDelay", max(0.0, s.mcf_delay_ns - 20.0)); self._redraw_event.set()
-            elif ch == ord('+'): await self.call("SetL1Deadtime", s.l1_deadtime_ns + 5.0); self._redraw_event.set()
-            elif ch == ord('-'): await self.call("SetL1Deadtime", max(0.0, s.l1_deadtime_ns - 5.0)); self._redraw_event.set()
+            elif ch == ord('}'): await self.call("SetMCFDelay", min(MAX_MCF_DELAY_NS, s.mcf_delay_ns + MCFDELAY_FACTOR)); self._redraw_event.set()
+            elif ch == ord('{'): await self.call("SetMCFDelay", max(0.0, s.mcf_delay_ns - MCFDELAY_FACTOR)); self._redraw_event.set()
+            elif ch == ord('+'): await self.call("SetL1Deadtime", min(MAX_L1_DEADTIME_NS, s.l1_deadtime_ns + L1DEADTIME_FACTOR)); self._redraw_event.set()
+            elif ch == ord('-'): await self.call("SetL1Deadtime", max(0.0, s.l1_deadtime_ns - L1DEADTIME_FACTOR)); self._redraw_event.set()
             
             # Targeted Commands
             target_slot = s.board_slots[self.sel_slot_idx] if s.board_slots else None
@@ -471,8 +481,8 @@ class L2TrigTUI:
                 # Delay Step (up/down)
                 elif ch == ord('D') or ch == ord('d'):
                     current_delay = s.mod_trig_delay[module_idx]
-                    step = 0.037 if ch == ord('D') else -0.037
-                    await self.call("SetSlotChannelTriggerDelay", target_slot, self.sel_chan, max(0.0, current_delay + step))
+                    step = L1DELAY_FACTOR if ch == ord('D') else -L1DELAY_FACTOR
+                    await self.call("SetSlotChannelTriggerDelay", target_slot, self.sel_chan, min(MAX_TRIG_DELAY_NS, max(0.0, current_delay + step)))
                     self._redraw_event.set()
                 
                 # Current Limits Step (up/down)

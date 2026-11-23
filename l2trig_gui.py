@@ -18,7 +18,14 @@ from asyncua import Client
 from asyncua.ua import UaStatusCodeError
 from asyncua.common.subscription import DataChangeNotif
 
-from l2trig_api import VALID_SLOTS
+from l2trig_api import (
+    VALID_SLOTS,
+    MAX_TRIG_DELAY_NS,
+    MAX_MCF_DELAY_NS,
+    MAX_L1_DEADTIME_NS,
+    MCFDELAY_FACTOR,
+    L1DEADTIME_FACTOR,
+)
 
 
 class DisplayMode(Enum):
@@ -308,9 +315,9 @@ class ModuleIndicator(tk.Canvas):
                 text = f"S{self.slot}\nC{self.channel}\nDIS"
         
         elif mode == DisplayMode.DELAY:
-            # Map delay 0-5ns to color (Blue to Red)
-            val = min(max(self.trigger_delay, 0.0), 5.0)
-            r = int(val * 255 / 5.0)
+            # Map delay 0-MAX_TRIG_DELAY_NS to color (Blue to Red)
+            val = min(max(self.trigger_delay, 0.0), MAX_TRIG_DELAY_NS)
+            r = int(val * 255 / MAX_TRIG_DELAY_NS) if MAX_TRIG_DELAY_NS > 0 else 0
             b = 255 - r
             bg = f"#{r:02x}00{b:02x}"
             fg = "white"
@@ -479,7 +486,7 @@ class ModuleMatrix(tk.Frame):
                 "Trigger Delay",
                 f"Enter new trigger delay for Slot {indicator.slot} Ch {indicator.channel} (ns):",
                 initialvalue=indicator.trigger_delay,
-                minvalue=0.0, maxvalue=5.0
+                minvalue=0.0, maxvalue=round(MAX_TRIG_DELAY_NS, 2)
             )
             if new_delay is not None:
                 self.opcua_client.run_async(
@@ -649,7 +656,7 @@ class ControlPanel(tk.Frame):
         ttk.Label(crate_frame, text="MCF Delay (ns):").grid(row=row, column=0, sticky=tk.W, pady=1)
         self.mcf_delay_var = tk.DoubleVar(value=0.0)
         delay_spin = ttk.Spinbox(
-            crate_frame, from_=0, to=140.0, increment=20.0,
+            crate_frame, from_=0, to=MAX_MCF_DELAY_NS, increment=MCFDELAY_FACTOR,
             textvariable=self.mcf_delay_var, width=8,
             command=self.on_mcf_delay_changed
         )
@@ -661,7 +668,7 @@ class ControlPanel(tk.Frame):
         ttk.Label(crate_frame, text="L1 Deadtime (ns):").grid(row=row, column=0, sticky=tk.W, pady=1)
         self.l1_deadtime_var = tk.DoubleVar(value=0.0)
         deadtime_spin = ttk.Spinbox(
-            crate_frame, from_=0, to=1275.0, increment=5.0,
+            crate_frame, from_=0, to=MAX_L1_DEADTIME_NS, increment=L1DEADTIME_FACTOR,
             textvariable=self.l1_deadtime_var, width=8,
             command=self.on_l1_deadtime_changed
         )

@@ -28,57 +28,26 @@ from l2trig_api import (
     CTDBConfigData,
     VALID_SLOTS,
     CHANNELS_PER_SLOT,
-    DEFAULT_PORT
+    DEFAULT_PORT,
+    CURRENT_FACTOR,
+    L1DELAY_FACTOR,
+    MCFDELAY_FACTOR,
+    L1DEADTIME_FACTOR,
+    LIMIT_MCF_THRESH,
+    LIMIT_MCF_DELAY,
+    LIMIT_L1_DEADTIME,
+    LIMIT_TRIG_DELAY,
+    LIMIT_CURR_CODE,
+    MAX_TRIG_DELAY_NS,
+    MAX_CURRENT_MA,
+    MAX_MCF_DELAY_NS,
+    MAX_L1_DEADTIME_NS,
+    _clip,
+    current_ma_to_raw,
+    delay_ns_to_raw,
+    mcf_delay_ns_to_raw,
+    l1_deadtime_ns_to_raw,
 )
-
-# ============================================================================
-# Constants & Conversions
-# ============================================================================
-
-# Factors from l2trig_low_level.py
-CURRENT_FACTOR = 0.485
-L1DELAY_FACTOR = 0.03264 # Changed from 0.037 SJF 2027-11-10
-MCFDELAY_FACTOR = 20.0  # Multiples of 20ns for v14+ (was 5.0ns)
-L1DEADTIME_FACTOR = 5.0
-
-# Hardware Limits (Raw Codes)
-LIMIT_MCF_THRESH = 0x01FF
-LIMIT_MCF_DELAY = 0x0007  # 3-bit for v14+ (was 0x000F)
-LIMIT_L1_DEADTIME = 0x00FF
-LIMIT_TRIG_DELAY = 0x0097  # Changed from 0x007F SJF 2027-11-10
-LIMIT_CURR_CODE = 0x0FFF
-
-def _clip(val: int, max_val: int, name: str, unit: str = "", factor: float = 1.0) -> Tuple[int, str]:
-    """Clip value to [0, max_val] and return (clipped_val, warning_string)"""
-    if val < 0:
-        return 0, f" (clipped {name} to 0{unit})"
-    if val > max_val:
-        clipped_unit = max_val * factor
-        if factor == 1.0:
-            return max_val, f" (clipped {name} to {int(clipped_unit)}{unit})"
-        else:
-            return max_val, f" (clipped {name} to {clipped_unit:.3f}{unit})"
-    return val, ""
-
-def current_ma_to_raw(ma: float) -> Tuple[int, str]:
-    code = int(ma / CURRENT_FACTOR)
-    code, warn = _clip(code, LIMIT_CURR_CODE, "current_ma", "mA", CURRENT_FACTOR)
-    return code, warn
-
-def delay_ns_to_raw(ns: float) -> Tuple[int, str]:
-    code = int(ns / L1DELAY_FACTOR)
-    code, warn = _clip(code, LIMIT_TRIG_DELAY, "delay_ns", "ns", L1DELAY_FACTOR)
-    return code, warn
-
-def mcf_delay_ns_to_raw(ns: float) -> Tuple[int, str]:
-    code = int(ns / MCFDELAY_FACTOR)
-    code, warn = _clip(code, LIMIT_MCF_DELAY, "mcf_delay_ns", "ns", MCFDELAY_FACTOR)
-    return code, warn
-
-def l1_deadtime_ns_to_raw(ns: float) -> Tuple[int, str]:
-    code = int(ns / L1DEADTIME_FACTOR)
-    code, warn = _clip(code, LIMIT_L1_DEADTIME, "l1_deadtime_ns", "ns", L1DEADTIME_FACTOR)
-    return code, warn
 
 # ============================================================================
 # Logging

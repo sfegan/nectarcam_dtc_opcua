@@ -26,6 +26,97 @@ VALID_SLOTS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 13, 14, 15, 16, 17, 18, 19, 20, 21]
 CHANNELS_PER_SLOT = 15
 DEFAULT_PORT = 4242
 
+# --- Hardware Limits (Raw Codes) ---
+LIMIT_MCF_THRESH    = 0x01FF  # 9-bit (511)
+LIMIT_MCF_DELAY     = 0x0007  # 3-bit for v14+ (was 0x000F)
+LIMIT_L1_DEADTIME   = 0x00FF  # 8-bit (255)
+LIMIT_TRIG_DELAY    = 0x0097  # 151 (was 0x007F)
+LIMIT_CURR_CODE     = 0x0FFF  # 12-bit (4095)
+
+# --- Conversion Factors (Physical units per raw step) ---
+CURRENT_FACTOR          = 0.485    # mA per ADC count
+CURRENT_FACTOR_MA       = CURRENT_FACTOR
+L1DELAY_FACTOR          = 0.03264  # ns per raw step (32.64 ps, changed from 0.037)
+L1DELAY_FACTOR_NS       = L1DELAY_FACTOR
+MCFDELAY_FACTOR         = 20.0     # Multiples of 20ns for v14+ (was 5.0ns)
+MCFDELAY_FACTOR_NS      = MCFDELAY_FACTOR
+L1DEADTIME_FACTOR       = 5.0      # Multiples of 5ns
+L1DEADTIME_FACTOR_NS    = L1DEADTIME_FACTOR
+L2CB_TIMESTAMP_TICK_NS  = 8.0      # ns per clock tick (125 MHz clock)
+
+# --- Derived Physical Maximums ---
+MAX_TRIG_DELAY_NS   = LIMIT_TRIG_DELAY * L1DELAY_FACTOR
+MAX_CURRENT_MA      = LIMIT_CURR_CODE * CURRENT_FACTOR
+MAX_MCF_DELAY_NS    = LIMIT_MCF_DELAY * MCFDELAY_FACTOR
+MAX_L1_DEADTIME_NS  = LIMIT_L1_DEADTIME * L1DEADTIME_FACTOR
+MAX_MCF_THRESH      = LIMIT_MCF_THRESH
+
+# --- Control Bitmasks ---
+L2CB_CTRL_MCF_EN        = 0x0001
+L2CB_CTRL_GLITCH_EN     = 0x0002
+L2CB_CTRL_TIB_BLOCK_EN  = 0x0004
+CTDB_CTRL_L1SCALER_EN   = 0x2000
+
+# ============================================================================
+# Conversion & Clipping Utilities
+# ============================================================================
+
+def clip_raw(val: int, max_val: int, name: str = "", unit: str = "", factor: float = 1.0) -> Tuple[int, str]:
+    """Clip value to [0, max_val] and return (clipped_val, warning_string)."""
+    if val < 0:
+        return 0, f" (clipped {name} to 0{unit})" if name else ""
+    if val > max_val:
+        clipped_unit = max_val * factor
+        if factor == 1.0:
+            return max_val, f" (clipped {name} to {int(clipped_unit)}{unit})" if name else ""
+        else:
+            return max_val, f" (clipped {name} to {clipped_unit:.3f}{unit})" if name else ""
+    return val, ""
+
+_clip = clip_raw  # Backward compatibility alias
+
+def current_ma_to_raw(ma: float) -> Tuple[int, str]:
+    code = int(ma / CURRENT_FACTOR)
+    code, warn = clip_raw(code, LIMIT_CURR_CODE, "current_ma", "mA", CURRENT_FACTOR)
+    return code, warn
+
+ma_to_raw = current_ma_to_raw
+
+def delay_ns_to_raw(ns: float) -> Tuple[int, str]:
+    code = int(ns / L1DELAY_FACTOR)
+    code, warn = clip_raw(code, LIMIT_TRIG_DELAY, "delay_ns", "ns", L1DELAY_FACTOR)
+    return code, warn
+
+def mcf_delay_ns_to_raw(ns: float) -> Tuple[int, str]:
+    code = int(ns / MCFDELAY_FACTOR)
+    code, warn = clip_raw(code, LIMIT_MCF_DELAY, "mcf_delay_ns", "ns", MCFDELAY_FACTOR)
+    return code, warn
+
+def l1_deadtime_ns_to_raw(ns: float) -> Tuple[int, str]:
+    code = int(ns / L1DEADTIME_FACTOR)
+    code, warn = clip_raw(code, LIMIT_L1_DEADTIME, "l1_deadtime_ns", "ns", L1DEADTIME_FACTOR)
+    return code, warn
+
+def mcf_threshold_to_raw(threshold: int) -> Tuple[int, str]:
+    return clip_raw(threshold, LIMIT_MCF_THRESH, "threshold", "", 1.0)
+
+def raw_to_ma(raw: int) -> float:
+    return raw * CURRENT_FACTOR
+
+raw_to_current_ma = raw_to_ma
+
+def raw_to_delay_ns(raw: int) -> float:
+    return raw * L1DELAY_FACTOR
+
+def raw_to_mcf_delay_ns(raw: int) -> float:
+    return float(raw * MCFDELAY_FACTOR)
+
+def raw_to_l1_deadtime_ns(raw: int) -> float:
+    return float(raw * L1DEADTIME_FACTOR)
+
+def raw_to_uptime_ns(raw: int) -> int:
+    return int(raw * L2CB_TIMESTAMP_TICK_NS)
+
 class L2TCPMsgType(IntEnum):
     ACK                 = 0x00
     ERROR               = 0xFF
@@ -368,13 +459,13 @@ class L2TriggerSystem:
         
         return L2CBStatus(
             firmware_version=fw,
-            uptime=ts * 8, # convert to ns
-            mcf_enabled=bool(ctrl & 0x1),
-            busy_glitch_filter_enabled=bool(ctrl & 0x2),
-            tib_trigger_busy_block_enabled=bool(ctrl & 0x4),
+            uptime=raw_to_uptime_ns(ts),
+            mcf_enabled=bool(ctrl & L2CB_CTRL_MCF_EN),
+            busy_glitch_filter_enabled=bool(ctrl & L2CB_CTRL_GLITCH_EN),
+            tib_trigger_busy_block_enabled=bool(ctrl & L2CB_CTRL_TIB_BLOCK_EN),
             mcf_threshold=thresh,
-            mcf_delay_ns=float(delay * 20.0), # Multiples of 20ns for v14+ (v027+)
-            l1_deadtime_ns=float(dt * 5),
+            mcf_delay_ns=raw_to_mcf_delay_ns(delay),
+            l1_deadtime_ns=raw_to_l1_deadtime_ns(dt),
             tib_input_count=tib_in,
             tib_output_count=tib_out,
             busy_mask=bmask,
@@ -448,12 +539,12 @@ class L2TriggerSystem:
         
         return CTDBMonitoringData(
             slot=slot,
-            ctdb_current_ma=ctdb_curr * 0.485,
-            channel_currents_ma=[c * 0.485 for c in ch_curr],
+            ctdb_current_ma=raw_to_ma(ctdb_curr),
+            channel_currents_ma=[raw_to_ma(c) for c in ch_curr],
             over_current_errors=over,
             under_current_errors=under,
             power_enabled_mask=pwr,
-            l1scaler_active=bool(ctrl & 0x2000)
+            l1scaler_active=bool(ctrl & CTDB_CTRL_L1SCALER_EN)
         )
 
     async def get_ctdb_monitoring(self, slot: int) -> CTDBMonitoringData:
@@ -496,10 +587,10 @@ class L2TriggerSystem:
         return CTDBConfigData(
             slot=slot,
             firmware_version=fw,
-            current_limit_min_ma=cmin * 0.485,
-            current_limit_max_ma=cmax * 0.485,
+            current_limit_min_ma=raw_to_ma(cmin),
+            current_limit_max_ma=raw_to_ma(cmax),
             trig_enabled_mask=tmask,
-            trig_delays_ns=[d * 0.037 for d in tdelays]
+            trig_delays_ns=[raw_to_delay_ns(d) for d in tdelays]
         )
 
     async def get_ctdb_config(self, slot: int) -> CTDBConfigData:

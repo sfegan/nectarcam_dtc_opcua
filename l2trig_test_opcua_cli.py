@@ -17,6 +17,14 @@ from typing import List, Optional, Any, Dict, Set
 from asyncua import Client, ua
 from asyncua.common.node import Node
 
+from l2trig_api import (
+    MAX_TRIG_DELAY_NS,
+    MAX_MCF_DELAY_NS,
+    MAX_L1_DEADTIME_NS,
+    MAX_MCF_THRESH,
+    MCFDELAY_FACTOR,
+)
+
 # ============================================================================
 # Subscription Handler
 # ============================================================================
@@ -354,9 +362,9 @@ async def interactive_loop(client: L2TrigTestClient):
                 print("  limits <board> <min> <max> Set current limits for a board (1-based index)")
                 print("  slotlimits <slot> <min> <max> Set current limits for a board by slot ID")
                 print("  mcf <on|off>         Set L2CB MCF enabled status")
-                print("  mcfdelay <ns>        Set L2CB MCF delay (0-140 ns, 20ns steps)")
-                print("  mcfthreshold <val>   Set L2CB MCF threshold (0-512)")
-                print("  deadtime <ns>        Set L2CB L1 deadtime (0-1275 ns)")
+                print(f"  mcfdelay <ns>        Set L2CB MCF delay (0-{int(MAX_MCF_DELAY_NS)} ns, {int(MCFDELAY_FACTOR)}ns steps)")
+                print(f"  mcfthreshold <val>   Set L2CB MCF threshold (0-{MAX_MCF_THRESH})")
+                print(f"  deadtime <ns>        Set L2CB L1 deadtime (0-{int(MAX_L1_DEADTIME_NS)} ns)")
                 print("  glitch <on|off>      Set L2CB busy glitch filter enabled status")
                 print("  tibblock <on|off>    Set L2CB TIB trigger block enabled status")
                 print("  health               Perform health check")
